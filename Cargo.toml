@@ -1,0 +1,27 @@
+[package]
+name = "mappar"
+description = "A modern OpenStreetMap for Desktop built using Rust, egui and skia"
+authors = ["bolli24"]
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+egui = "0.27.0"
+eframe = { version = "0.27.0", default-features = false, features = [
+    # "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts",
+    "wgpu",
+    "x11",
+    "wayland",
+    "persistence"
+] }
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+simple_logger = "5.0.0"
+skia-safe = "0.75.0"
+
+[profile.release]
+opt-level = 2 # fast and small wasm
+
+[profile.dev.package."*"]
+opt-level = 2
