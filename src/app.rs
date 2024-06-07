@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
-use eframe::epaint::{ColorImage, ImageData, TextureHandle};
 use eframe::epaint::textures::TextureOptions;
+use eframe::epaint::{ColorImage, ImageData, TextureHandle};
 use egui::ViewportCommand;
-
-use crate::skia::SkiaWidget;
+use crate::map_widget::MapWidget;
 
 pub struct MyApp {
     label: String,
@@ -40,7 +39,7 @@ impl eframe::App for MyApp {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Quit").clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        ctx.send_viewport_cmd(ViewportCommand::Close);
                     }
                 });
                 ui.add_space(16.0);
@@ -62,7 +61,7 @@ impl eframe::App for MyApp {
                 self.value += 1.0;
             }
 
-            ui.add(SkiaWidget::new(self.skia_texture.clone()));
+            ui.add(MapWidget::new(self.skia_texture.clone()));
 
             ui.separator();
 

@@ -2,54 +2,41 @@ use std::sync::OnceLock;
 
 use egui::load::SizedTexture;
 use egui::{
-    paint_texture_at, ColorImage, ImageOptions, Response, TextureHandle, TextureOptions, Ui, Widget,
+    paint_texture_at, ColorImage, Context, ImageOptions, Response, Sense, TextureHandle,
+    TextureOptions, Ui, Vec2, Widget,
 };
 use skia_safe::surfaces::raster_n32_premul;
-use skia_safe::{
-    Color, Font, FontMgr, FontStyle, ISize, Paint, PathEffect, Point, TextBlob, Typeface,
-};
+use skia_safe::{Canvas, Color, Font, FontMgr, FontStyle, ISize, Point, Typeface};
 
 pub struct SkiaWidget {
     texture_handle: TextureHandle,
+    render_callback: Box<SkiaCallback>,
 }
 
+pub type SkiaCallback = dyn Fn(&Canvas, &Context);
+
 impl SkiaWidget {
-    pub fn new(texture_handle: TextureHandle) -> Self {
-        Self { texture_handle }
+    pub fn new(
+        texture_handle: TextureHandle,
+        render_callback: Box<dyn Fn(&Canvas, &Context)>,
+    ) -> Self {
+        Self {
+            texture_handle,
+            render_callback,
+        }
     }
 }
 
 impl Widget for SkiaWidget {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        let (rect, response) = ui.allocate_at_least(egui::Vec2::splat(300.0), egui::Sense::click());
+        ui.ctx().request_repaint();
+        let (rect, response) = ui.allocate_at_least(Vec2::splat(300.0), Sense::click());
         let size = rect.size() * ui.ctx().pixels_per_point();
         let mut surface = raster_n32_premul(ISize::new(size.x as i32, size.y as i32)).unwrap();
         let canvas = surface.canvas();
-        ui.ctx().request_repaint();
-        let si = (ui.ctx().frame_nr() as f32 / 30.0).sin();
+        canvas.clear(Color::WHITE);
 
-        let center = Point::new(size.x / 2.0, size.y / 2.0);
-        canvas.save();
-        canvas.rotate(si * 5.0, Some(center));
-
-        let mut paint = Paint::default();
-        paint.set_color(Color::WHITE);
-        let font = Font::from_typeface(default_typeface(), 30.0);
-        let text = TextBlob::from_str("Hello, Skia!", &font).unwrap();
-        canvas.draw_text_blob(
-            &text,
-            center_text((size.x / 2.0, size.y / 2.0), "Hello, Skia!", &font),
-            &paint,
-        );
-
-        let mut circle_paint = Paint::default();
-        circle_paint.set_color(Color::LIGHT_GRAY);
-        circle_paint.set_path_effect(PathEffect::dash(&[si * 5.0 + 20.0, si * 5.0 + 20.0], 1.0));
-        circle_paint.set_style(skia_safe::PaintStyle::Stroke);
-        circle_paint.set_anti_alias(true);
-        circle_paint.set_stroke_width(10.0);
-        circle_paint.set_stroke_cap(skia_safe::PaintCap::Round);
-        canvas.draw_circle(center, 100.0, &circle_paint);
+        (self.render_callback)(canvas, ui.ctx());
 
         let image = surface.image_snapshot();
 
@@ -71,7 +58,7 @@ impl Widget for SkiaWidget {
     }
 }
 
-fn center_text(center: impl Into<Point>, text: &str, font: &Font) -> Point {
+pub fn center_text(center: impl Into<Point>, text: &str, font: &Font) -> Point {
     let center = center.into();
     let (_, bounds) = font.measure_text(text, None);
     Point::new(
