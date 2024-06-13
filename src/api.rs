@@ -1,8 +1,8 @@
-use log::info;
-use quick_xml::events::attributes::Attributes;
 use std::fmt::{Debug, Display};
 use std::str::from_utf8;
 
+use log::{error, info, warn};
+use quick_xml::events::attributes::Attributes;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use reqwest::StatusCode;
@@ -41,16 +41,15 @@ impl From<reqwest::Error> for Error {
 }
 
 pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
-	println!("Getting data from the API");
+	info!("Getting data from the API");
 	let response = reqwest::get(format!("{}{}{}", API_URL, API_BOUNDING_BOX, bounds.as_string())).await?;
 
 	if !response.status().is_success() {
-		println!("Failed to get data from the API");
+		error!("Failed to get data from the API");
 		return Err(Error::ApiError(response.status(), response.text().await?));
 	}
-
-	println!("Response: {:?}", response);
-	println!("status: {:?}", response.status());
+	info!("Status: {:?}", response.status());
+	info!("Response: {:?}", response);
 
 	let xml = response.text().await?;
 
@@ -62,7 +61,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 			Ok(event) => match event {
 				Event::Start(ref e) => {
 					if !matches!(e.name().as_ref(), b"node" | b"way" | b"relation") {
-						eprintln!("Unknown element: {:?}", e);
+						warn!("Unknown element: {:?}", e);
 						continue;
 					}
 
@@ -122,7 +121,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 														.unwrap()
 											}
 											_ => {
-												eprintln!(
+												error!(
 													"Unknown attribute on relation member: {:?}=\"{:?}\"",
 													attr.key, attr.value
 												)
@@ -136,7 +135,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 									});
 								}
 								name => {
-									eprintln!("Unknown tag: {:?}", from_utf8(name).unwrap());
+									warn!("Unknown tag: {:?}", from_utf8(name).unwrap());
 								}
 							},
 							Ok(Event::End(_)) => {
@@ -153,7 +152,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 						b"way" => Element::Way { nodes },
 						b"relation" => Element::Relation { members },
 						_ => {
-							eprintln!("Unknown element type: {e:?}");
+							warn!("Unknown element type: {e:?}");
 							continue;
 						}
 					};
@@ -166,7 +165,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 				}
 				Event::Empty(ref e) => {
 					if e.name().as_ref() != b"node" {
-						eprintln!("Unknown element type: {e:?}");
+						warn!("Unknown element type: {e:?}");
 						continue;
 					}
 					let (id, lat_lon, info) = parse_attributes(e.attributes());
@@ -179,13 +178,12 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 					});
 				}
 				Event::Eof => {
-					println!("EOF");
 					break;
 				}
 				_ => {}
 			},
 			Err(e) => {
-				println!("Error: {:?}", e);
+				error!("Error: {:?}", e);
 				break;
 			}
 		}
@@ -237,7 +235,7 @@ fn parse_attributes(attributes: Attributes) -> (i64, Option<LatLon>, ElementInfo
 				info.timestamp = from_utf8(&attr.value).unwrap().parse().unwrap();
 			}
 			_ => {
-				eprintln!("Unknown attribute: {:?}", attr);
+				warn!("Unknown attribute: {:?}", attr);
 			}
 		}
 	}
@@ -257,11 +255,13 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get_data() {
+		simple_logger::init().unwrap();
 		let bounds = Bounds {
 			min: LatLon(52.17562, 11.63463),
 			max: LatLon(52.17039, 11.64465),
 		};
 		let result = get_data(bounds).await;
 		println!("Result: {:?}", result);
+		assert!(result.is_ok());
 	}
 }
