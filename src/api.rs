@@ -1,18 +1,24 @@
 use std::fmt::{Debug, Display};
 use std::str::from_utf8;
+use std::time::Instant;
 
 use log::{error, info, warn};
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::Event;
 use quick_xml::Reader;
-use reqwest::StatusCode;
+use reqwest::{Client, StatusCode};
 
 use crate::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member, Tag};
 
+#[cfg(not(debug_assertions))]
 const API_URL: &str = "https://api.openstreetmap.org";
-const API_VERSION: &str = "0.6";
+
+#[cfg(debug_assertions)]
+const API_URL: &str = "https://master.apis.dev.openstreetmap.org";
 
 const API_BOUNDING_BOX: &str = "/api/0.6/map?bbox=";
+
+const USER_AGENT: &str = "mappar/0.1-alpha";
 
 pub enum Error {
 	Reqwest(reqwest::Error),
@@ -42,16 +48,23 @@ impl From<reqwest::Error> for Error {
 
 pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 	info!("Getting data from the API");
-	let response = reqwest::get(format!("{}{}{}", API_URL, API_BOUNDING_BOX, bounds.as_string())).await?;
+	let start = Instant::now();
+	let url = format!("{}{}{}", API_URL, API_BOUNDING_BOX, bounds.as_string());
+	let client = Client::new();
+	let request = client.get(url).header("User-Agent", USER_AGENT).build()?;
+	let response = client.execute(request).await?;
 
 	if !response.status().is_success() {
 		error!("Failed to get data from the API");
 		return Err(Error::ApiError(response.status(), response.text().await?));
 	}
+
 	info!("Status: {:?}", response.status());
 	info!("Response: {:?}", response);
-
 	let xml = response.text().await?;
+
+	info!("Time taken: {:?}", start.elapsed());
+	let start = Instant::now();
 
 	let mut data = MapData::new();
 	let mut reader = Reader::from_str(&xml);
@@ -193,7 +206,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 		std::fs::write("api_data.xml", xml).expect("Error writing debug xml file");
 	}
 
-	info!("Parsed data successfully");
+	info!("Parsed data successfully. Took: {:?}", start.elapsed());
 
 	Ok(data)
 }
@@ -257,8 +270,8 @@ mod tests {
 	async fn test_get_data() {
 		simple_logger::init().unwrap();
 		let bounds = Bounds {
-			min: LatLon(52.17562, 11.63463),
-			max: LatLon(52.17039, 11.64465),
+			min: LatLon(51.82887, 12.19731),
+			max: LatLon(51.82344, 12.21268),
 		};
 		let result = get_data(bounds).await;
 		println!("Result: {:?}", result);

@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -7,6 +6,7 @@ use eframe::epaint::{ColorImage, ImageData, TextureHandle};
 use egui::ViewportCommand;
 use log::info;
 use poll_promise::Promise;
+use skia_safe::Point;
 
 use crate::api;
 use crate::map_data::{Bounds, LatLon, MapData};
@@ -20,6 +20,7 @@ pub struct MyApp {
 	map_data_promise: Option<Promise<Result<MapData, api::Error>>>,
 	render_data_promise: Promise<Vec<RenderElement>>,
 	map_data: Arc<Mutex<MapData>>,
+	camera_pos: (f32, f32),
 }
 
 impl MyApp {
@@ -35,16 +36,26 @@ impl MyApp {
 			TextureOptions::default(),
 		);
 
+		let bounds = Bounds {
+			min: LatLon(51.82887, 12.19731),
+			max: LatLon(51.82344, 12.21268),
+		};
+
+		let camera_pos = bounds.center().to_web_mercator() /*- Point::new(2000.0, 2000.0)*/;
+
+		info!("Camera: {camera_pos:?}");
+
 		MyApp {
 			label: "Hello, World!".to_owned(),
 			skia_texture: TextureHandle::new(cc.egui_ctx.tex_manager(), skia_tex),
 			value: 0.0,
 			map_data_promise: Some(Promise::spawn_async(api::get_data(Bounds {
-				min: LatLon(52.17562, 11.63463),
-				max: LatLon(52.17039, 11.64465),
+				min: LatLon(51.82887, 12.19731),
+				max: LatLon(51.82344, 12.21268),
 			}))),
 			render_data_promise: Promise::spawn_blocking(Vec::new),
 			map_data: Arc::new(Mutex::new(MapData::new())),
+			camera_pos: (camera_pos.x, camera_pos.y),
 		}
 	}
 }
@@ -89,7 +100,7 @@ impl eframe::App for MyApp {
 
 		egui::CentralPanel::default().show(ctx, |ui| {
 			// The central panel the region left after adding TopPanel's and SidePanel's
-			ui.heading("eframe template");
+			/*ui.heading("eframe template");
 
 			ui.horizontal(|ui| {
 				ui.label("Write something: ");
@@ -99,14 +110,16 @@ impl eframe::App for MyApp {
 			ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
 			if ui.button("Increment").clicked() {
 				self.value += 1.0;
-			}
+			}*/
 
 			ui.add(MapWidget::new(
 				self.skia_texture.clone(),
-				&self.render_data_promise.ready().unwrap_or(&Vec::new()),
+				self.render_data_promise.ready().unwrap_or(&Vec::new()),
+				0.3,
+				self.camera_pos,
 			));
 
-			ui.separator();
+			/*ui.separator();
 
 			ui.add(egui::github_link_file!(
 				"https://github.com/emilk/eframe_template/blob/main/",
@@ -116,7 +129,7 @@ impl eframe::App for MyApp {
 			ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
 				powered_by_egui_and_eframe(ui);
 				egui::warn_if_debug_build(ui);
-			});
+			});*/
 		});
 	}
 }

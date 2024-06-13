@@ -2,32 +2,39 @@ use std::sync::OnceLock;
 
 use egui::load::SizedTexture;
 use egui::{
-	paint_texture_at, ColorImage, Context, ImageOptions, Response, Sense, TextureHandle, TextureOptions, Ui, Vec2,
-	Widget,
+	paint_texture_at, ColorImage, Context, ImageOptions, Response, Sense, TextureHandle, TextureOptions, Ui, Widget,
 };
 use skia_safe::surfaces::raster_n32_premul;
 use skia_safe::{Canvas, Color, Font, FontMgr, FontStyle, ISize, Point, Typeface};
 
-pub struct SkiaWidget {
+use crate::render::RenderElement;
+
+pub struct SkiaWidget<'a> {
 	texture_handle: TextureHandle,
+	render_data: &'a [RenderElement],
 	render_callback: Box<SkiaCallback>,
 }
 
-pub type SkiaCallback = dyn Fn(&Canvas, &Context);
+pub type SkiaCallback = dyn Fn(&Canvas, &Context, &[RenderElement]);
 
-impl SkiaWidget {
-	pub fn new(texture_handle: TextureHandle, render_callback: Box<dyn Fn(&Canvas, &Context)>) -> Self {
+impl<'a> SkiaWidget<'a> {
+	pub fn new(
+		texture_handle: TextureHandle,
+		render_data: &'a [RenderElement],
+		render_callback: Box<SkiaCallback>,
+	) -> Self {
 		Self {
 			texture_handle,
 			render_callback,
+			render_data,
 		}
 	}
 }
 
-impl Widget for SkiaWidget {
+impl Widget for SkiaWidget<'_> {
 	fn ui(mut self, ui: &mut Ui) -> Response {
 		ui.ctx().request_repaint();
-		let (rect, response) = ui.allocate_at_least(Vec2::splat(300.0), Sense::click());
+		let (rect, response) = ui.allocate_at_least(ui.available_size(), Sense::click());
 		let scale = ui.ctx().pixels_per_point();
 		let size = rect.size() * scale;
 		let mut surface = raster_n32_premul(ISize::new(size.x as i32, size.y as i32)).unwrap();
@@ -36,7 +43,7 @@ impl Widget for SkiaWidget {
 		// canvas.scale((scale, scale));
 		canvas.clear(Color::WHITE);
 
-		(self.render_callback)(canvas, ui.ctx());
+		(self.render_callback)(canvas, ui.ctx(), self.render_data);
 
 		let image = surface.image_snapshot();
 

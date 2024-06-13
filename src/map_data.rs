@@ -4,7 +4,7 @@ use std::f64::consts::PI;
 use std::fmt::Debug;
 
 use chrono::{DateTime, Utc};
-use egui::Vec2;
+use skia_safe::Point;
 
 #[derive(Debug)]
 pub struct MapData {
@@ -76,8 +76,8 @@ const DEG_TO_RAG: f64 = 180.0 / PI;
 
 impl LatLon {
 	#[inline]
-	pub fn to_web_mercator(&self) -> Vec2 {
-		Vec2 {
+	pub fn to_web_mercator(self) -> Point {
+		Point {
 			x: (RADIUS_EARTH * self.1.to_radians()) as f32,
 			y: (f64::ln(f64::tan(PI / 4.0 + self.0.to_radians() / 2.0)) * RADIUS_EARTH) as f32,
 		}
@@ -91,6 +91,9 @@ pub struct Bounds {
 }
 
 impl Bounds {
+	pub fn center(&self) -> LatLon {
+		LatLon((self.top() + self.bottom()) / 2.0, (self.left() + self.right()) / 2.0)
+	}
 	pub fn left(&self) -> f64 {
 		f64::min(self.min.1, self.max.1)
 	}
@@ -105,6 +108,22 @@ impl Bounds {
 
 	pub fn bottom(&self) -> f64 {
 		f64::min(self.min.0, self.max.0)
+	}
+
+	pub fn top_left(&self) -> LatLon {
+		LatLon(self.top(), self.left())
+	}
+
+	pub fn top_right(&self) -> LatLon {
+		LatLon(self.top(), self.right())
+	}
+
+	pub fn bottom_left(&self) -> LatLon {
+		LatLon(self.bottom(), self.left())
+	}
+
+	pub fn bottom_right(&self) -> LatLon {
+		LatLon(self.bottom(), self.right())
 	}
 
 	pub fn as_string(&self) -> String {

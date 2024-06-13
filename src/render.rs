@@ -1,22 +1,39 @@
-use egui::Vec2;
-use skia_safe::Color;
+use skia_safe::{Color, Paint, Path, Point};
 
 use crate::map_data::{Element, MapData, MapElement};
 
 pub enum RenderElement {
-	Node(Vec2, Style),
-	Way(Vec<Vec2>, Style),
+	Node(Point, Style),
+	Way(Path, Style),
 	Collection(Vec<RenderElement>, Style),
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Style {
-	Colored { color: Color, size: f32 },
+	Colored { color: Color, size: f32, fill: bool },
 	Invisible,
+}
+
+impl Style {
+	pub fn get_paint(&self) -> Option<Paint> {
+		match self {
+			Style::Colored { color, size, fill } => {
+				let mut paint = Paint::default();
+				paint.set_color(*color);
+				paint.set_stroke_width(*size);
+				paint.set_stroke(!fill);
+				paint.set_anti_alias(true);
+				Some(paint)
+			}
+			Style::Invisible => None,
+		}
+	}
 }
 
 pub const DEFAULT_STYLE: Style = Style::Colored {
 	color: Color::BLACK,
 	size: 1.0,
+	fill: false,
 };
 
 impl RenderElement {
@@ -24,7 +41,7 @@ impl RenderElement {
 		match &element.element {
 			Element::Node { pos } => Self::Node(pos.to_web_mercator(), DEFAULT_STYLE),
 			Element::Way { nodes } => {
-				let nodes = nodes
+				let nodes: Vec<Point> = nodes
 					.iter()
 					.map(|n| {
 						map_data
@@ -33,7 +50,15 @@ impl RenderElement {
 							.to_web_mercator()
 					})
 					.collect();
-				Self::Way(nodes, DEFAULT_STYLE)
+
+				let mut path = Path::new();
+				path.move_to(nodes[0]);
+
+				for point in nodes.iter().skip(1) {
+					path.line_to(*point);
+				}
+
+				Self::Way(path, DEFAULT_STYLE)
 			}
 			Element::Relation { members } => {
 				let members = members
@@ -43,6 +68,14 @@ impl RenderElement {
 					.collect();
 				Self::Collection(members, Style::Invisible)
 			}
+		}
+	}
+
+	pub fn style(&self) -> &Style {
+		match self {
+			RenderElement::Node(_, style) => style,
+			RenderElement::Way(_, style) => style,
+			RenderElement::Collection(_, style) => style,
 		}
 	}
 }
