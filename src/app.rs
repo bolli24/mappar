@@ -62,7 +62,7 @@ impl eframe::App for MyApp {
 				self.render_data_promise = Promise::spawn_thread("render_data_calc", move || {
 					let mut render_data = Vec::new();
 					let map_data = mutex_data.lock().unwrap();
-					println!("{map_data:?}");
+					// println!("{map_data:?}");
 					for element in map_data.iter() {
 						render_data.push(RenderElement::from_map_element(element, &map_data));
 					}

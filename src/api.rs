@@ -1,3 +1,5 @@
+use log::info;
+use quick_xml::events::attributes::Attributes;
 use std::fmt::{Debug, Display};
 use std::str::from_utf8;
 
@@ -59,6 +61,11 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 		match reader.read_event() {
 			Ok(event) => match event {
 				Event::Start(ref e) => {
+					if !matches!(e.name().as_ref(), b"node" | b"way" | b"relation") {
+						eprintln!("Unknown element: {:?}", e);
+						continue;
+					}
+
 					let attributes = e.attributes();
 
 					let mut tags: Option<Vec<Tag>> = None;
@@ -128,7 +135,9 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 										role,
 									});
 								}
-								_ => {}
+								name => {
+									eprintln!("Unknown tag: {:?}", from_utf8(name).unwrap());
+								}
 							},
 							Ok(Event::End(_)) => {
 								break;
@@ -137,58 +146,14 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 						}
 					}
 
-					if !matches!(e.name().as_ref(), b"node" | b"way" | b"relation") {
-						eprintln!("Unknown element: {:?}", e);
-						continue;
-					}
-
-					let mut lat = f64::NAN;
-					let mut lon = f64::NAN;
-					let mut id = 0;
-					let mut info = ElementInfo::default();
-
-					for attr in attributes {
-						let attr = attr.unwrap();
-						match attr.key.as_ref() {
-							b"lat" => {
-								lat = from_utf8(&attr.value).unwrap().parse().unwrap();
-							}
-							b"lon" => {
-								lon = from_utf8(&attr.value).unwrap().parse().unwrap();
-							}
-							b"id" => {
-								id = from_utf8(&attr.value).unwrap().parse().unwrap();
-							}
-							b"version" => {
-								info.version = from_utf8(&attr.value).unwrap().parse().unwrap();
-							}
-							b"changeset" => {
-								info.changeset = from_utf8(&attr.value).unwrap().parse().unwrap();
-							}
-							b"uid" => {
-								info.uid = from_utf8(&attr.value).unwrap().parse().ok();
-							}
-							b"user" => {
-								info.user = Some(from_utf8(&attr.value).unwrap().to_string());
-							}
-							b"visible" => {
-								info.visible = from_utf8(&attr.value).unwrap() == "true";
-							}
-							b"timestamp" => {
-								info.timestamp = from_utf8(&attr.value).unwrap().parse().unwrap();
-							}
-							_ => {
-								eprintln!("Unknown attribute: {:?}", attr);
-							}
-						}
-					}
+					let (id, lat_lon, info) = parse_attributes(attributes);
 
 					let element = match e.name().as_ref() {
-						b"node" => Element::Node { pos: LatLon(lat, lon) },
+						b"node" => Element::Node { pos: lat_lon.unwrap() },
 						b"way" => Element::Way { nodes },
 						b"relation" => Element::Relation { members },
 						_ => {
-							eprintln!("Unknown element type: {:?}", e);
+							eprintln!("Unknown element type: {e:?}");
 							continue;
 						}
 					};
@@ -199,7 +164,20 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 						id,
 					});
 				}
+				Event::Empty(ref e) => {
+					if e.name().as_ref() != b"node" {
+						eprintln!("Unknown element type: {e:?}");
+						continue;
+					}
+					let (id, lat_lon, info) = parse_attributes(e.attributes());
 
+					data.add(MapElement {
+						info,
+						element: Element::Node { pos: lat_lon.unwrap() },
+						tags: None,
+						id,
+					});
+				}
 				Event::Eof => {
 					println!("EOF");
 					break;
@@ -213,7 +191,62 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 		}
 	}
 
+	if cfg!(debug_assertions) {
+		std::fs::write("api_data.xml", xml).expect("Error writing debug xml file");
+	}
+
+	info!("Parsed data successfully");
+
 	Ok(data)
+}
+
+fn parse_attributes(attributes: Attributes) -> (i64, Option<LatLon>, ElementInfo) {
+	let mut lat = f64::NAN;
+	let mut lon = f64::NAN;
+	let mut id = 0;
+	let mut info = ElementInfo::default();
+
+	for attr in attributes {
+		let attr = attr.unwrap();
+		match attr.key.as_ref() {
+			b"lat" => {
+				lat = from_utf8(&attr.value).unwrap().parse().unwrap();
+			}
+			b"lon" => {
+				lon = from_utf8(&attr.value).unwrap().parse().unwrap();
+			}
+			b"id" => {
+				id = from_utf8(&attr.value).unwrap().parse().unwrap();
+			}
+			b"version" => {
+				info.version = from_utf8(&attr.value).unwrap().parse().unwrap();
+			}
+			b"changeset" => {
+				info.changeset = from_utf8(&attr.value).unwrap().parse().unwrap();
+			}
+			b"uid" => {
+				info.uid = from_utf8(&attr.value).unwrap().parse().ok();
+			}
+			b"user" => {
+				info.user = Some(from_utf8(&attr.value).unwrap().to_string());
+			}
+			b"visible" => {
+				info.visible = from_utf8(&attr.value).unwrap() == "true";
+			}
+			b"timestamp" => {
+				info.timestamp = from_utf8(&attr.value).unwrap().parse().unwrap();
+			}
+			_ => {
+				eprintln!("Unknown attribute: {:?}", attr);
+			}
+		}
+	}
+	let lat_lon = if lat != f64::MAX && lon != f64::MAX {
+		Some(LatLon(lat, lon))
+	} else {
+		None
+	};
+	(id, lat_lon, info)
 }
 
 #[cfg(test)]
