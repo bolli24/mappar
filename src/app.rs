@@ -1,9 +1,11 @@
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
-use eframe::epaint::{ColorImage, ImageData, TextureHandle};
 use eframe::epaint::textures::TextureOptions;
+use eframe::epaint::{ColorImage, ImageData, TextureHandle};
 use egui::ViewportCommand;
+use log::info;
 use poll_promise::Promise;
 
 use crate::api;
@@ -60,12 +62,13 @@ impl eframe::App for MyApp {
 				*self.map_data.lock().unwrap() = new_map_data;
 				let mutex_data = self.map_data.clone();
 				self.render_data_promise = Promise::spawn_thread("render_data_calc", move || {
+					let start = Instant::now();
 					let mut render_data = Vec::new();
 					let map_data = mutex_data.lock().unwrap();
-					// println!("{map_data:?}");
 					for element in map_data.iter() {
 						render_data.push(RenderElement::from_map_element(element, &map_data));
 					}
+					info!("Calculated render data. Took: {:?} ", start.elapsed());
 
 					render_data
 				})
