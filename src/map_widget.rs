@@ -1,19 +1,26 @@
+use std::sync::Arc;
+
 use egui::{Context, TextureHandle, Widget};
 use skia_safe::{Canvas, Color, Font, Paint, PathEffect, Point, TextBlob};
 
+use crate::render::RenderElement;
 use crate::skia::{center_text, default_typeface, SkiaWidget};
 
-pub struct MapWidget {
+pub struct MapWidget<'a> {
     texture_handle: TextureHandle,
+    render_data: &'a Vec<RenderElement>,
 }
 
-impl MapWidget {
-    pub fn new(texture_handle: TextureHandle) -> Self {
-        Self { texture_handle }
+impl<'a> MapWidget<'a> {
+    pub fn new(texture_handle: TextureHandle, render_data: &'a Vec<RenderElement>) -> Self {
+        Self {
+            texture_handle,
+            render_data,
+        }
     }
 }
 
-impl Widget for MapWidget {
+impl Widget for MapWidget<'_> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         return ui.add(SkiaWidget::new(
             self.texture_handle,

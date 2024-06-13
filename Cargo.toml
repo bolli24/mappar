@@ -15,10 +15,18 @@ eframe = { version = "0.27.0", default-features = false, features = [
     "wayland",
     "persistence"
 ] }
-log = "0.4"
-serde = { version = "1", features = ["derive"] }
-simple_logger = "5.0.0"
 skia-safe = "0.75.0"
+
+log = "0.4"
+simple_logger = "5.0.0"
+serde = { version = "1", features = ["derive"] }
+
+reqwest = { version = "0.12.4" }
+tokio = { version = "1.38.0", features = ["macros", "sync", "rt-multi-thread"] }
+poll-promise = { version = "0.3.0", features = ["tokio"] }
+quick-xml = { version = "0.32.0", default-features = false }
+
+chrono = "0.4.38"
 
 [profile.release]
 opt-level = 2 # fast and small wasm

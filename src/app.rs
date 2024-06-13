@@ -1,14 +1,23 @@
-use std::sync::Arc;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
+use crate::api;
+use crate::map_data::{Bounds, LatLon, MapData};
 use eframe::epaint::textures::TextureOptions;
 use eframe::epaint::{ColorImage, ImageData, TextureHandle};
 use egui::ViewportCommand;
+use poll_promise::Promise;
+
 use crate::map_widget::MapWidget;
+use crate::render::RenderElement;
 
 pub struct MyApp {
     label: String,
     value: f32,
     skia_texture: TextureHandle,
+    map_data_promise: Option<Promise<Result<MapData, api::Error>>>,
+    render_data_promise: Promise<Vec<RenderElement>>,
+    map_data: Arc<Mutex<MapData>>,
 }
 
 impl MyApp {
@@ -29,12 +38,41 @@ impl MyApp {
             label: "Hello, World!".to_owned(),
             skia_texture: TextureHandle::new(cc.egui_ctx.tex_manager(), skia_tex),
             value: 0.0,
+            map_data_promise: Some(Promise::spawn_async(api::get_data(Bounds {
+                min: LatLon(52.17562, 11.63463),
+                max: LatLon(52.17039, 11.64465),
+            }))),
+            render_data_promise: Promise::spawn_blocking(Vec::new),
+            map_data: Arc::new(Mutex::new(MapData::new())),
         }
     }
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.map_data_promise.is_some() {
+            if let Some(Ok(_)) = self.map_data_promise.as_mut().unwrap().ready() {
+                let new_map_data = self
+                    .map_data_promise
+                    .take()
+                    .unwrap()
+                    .block_and_take()
+                    .expect("Error fetching data");
+                *self.map_data.lock().unwrap() = new_map_data;
+                let mutex_data = self.map_data.clone();
+                self.render_data_promise = Promise::spawn_thread("render_data_calc", move || {
+                    let mut render_data = Vec::new();
+                    let map_data = mutex_data.lock().unwrap();
+                    println!("{map_data:?}");
+                    for element in map_data.iter() {
+                        render_data.push(RenderElement::from_map_element(element, &map_data));
+                    }
+
+                    render_data
+                })
+            }
+        }
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
@@ -61,7 +99,10 @@ impl eframe::App for MyApp {
                 self.value += 1.0;
             }
 
-            ui.add(MapWidget::new(self.skia_texture.clone()));
+            ui.add(MapWidget::new(
+                self.skia_texture.clone(),
+                &self.render_data_promise.ready().unwrap_or(&Vec::new()),
+            ));
 
             ui.separator();
 

@@ -31,9 +31,12 @@ impl Widget for SkiaWidget {
     fn ui(mut self, ui: &mut Ui) -> Response {
         ui.ctx().request_repaint();
         let (rect, response) = ui.allocate_at_least(Vec2::splat(300.0), Sense::click());
-        let size = rect.size() * ui.ctx().pixels_per_point();
+        let scale = ui.ctx().pixels_per_point();
+        let size = rect.size() * scale;
         let mut surface = raster_n32_premul(ISize::new(size.x as i32, size.y as i32)).unwrap();
         let canvas = surface.canvas();
+        // TODO: scale canvas properly with ui
+        // canvas.scale((scale, scale));
         canvas.clear(Color::WHITE);
 
         (self.render_callback)(canvas, ui.ctx());
