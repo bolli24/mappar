@@ -83,7 +83,7 @@ impl Widget for MapWidget<'_> {
 				canvas.restore(); */
 
 				canvas.translate((size.width as f32 / 2.0, size.height as f32 / 2.0));
-				canvas.scale((self.zoom_level, self.zoom_level));
+				canvas.scale((self.zoom_level, -self.zoom_level));
 				canvas.translate((-self.camera_pos.0, -self.camera_pos.1));
 
 				for element in render_data {
