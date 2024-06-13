@@ -1,134 +1,130 @@
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-use crate::api;
-use crate::map_data::{Bounds, LatLon, MapData};
-use eframe::epaint::textures::TextureOptions;
 use eframe::epaint::{ColorImage, ImageData, TextureHandle};
+use eframe::epaint::textures::TextureOptions;
 use egui::ViewportCommand;
 use poll_promise::Promise;
 
+use crate::api;
+use crate::map_data::{Bounds, LatLon, MapData};
 use crate::map_widget::MapWidget;
 use crate::render::RenderElement;
 
 pub struct MyApp {
-    label: String,
-    value: f32,
-    skia_texture: TextureHandle,
-    map_data_promise: Option<Promise<Result<MapData, api::Error>>>,
-    render_data_promise: Promise<Vec<RenderElement>>,
-    map_data: Arc<Mutex<MapData>>,
+	label: String,
+	value: f32,
+	skia_texture: TextureHandle,
+	map_data_promise: Option<Promise<Result<MapData, api::Error>>>,
+	render_data_promise: Promise<Vec<RenderElement>>,
+	map_data: Arc<Mutex<MapData>>,
 }
 
 impl MyApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let tex_manager = cc.egui_ctx.tex_manager();
-        cc.egui_ctx
-            .send_viewport_cmd(ViewportCommand::Maximized(true));
-        let skia_tex = tex_manager.write().alloc(
-            "skia_texture".into(),
-            ImageData::Color(Arc::new(ColorImage::from_rgba_premultiplied(
-                [256, 256],
-                &vec![0; 256 * 256 * 4],
-            ))),
-            TextureOptions::default(),
-        );
+	pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+		let tex_manager = cc.egui_ctx.tex_manager();
+		cc.egui_ctx.send_viewport_cmd(ViewportCommand::Maximized(true));
+		let skia_tex = tex_manager.write().alloc(
+			"skia_texture".into(),
+			ImageData::Color(Arc::new(ColorImage::from_rgba_premultiplied(
+				[256, 256],
+				&vec![0; 256 * 256 * 4],
+			))),
+			TextureOptions::default(),
+		);
 
-        MyApp {
-            label: "Hello, World!".to_owned(),
-            skia_texture: TextureHandle::new(cc.egui_ctx.tex_manager(), skia_tex),
-            value: 0.0,
-            map_data_promise: Some(Promise::spawn_async(api::get_data(Bounds {
-                min: LatLon(52.17562, 11.63463),
-                max: LatLon(52.17039, 11.64465),
-            }))),
-            render_data_promise: Promise::spawn_blocking(Vec::new),
-            map_data: Arc::new(Mutex::new(MapData::new())),
-        }
-    }
+		MyApp {
+			label: "Hello, World!".to_owned(),
+			skia_texture: TextureHandle::new(cc.egui_ctx.tex_manager(), skia_tex),
+			value: 0.0,
+			map_data_promise: Some(Promise::spawn_async(api::get_data(Bounds {
+				min: LatLon(52.17562, 11.63463),
+				max: LatLon(52.17039, 11.64465),
+			}))),
+			render_data_promise: Promise::spawn_blocking(Vec::new),
+			map_data: Arc::new(Mutex::new(MapData::new())),
+		}
+	}
 }
 
 impl eframe::App for MyApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self.map_data_promise.is_some() {
-            if let Some(Ok(_)) = self.map_data_promise.as_mut().unwrap().ready() {
-                let new_map_data = self
-                    .map_data_promise
-                    .take()
-                    .unwrap()
-                    .block_and_take()
-                    .expect("Error fetching data");
-                *self.map_data.lock().unwrap() = new_map_data;
-                let mutex_data = self.map_data.clone();
-                self.render_data_promise = Promise::spawn_thread("render_data_calc", move || {
-                    let mut render_data = Vec::new();
-                    let map_data = mutex_data.lock().unwrap();
-                    println!("{map_data:?}");
-                    for element in map_data.iter() {
-                        render_data.push(RenderElement::from_map_element(element, &map_data));
-                    }
+	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+		if self.map_data_promise.is_some() {
+			if let Some(Ok(_)) = self.map_data_promise.as_mut().unwrap().ready() {
+				let new_map_data = self
+					.map_data_promise
+					.take()
+					.unwrap()
+					.block_and_take()
+					.expect("Error fetching data");
+				*self.map_data.lock().unwrap() = new_map_data;
+				let mutex_data = self.map_data.clone();
+				self.render_data_promise = Promise::spawn_thread("render_data_calc", move || {
+					let mut render_data = Vec::new();
+					let map_data = mutex_data.lock().unwrap();
+					println!("{map_data:?}");
+					for element in map_data.iter() {
+						render_data.push(RenderElement::from_map_element(element, &map_data));
+					}
 
-                    render_data
-                })
-            }
-        }
+					render_data
+				})
+			}
+		}
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("Quit").clicked() {
-                        ctx.send_viewport_cmd(ViewportCommand::Close);
-                    }
-                });
-                ui.add_space(16.0);
-                egui::widgets::global_dark_light_mode_buttons(ui);
-            });
-        });
+		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+			egui::menu::bar(ui, |ui| {
+				ui.menu_button("File", |ui| {
+					if ui.button("Quit").clicked() {
+						ctx.send_viewport_cmd(ViewportCommand::Close);
+					}
+				});
+				ui.add_space(16.0);
+				egui::widgets::global_dark_light_mode_buttons(ui);
+			});
+		});
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
+		egui::CentralPanel::default().show(ctx, |ui| {
+			// The central panel the region left after adding TopPanel's and SidePanel's
+			ui.heading("eframe template");
 
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
-            });
+			ui.horizontal(|ui| {
+				ui.label("Write something: ");
+				ui.text_edit_singleline(&mut self.label);
+			});
 
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                self.value += 1.0;
-            }
+			ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
+			if ui.button("Increment").clicked() {
+				self.value += 1.0;
+			}
 
-            ui.add(MapWidget::new(
-                self.skia_texture.clone(),
-                &self.render_data_promise.ready().unwrap_or(&Vec::new()),
-            ));
+			ui.add(MapWidget::new(
+				self.skia_texture.clone(),
+				&self.render_data_promise.ready().unwrap_or(&Vec::new()),
+			));
 
-            ui.separator();
+			ui.separator();
 
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/main/",
-                "Source code."
-            ));
+			ui.add(egui::github_link_file!(
+				"https://github.com/emilk/eframe_template/blob/main/",
+				"Source code."
+			));
 
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                powered_by_egui_and_eframe(ui);
-                egui::warn_if_debug_build(ui);
-            });
-        });
-    }
+			ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+				powered_by_egui_and_eframe(ui);
+				egui::warn_if_debug_build(ui);
+			});
+		});
+	}
 }
 
 fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
-        ui.label("Powered by ");
-        ui.hyperlink_to("egui", "https://github.com/emilk/egui");
-        ui.label(" and ");
-        ui.hyperlink_to(
-            "eframe",
-            "https://github.com/emilk/egui/tree/master/crates/eframe",
-        );
-        ui.label(".");
-    });
+	ui.horizontal(|ui| {
+		ui.spacing_mut().item_spacing.x = 0.0;
+		ui.label("Powered by ");
+		ui.hyperlink_to("egui", "https://github.com/emilk/egui");
+		ui.label(" and ");
+		ui.hyperlink_to("eframe", "https://github.com/emilk/egui/tree/master/crates/eframe");
+		ui.label(".");
+	});
 }
