@@ -3,24 +3,22 @@ use std::time::Instant;
 
 use eframe::epaint::textures::TextureOptions;
 use eframe::epaint::{ColorImage, ImageData, TextureHandle};
-use egui::ViewportCommand;
+use egui::{vec2, Id, Vec2, ViewportCommand};
 use log::info;
 use poll_promise::Promise;
 use skia_safe::Point;
 
 use crate::api;
 use crate::map_data::{Bounds, LatLon, MapData};
-use crate::map_widget::MapWidget;
+use crate::map_widget::{MapMemory, MapWidget};
 use crate::render::RenderElement;
 
 pub struct MyApp {
-	label: String,
-	value: f32,
 	skia_texture: TextureHandle,
 	map_data_promise: Option<Promise<Result<MapData, api::Error>>>,
 	render_data_promise: Promise<Vec<RenderElement>>,
 	map_data: Arc<Mutex<MapData>>,
-	camera_pos: (f32, f32),
+	map_widget_id: Id,
 }
 
 impl MyApp {
@@ -45,17 +43,22 @@ impl MyApp {
 
 		info!("Camera: {camera_pos:?}");
 
+		let map_widget_id = Id::new("map_widget");
+		let map_mem = MapMemory {
+			camera_pos: vec2(camera_pos.x, camera_pos.y),
+			zoom_level: 0.3,
+		};
+		map_mem.store(&cc.egui_ctx, map_widget_id);
+
 		MyApp {
-			label: "Hello, World!".to_owned(),
 			skia_texture: TextureHandle::new(cc.egui_ctx.tex_manager(), skia_tex),
-			value: 0.0,
 			map_data_promise: Some(Promise::spawn_async(api::get_data(Bounds {
 				min: LatLon(51.82887, 12.19731),
 				max: LatLon(51.82344, 12.21268),
 			}))),
 			render_data_promise: Promise::spawn_blocking(Vec::new),
 			map_data: Arc::new(Mutex::new(MapData::new())),
-			camera_pos: (camera_pos.x, camera_pos.y),
+			map_widget_id,
 		}
 	}
 }
@@ -115,8 +118,7 @@ impl eframe::App for MyApp {
 			ui.add(MapWidget::new(
 				self.skia_texture.clone(),
 				self.render_data_promise.ready().unwrap_or(&Vec::new()),
-				0.3,
-				self.camera_pos,
+				self.map_widget_id,
 			));
 
 			/*ui.separator();

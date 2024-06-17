@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use egui::load::SizedTexture;
 use egui::{
-	paint_texture_at, ColorImage, Context, ImageOptions, Response, Sense, TextureHandle, TextureOptions, Ui, Widget,
+	paint_texture_at, ColorImage, ImageOptions, Response, ScrollArea, Sense, TextureHandle, TextureOptions, Ui, Widget,
 };
 use skia_safe::surfaces::raster_n32_premul;
 use skia_safe::{Canvas, Color, Font, FontMgr, FontStyle, ISize, Point, Typeface};
@@ -13,19 +13,22 @@ pub struct SkiaWidget<'a> {
 	texture_handle: TextureHandle,
 	render_data: &'a [RenderElement],
 	render_callback: Box<SkiaCallback>,
+	sense: Sense,
 }
 
-pub type SkiaCallback = dyn Fn(&Canvas, &Context, &[RenderElement]);
+pub type SkiaCallback = dyn Fn(&Canvas, &Response, &[RenderElement]);
 
 impl<'a> SkiaWidget<'a> {
 	pub fn new(
 		texture_handle: TextureHandle,
 		render_data: &'a [RenderElement],
+		sense: Sense,
 		render_callback: Box<SkiaCallback>,
 	) -> Self {
 		Self {
 			texture_handle,
 			render_callback,
+			sense,
 			render_data,
 		}
 	}
@@ -33,32 +36,39 @@ impl<'a> SkiaWidget<'a> {
 
 impl Widget for SkiaWidget<'_> {
 	fn ui(mut self, ui: &mut Ui) -> Response {
-		ui.ctx().request_repaint();
-		let (rect, response) = ui.allocate_at_least(ui.available_size(), Sense::click());
-		let scale = ui.ctx().pixels_per_point();
-		let size = rect.size() * scale;
-		let mut surface = raster_n32_premul(ISize::new(size.x as i32, size.y as i32)).unwrap();
-		let canvas = surface.canvas();
-		// TODO: scale canvas properly with ui
-		// canvas.scale((scale, scale));
-		canvas.clear(Color::WHITE);
+		ScrollArea::vertical()
+			.show(ui, |ui| {
+				ui.ctx().request_repaint();
+				let (rect, response) = ui.allocate_at_least(ui.available_size(), self.sense);
+				let scale = ui.ctx().pixels_per_point();
+				let size = rect.size() * scale;
+				// TODO: make widget size be pixel perfect
+				let mut surface = raster_n32_premul(ISize::new(size.x as i32, size.y as i32)).unwrap();
+				let canvas = surface.canvas();
+				// TODO: scale canvas properly with ui
+				// canvas.scale((scale, scale));
+				canvas.clear(Color::WHITE);
 
-		(self.render_callback)(canvas, ui.ctx(), self.render_data);
+				(self.render_callback)(canvas, &response, self.render_data);
 
-		let image = surface.image_snapshot();
+				let image = surface.image_snapshot();
 
-		let pixels = image.peek_pixels().unwrap();
-		let color_image =
-			ColorImage::from_rgba_premultiplied([image.width() as _, image.height() as _], pixels.bytes().unwrap());
+				let pixels = image.peek_pixels().unwrap();
+				let color_image = ColorImage::from_rgba_premultiplied(
+					[image.width() as _, image.height() as _],
+					pixels.bytes().unwrap(),
+				);
 
-		self.texture_handle.set(color_image, TextureOptions::default());
-		paint_texture_at(
-			ui.painter(),
-			rect,
-			&ImageOptions::default(),
-			&SizedTexture::from_handle(&self.texture_handle),
-		);
-		response
+				self.texture_handle.set(color_image, TextureOptions::default());
+				paint_texture_at(
+					ui.painter(),
+					rect,
+					&ImageOptions::default(),
+					&SizedTexture::from_handle(&self.texture_handle),
+				);
+				response
+			})
+			.inner
 	}
 }
 

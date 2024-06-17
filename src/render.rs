@@ -30,16 +30,22 @@ impl Style {
 	}
 }
 
-pub const DEFAULT_STYLE: Style = Style::Colored {
+pub const DEFAULT_WAY_STYLE: Style = Style::Colored {
 	color: Color::BLACK,
 	size: 1.0,
 	fill: false,
 };
 
+pub const DEFAULT_NODE_STYLE: Style = Style::Colored {
+	color: Color::BLACK,
+	size: 5.0,
+	fill: true,
+};
+
 impl RenderElement {
 	pub fn from_map_element(element: &MapElement, map_data: &MapData) -> Self {
 		match &element.element {
-			Element::Node { pos } => Self::Node(pos.to_web_mercator(), DEFAULT_STYLE),
+			Element::Node { pos } => Self::Node(pos.to_web_mercator(), DEFAULT_NODE_STYLE),
 			Element::Way { nodes } => {
 				let nodes: Vec<Point> = nodes
 					.iter()
@@ -58,7 +64,7 @@ impl RenderElement {
 					path.line_to(*point);
 				}
 
-				Self::Way(path, DEFAULT_STYLE)
+				Self::Way(path, DEFAULT_WAY_STYLE)
 			}
 			Element::Relation { members } => {
 				let members = members
