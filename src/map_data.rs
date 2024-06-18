@@ -72,7 +72,7 @@ impl Default for ElementInfo {
 pub struct LatLon(pub f64, pub f64);
 
 pub const RADIUS_EARTH: f64 = 6_378_137.0;
-const DEG_TO_RAG: f64 = 180.0 / PI;
+pub const CIRCUMFERENCE_EARTH: f64 = 2.0 * PI * RADIUS_EARTH;
 
 impl LatLon {
 	#[inline]

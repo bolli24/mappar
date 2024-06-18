@@ -16,12 +16,12 @@ pub enum Style {
 }
 
 impl Style {
-	pub fn get_paint(&self, zoom_level: f32) -> Option<Paint> {
+	pub fn get_paint(&self, scale: f32) -> Option<Paint> {
 		match self {
 			Style::Colored { color, size, fill } => {
 				let mut paint = Paint::default();
 				paint.set_color(*color);
-				paint.set_stroke_width(*size / zoom_level.sqrt());
+				paint.set_stroke_width(*size / scale.sqrt());
 				paint.set_stroke(!fill);
 				paint.set_anti_alias(true);
 				Some(paint)

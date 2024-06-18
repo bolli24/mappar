@@ -47,7 +47,7 @@ impl MyApp {
 		let map_widget_id = Id::new("map_widget");
 		let map_mem = MapMemory {
 			camera_pos: dvec2(camera_pos.x, camera_pos.y),
-			zoom_level: 0.3,
+			zoom_level: 15.0,
 		};
 		map_mem.store(&cc.egui_ctx, map_widget_id);
 

@@ -4,10 +4,11 @@ use serde::{Deserialize, Serialize};
 use skia_safe::{Canvas, Path, Point};
 use skia_safe::path::FillType;
 
+use crate::map_data::{CIRCUMFERENCE_EARTH, LatLon};
 use crate::render::RenderElement;
 use crate::skia::SkiaWidget;
 
-const ZOOM_SPEED: f32 = 3.0;
+const ZOOM_SPEED: f32 = 5.0;
 
 pub struct MapWidget<'a> {
 	texture_handle: TextureHandle,
@@ -43,6 +44,10 @@ impl<'a> MapWidget<'a> {
 			}
 		}
 	}
+
+	pub fn scale(zoom_level: f32, lat: f64) -> f32 {
+		(CIRCUMFERENCE_EARTH * f64::cos(lat.to_radians())) as f32 / f32::exp2(zoom_level + 7.0)
+	}
 }
 
 pub fn dvec2_to_point(v: DVec2) -> Point {
@@ -58,6 +63,14 @@ impl Widget for MapWidget<'_> {
 			Box::new(move |canvas, response, render_data| {
 				let size = canvas.image_info().dimensions();
 				let mut mem = MapMemory::load_or_new(&response.ctx, self.id);
+				let camera_lat_lon = LatLon::from_web_mercator(mem.camera_pos);
+
+				let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y;
+				if zoom != 0.0 {
+					mem.zoom_level += zoom / 1000.0 * ZOOM_SPEED;
+				}
+
+				let scale = 1.0 / Self::scale(mem.zoom_level, camera_lat_lon.1);
 
 				if response.dragged_by(PointerButton::Middle)
 					|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
@@ -65,20 +78,15 @@ impl Widget for MapWidget<'_> {
 				{
 					let delta = response.drag_delta() * 1.5;
 					let delta = dvec2(-delta.x as f64, delta.y as f64);
-					mem.camera_pos += (response.ctx.zoom_factor() / mem.zoom_level) as f64 * delta;
-				};
-
-				let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y;
-				if zoom != 0.0 {
-					mem.zoom_level *= 1.0 + zoom / 1000.0 * ZOOM_SPEED;
+					mem.camera_pos += (response.ctx.zoom_factor() / scale) as f64 * delta;
 				}
 
 				canvas.translate((size.width as f32 / 2.0, size.height as f32 / 2.0));
-				canvas.scale((mem.zoom_level, -mem.zoom_level));
+				canvas.scale((scale, -scale));
 				// canvas.translate((-mem.camera_pos.x as f32, -mem.camera_pos.y as f32));
 
 				for element in render_data {
-					Self::draw_element(canvas, element, mem.camera_pos, mem.zoom_level);
+					Self::draw_element(canvas, element, mem.camera_pos, scale);
 				}
 				mem.store(&response.ctx, self.id);
 			}),
