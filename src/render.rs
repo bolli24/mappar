@@ -1,10 +1,11 @@
-use skia_safe::{Color, Paint, Path, Point};
+use glam::DVec2;
+use skia_safe::{Color, Paint};
 
 use crate::map_data::{Element, MapData, MapElement};
 
 pub enum RenderElement {
-	Node(Point, Style),
-	Way(Path, Style),
+	Node(DVec2, Style),
+	Way(Vec<DVec2>, Style),
 	Collection(Vec<RenderElement>, Style),
 }
 
@@ -15,12 +16,12 @@ pub enum Style {
 }
 
 impl Style {
-	pub fn get_paint(&self) -> Option<Paint> {
+	pub fn get_paint(&self, zoom_level: f32) -> Option<Paint> {
 		match self {
 			Style::Colored { color, size, fill } => {
 				let mut paint = Paint::default();
 				paint.set_color(*color);
-				paint.set_stroke_width(*size);
+				paint.set_stroke_width(*size / zoom_level.sqrt());
 				paint.set_stroke(!fill);
 				paint.set_anti_alias(true);
 				Some(paint)
@@ -47,7 +48,7 @@ impl RenderElement {
 		match &element.element {
 			Element::Node { pos } => Self::Node(pos.to_web_mercator(), DEFAULT_NODE_STYLE),
 			Element::Way { nodes } => {
-				let nodes: Vec<Point> = nodes
+				let nodes: Vec<DVec2> = nodes
 					.iter()
 					.map(|n| {
 						map_data
@@ -57,14 +58,7 @@ impl RenderElement {
 					})
 					.collect();
 
-				let mut path = Path::new();
-				path.move_to(nodes[0]);
-
-				for point in nodes.iter().skip(1) {
-					path.line_to(*point);
-				}
-
-				Self::Way(path, DEFAULT_WAY_STYLE)
+				Self::Way(nodes, DEFAULT_WAY_STYLE)
 			}
 			Element::Relation { members } => {
 				let members = members

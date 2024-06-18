@@ -1,7 +1,8 @@
-use eframe::emath::Vec2;
-use egui::{vec2, Context, Id, PointerButton, Sense, TextureHandle, Widget};
+use egui::{Context, Id, Modifiers, PointerButton, Sense, TextureHandle, Widget};
+use glam::{dvec2, DVec2};
 use serde::{Deserialize, Serialize};
-use skia_safe::Canvas;
+use skia_safe::{Canvas, Path, Point};
+use skia_safe::path::FillType;
 
 use crate::render::RenderElement;
 use crate::skia::SkiaWidget;
@@ -23,22 +24,29 @@ impl<'a> MapWidget<'a> {
 		}
 	}
 	#[inline]
-	fn draw_element(canvas: &Canvas, element: &RenderElement) {
-		let Some(paint) = element.style().get_paint() else {
+	fn draw_element(canvas: &Canvas, element: &RenderElement, camera_pos: DVec2, zoom_level: f32) {
+		let Some(paint) = element.style().get_paint(zoom_level) else {
 			return;
 		};
 		match element {
 			RenderElement::Node(pos, _) => {
-				canvas.draw_point(*pos, &paint);
+				canvas.draw_point(dvec2_to_point(*pos - camera_pos), &paint);
 			}
-			RenderElement::Way(path, _) => {
-				canvas.draw_path(path, &paint);
+			RenderElement::Way(nodes, _) => {
+				let nodes: Vec<Point> = nodes.iter().map(|p| dvec2_to_point(*p - camera_pos)).collect();
+				let closed = nodes.first() == nodes.last();
+				let path = Path::polygon(&nodes, closed, FillType::Winding, true);
+				canvas.draw_path(&path, &paint);
 			}
 			RenderElement::Collection(_, _) => {
 				todo!()
 			}
 		}
 	}
+}
+
+pub fn dvec2_to_point(v: DVec2) -> Point {
+	Point::new(v.x as f32, v.y as f32)
 }
 
 impl Widget for MapWidget<'_> {
@@ -51,11 +59,14 @@ impl Widget for MapWidget<'_> {
 				let size = canvas.image_info().dimensions();
 				let mut mem = MapMemory::load_or_new(&response.ctx, self.id);
 
-				if response.dragged_by(PointerButton::Middle) {
-					let delta = response.drag_delta();
-					let delta = vec2(-delta.x, delta.y);
-					mem.camera_pos += response.ctx.zoom_factor() / mem.zoom_level * delta;
-				}
+				if response.dragged_by(PointerButton::Middle)
+					|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
+						&& response.dragged_by(PointerButton::Primary))
+				{
+					let delta = response.drag_delta() * 1.5;
+					let delta = dvec2(-delta.x as f64, delta.y as f64);
+					mem.camera_pos += (response.ctx.zoom_factor() / mem.zoom_level) as f64 * delta;
+				};
 
 				let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y;
 				if zoom != 0.0 {
@@ -64,10 +75,10 @@ impl Widget for MapWidget<'_> {
 
 				canvas.translate((size.width as f32 / 2.0, size.height as f32 / 2.0));
 				canvas.scale((mem.zoom_level, -mem.zoom_level));
-				canvas.translate((-mem.camera_pos.x, -mem.camera_pos.y));
+				// canvas.translate((-mem.camera_pos.x as f32, -mem.camera_pos.y as f32));
 
 				for element in render_data {
-					Self::draw_element(canvas, element);
+					Self::draw_element(canvas, element, mem.camera_pos, mem.zoom_level);
 				}
 				mem.store(&response.ctx, self.id);
 			}),
@@ -78,14 +89,14 @@ impl Widget for MapWidget<'_> {
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub struct MapMemory {
 	pub zoom_level: f32,
-	pub camera_pos: Vec2,
+	pub camera_pos: DVec2,
 }
 
 impl MapMemory {
 	pub fn new() -> Self {
 		Self {
 			zoom_level: 1.0,
-			camera_pos: vec2(0.0, 0.0),
+			camera_pos: dvec2(0.0, 0.0),
 		}
 	}
 

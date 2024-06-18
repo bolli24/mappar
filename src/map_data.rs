@@ -4,7 +4,7 @@ use std::f64::consts::PI;
 use std::fmt::Debug;
 
 use chrono::{DateTime, Utc};
-use skia_safe::Point;
+use glam::DVec2;
 
 #[derive(Debug)]
 pub struct MapData {
@@ -76,11 +76,18 @@ const DEG_TO_RAG: f64 = 180.0 / PI;
 
 impl LatLon {
 	#[inline]
-	pub fn to_web_mercator(self) -> Point {
-		Point {
-			x: (RADIUS_EARTH * self.1.to_radians()) as f32,
-			y: (f64::ln(f64::tan(PI / 4.0 + self.0.to_radians() / 2.0)) * RADIUS_EARTH) as f32,
+	pub fn to_web_mercator(self) -> DVec2 {
+		DVec2 {
+			x: RADIUS_EARTH * self.1.to_radians(),
+			y: f64::ln(f64::tan(PI / 4.0 + self.0.to_radians() / 2.0)) * RADIUS_EARTH,
 		}
+	}
+
+	pub fn from_web_mercator(pos: DVec2) -> Self {
+		LatLon(
+			(pos.x / RADIUS_EARTH).to_degrees(),
+			(2.0 * f64::atan(f64::exp(pos.y / RADIUS_EARTH)) - PI / 2.0).to_degrees(),
+		)
 	}
 }
 

@@ -1,9 +1,10 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use eframe::epaint::textures::TextureOptions;
 use eframe::epaint::{ColorImage, ImageData, TextureHandle};
-use egui::{vec2, Id, Vec2, ViewportCommand};
+use eframe::epaint::textures::TextureOptions;
+use egui::{Id, vec2, Vec2, ViewportCommand};
+use glam::dvec2;
 use log::info;
 use poll_promise::Promise;
 use skia_safe::Point;
@@ -45,7 +46,7 @@ impl MyApp {
 
 		let map_widget_id = Id::new("map_widget");
 		let map_mem = MapMemory {
-			camera_pos: vec2(camera_pos.x, camera_pos.y),
+			camera_pos: dvec2(camera_pos.x, camera_pos.y),
 			zoom_level: 0.3,
 		};
 		map_mem.store(&cc.egui_ctx, map_widget_id);

@@ -16,6 +16,7 @@ eframe = { version = "0.27.0", default-features = false, features = [
     "persistence"
 ] }
 skia-safe = "0.75.0"
+glam = { version = "0.28.0", features = ["serde"] }
 
 log = "0.4"
 simple_logger = "5.0.0"
