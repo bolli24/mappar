@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use log::{error, info, warn};
 use quick_xml::events::attributes::Attributes;
-use quick_xml::events::Event;
+use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 use reqwest::{Client, StatusCode};
 
@@ -28,8 +28,8 @@ pub enum Error {
 impl Display for Error {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Error::Reqwest(error) => write!(f, "Reqwest error: {}", error),
-			Error::ApiError(status, body) => write!(f, "API error: {} - {}", status, body),
+			Self::Reqwest(error) => write!(f, "Reqwest error: {error}"),
+			Self::ApiError(status, body) => write!(f, "API error: {status} - {body}"),
 		}
 	}
 }
@@ -42,7 +42,7 @@ impl Debug for Error {
 
 impl From<reqwest::Error> for Error {
 	fn from(error: reqwest::Error) -> Self {
-		Error::Reqwest(error)
+		Self::Reqwest(error)
 	}
 }
 
@@ -66,8 +66,20 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 	info!("Time taken: {:?}", start.elapsed());
 	let start = Instant::now();
 
+	let data = parse_osm_xml(&xml);
+
+	if cfg!(debug_assertions) {
+		std::fs::write("api_data.xml", xml).expect("Error writing debug xml file");
+	}
+
+	info!("Parsed data successfully. Took: {:?}", start.elapsed());
+
+	Ok(data)
+}
+
+fn parse_osm_xml(xml: &str) -> MapData {
 	let mut data = MapData::new();
-	let mut reader = Reader::from_str(&xml);
+	let mut reader = Reader::from_str(xml);
 
 	loop {
 		match reader.read_event() {
@@ -77,7 +89,6 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 						warn!("Unknown element: {:?}", e);
 						continue;
 					}
-
 					let attributes = e.attributes();
 
 					let mut tags: Option<Vec<Tag>> = None;
@@ -87,27 +98,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 						match reader.read_event() {
 							Ok(Event::Empty(ref e)) => match e.name().as_ref() {
 								b"tag" => {
-									let mut key = String::new();
-									let mut value = String::new();
-
-									for a in e.attributes() {
-										let a = a.unwrap();
-										match a.key.as_ref() {
-											b"k" => {
-												key = from_utf8(&a.value).unwrap().to_string();
-											}
-											b"v" => {
-												value = from_utf8(&a.value).unwrap().to_string();
-											}
-											_ => {}
-										}
-									}
-									if !key.is_empty() && !value.is_empty() {
-										tags.get_or_insert(Vec::new()).push(Tag {
-											key: key.to_string(),
-											value: value.to_string(),
-										});
-									}
+									parse_tag(&mut tags, e);
 								}
 								b"nd" => {
 									let node_ref = e.attributes().next().unwrap().unwrap();
@@ -116,31 +107,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 									}
 								}
 								b"member" => {
-									let mut ref_id: i64 = -1;
-									let mut role = "".to_string();
-									let mut member_type = ElementType::Node;
-									for attr in e.attributes() {
-										let attr = attr.unwrap();
-										match attr.key.as_ref() {
-											b"ref" => {
-												ref_id = from_utf8(attr.value.as_ref()).unwrap().parse().unwrap();
-											}
-											b"role" => {
-												role = from_utf8(attr.value.as_ref()).unwrap().to_string();
-											}
-											b"type" => {
-												member_type =
-													ElementType::from_str(from_utf8(attr.value.as_ref()).unwrap())
-														.unwrap()
-											}
-											_ => {
-												error!(
-													"Unknown attribute on relation member: {:?}=\"{:?}\"",
-													attr.key, attr.value
-												)
-											}
-										}
-									}
+									let (ref_id, role, member_type) = parse_member(e);
 									members.push(Member {
 										ref_id,
 										member_type,
@@ -170,10 +137,10 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 						}
 					};
 					data.add(MapElement {
+						id,
 						info,
 						element,
 						tags,
-						id,
 					});
 				}
 				Event::Empty(ref e) => {
@@ -201,14 +168,53 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 			}
 		}
 	}
+	data
+}
 
-	if cfg!(debug_assertions) {
-		std::fs::write("api_data.xml", xml).expect("Error writing debug xml file");
+fn parse_member(e: &BytesStart) -> (i64, String, ElementType) {
+	let mut ref_id: i64 = -1;
+	let mut role = String::new();
+	let mut member_type = ElementType::Node;
+	for attr in e.attributes() {
+		let attr = attr.unwrap();
+		match attr.key.as_ref() {
+			b"ref" => {
+				ref_id = from_utf8(attr.value.as_ref()).unwrap().parse().unwrap();
+			}
+			b"role" => {
+				role = from_utf8(attr.value.as_ref()).unwrap().to_string();
+			}
+			b"type" => member_type = ElementType::from_str(from_utf8(attr.value.as_ref()).unwrap()).unwrap(),
+			_ => {
+				error!(
+					"Unknown attribute on relation member: {:?}=\"{:?}\"",
+					attr.key, attr.value
+				);
+			}
+		}
 	}
+	(ref_id, role, member_type)
+}
 
-	info!("Parsed data successfully. Took: {:?}", start.elapsed());
+fn parse_tag(tags: &mut Option<Vec<Tag>>, e: &BytesStart) {
+	let mut key = String::new();
+	let mut value = String::new();
 
-	Ok(data)
+	for a in e.attributes() {
+		let a = a.unwrap();
+		match a.key.as_ref() {
+			b"k" => {
+				key = from_utf8(&a.value).unwrap().to_string();
+			}
+			b"v" => {
+				value = from_utf8(&a.value).unwrap().to_string();
+			}
+			_ => {}
+		}
+	}
+	if !key.is_empty() && !value.is_empty() {
+		tags.get_or_insert(Vec::new()).push(Tag { key, value });
+	}
 }
 
 fn parse_attributes(attributes: Attributes) -> (i64, Option<LatLon>, ElementInfo) {
@@ -274,7 +280,7 @@ mod tests {
 			max: LatLon(51.82344, 12.21268),
 		};
 		let result = get_data(bounds).await;
-		println!("Result: {:?}", result);
+		println!("Result: {result:?}");
 		assert!(result.is_ok());
 	}
 }

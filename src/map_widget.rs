@@ -76,7 +76,7 @@ impl Widget for MapWidget<'_> {
 				let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y;
 				if zoom != 0.0 {
 					mem.zoom_level += zoom / 1000.0 * ZOOM_SPEED;
-					mem.zoom_level = mem.zoom_level.clamp(1.0, 25.0)
+					mem.zoom_level = mem.zoom_level.clamp(1.0, 25.0);
 				}
 
 				let scale = 1.0 / Self::scale(mem.zoom_level, camera_lat_lon.1);
@@ -86,7 +86,7 @@ impl Widget for MapWidget<'_> {
 						&& response.dragged_by(PointerButton::Primary))
 				{
 					let delta = response.drag_motion() / scale;
-					let delta = dvec2(-delta.x as f64, delta.y as f64);
+					let delta = dvec2(f64::from(-delta.x), f64::from(delta.y));
 					mem.camera_pos += delta;
 				}
 
@@ -110,7 +110,7 @@ pub struct MapMemory {
 }
 
 impl MapMemory {
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self {
 			zoom_level: 1.0,
 			camera_pos: dvec2(0.0, 0.0),

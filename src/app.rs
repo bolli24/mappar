@@ -1,13 +1,11 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use eframe::epaint::{ColorImage, ImageData, TextureHandle};
 use eframe::epaint::textures::TextureOptions;
-use egui::{Id, vec2, Vec2, ViewportCommand};
-use glam::dvec2;
+use eframe::epaint::{ColorImage, ImageData, TextureHandle};
+use egui::{Id, ViewportCommand};
 use log::info;
 use poll_promise::Promise;
-use skia_safe::Point;
 
 use crate::api;
 use crate::imagery::esri_imagery;
@@ -49,7 +47,7 @@ impl MyApp {
 
 		let map_widget_id = Id::new("map_widget");
 		let map_mem = MapMemory {
-			camera_pos: dvec2(camera_pos.x, camera_pos.y),
+			camera_pos: glam::dvec2(camera_pos.x, camera_pos.y),
 			zoom_level: 15.0,
 		};
 		map_mem.store(&cc.egui_ctx, map_widget_id);
@@ -84,13 +82,14 @@ impl eframe::App for MyApp {
 					let start = Instant::now();
 					let mut render_data = Vec::new();
 					let map_data = mutex_data.lock().unwrap();
-					for element in map_data.iter() {
+					let iter = map_data.iter();
+					for element in iter {
 						render_data.push(RenderElement::from_map_element(element, &map_data));
 					}
 					info!("Calculated render data. Took: {:?} ", start.elapsed());
 
 					render_data
-				})
+				});
 			}
 		}
 

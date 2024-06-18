@@ -1,11 +1,11 @@
 use std::sync::OnceLock;
 
-use egui::{
-	ColorImage, ImageOptions, paint_texture_at, Response, ScrollArea, Sense, TextureHandle, TextureOptions, Ui, Widget,
-};
 use egui::load::SizedTexture;
-use skia_safe::{Canvas, Color, Font, FontMgr, FontStyle, ISize, Point, Typeface};
+use egui::{
+	paint_texture_at, ColorImage, ImageOptions, Response, ScrollArea, Sense, TextureHandle, TextureOptions, Ui, Widget,
+};
 use skia_safe::surfaces::raster_n32_premul;
+use skia_safe::{Canvas, Color, Font, FontMgr, FontStyle, ISize, Point, Typeface};
 
 pub struct SkiaWidget<T> {
 	texture_handle: TextureHandle,
@@ -25,9 +25,9 @@ impl<T> SkiaWidget<T> {
 	) -> Self {
 		Self {
 			texture_handle,
+			render_data,
 			render_callback,
 			sense,
-			render_data,
 		}
 	}
 }

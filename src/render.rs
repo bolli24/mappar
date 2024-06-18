@@ -18,7 +18,7 @@ pub enum Style {
 impl Style {
 	pub fn get_paint(&self, scale: f32) -> Option<Paint> {
 		match self {
-			Style::Colored { color, size, fill } => {
+			Self::Colored { color, size, fill } => {
 				let mut paint = Paint::default();
 				paint.set_color(*color);
 				let size = f32::max(size / scale.sqrt(), size / scale);
@@ -27,7 +27,7 @@ impl Style {
 				paint.set_anti_alias(true);
 				Some(paint)
 			}
-			Style::Invisible => None,
+			Self::Invisible => None,
 		}
 	}
 }
@@ -72,11 +72,9 @@ impl RenderElement {
 		}
 	}
 
-	pub fn style(&self) -> &Style {
+	pub const fn style(&self) -> &Style {
 		match self {
-			RenderElement::Node(_, style) => style,
-			RenderElement::Way(_, style) => style,
-			RenderElement::Collection(_, style) => style,
+			Self::Way(_, style) | Self::Collection(_, style) | Self::Node(_, style) => style,
 		}
 	}
 }
