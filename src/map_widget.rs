@@ -3,11 +3,11 @@ use std::sync::{Arc, Mutex};
 use egui::{Context, Id, Modifiers, PointerButton, Sense, TextureHandle, Widget};
 use glam::{dvec2, DVec2};
 use serde::{Deserialize, Serialize};
-use skia_safe::{Canvas, Path, Point};
 use skia_safe::path::FillType;
+use skia_safe::{Canvas, Path, Point};
 
 use crate::imagery_fetcher::ImageryFetcher;
-use crate::map_data::{CIRCUMFERENCE_EARTH, LatLon};
+use crate::map_data::{LatLon, CIRCUMFERENCE_EARTH};
 use crate::render::RenderElement;
 use crate::skia::SkiaWidget;
 
@@ -76,6 +76,7 @@ impl Widget for MapWidget<'_> {
 				let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y;
 				if zoom != 0.0 {
 					mem.zoom_level += zoom / 1000.0 * ZOOM_SPEED;
+					mem.zoom_level = mem.zoom_level.clamp(1.0, 25.0)
 				}
 
 				let scale = 1.0 / Self::scale(mem.zoom_level, camera_lat_lon.1);
@@ -84,9 +85,9 @@ impl Widget for MapWidget<'_> {
 					|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
 						&& response.dragged_by(PointerButton::Primary))
 				{
-					let delta = response.drag_delta() * 1.5;
+					let delta = response.drag_motion() / scale;
 					let delta = dvec2(-delta.x as f64, delta.y as f64);
-					mem.camera_pos += (response.ctx.zoom_factor() / scale) as f64 * delta;
+					mem.camera_pos += delta;
 				}
 
 				canvas.translate((size.width as f32 / 2.0, size.height as f32 / 2.0));

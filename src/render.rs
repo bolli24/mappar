@@ -21,7 +21,8 @@ impl Style {
 			Style::Colored { color, size, fill } => {
 				let mut paint = Paint::default();
 				paint.set_color(*color);
-				paint.set_stroke_width(*size / scale.sqrt());
+				let size = f32::max(size / scale.sqrt(), size / scale);
+				paint.set_stroke_width(size);
 				paint.set_stroke(!fill);
 				paint.set_anti_alias(true);
 				Some(paint)
