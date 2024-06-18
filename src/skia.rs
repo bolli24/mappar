@@ -1,29 +1,27 @@
 use std::sync::OnceLock;
 
-use egui::load::SizedTexture;
 use egui::{
-	paint_texture_at, ColorImage, ImageOptions, Response, ScrollArea, Sense, TextureHandle, TextureOptions, Ui, Widget,
+	ColorImage, ImageOptions, paint_texture_at, Response, ScrollArea, Sense, TextureHandle, TextureOptions, Ui, Widget,
 };
-use skia_safe::surfaces::raster_n32_premul;
+use egui::load::SizedTexture;
 use skia_safe::{Canvas, Color, Font, FontMgr, FontStyle, ISize, Point, Typeface};
+use skia_safe::surfaces::raster_n32_premul;
 
-use crate::render::RenderElement;
-
-pub struct SkiaWidget<'a> {
+pub struct SkiaWidget<T> {
 	texture_handle: TextureHandle,
-	render_data: &'a [RenderElement],
-	render_callback: Box<SkiaCallback>,
+	render_data: T,
+	render_callback: Box<SkiaCallback<T>>,
 	sense: Sense,
 }
 
-pub type SkiaCallback = dyn Fn(&Canvas, &Response, &[RenderElement]);
+pub type SkiaCallback<T> = dyn Fn(&Canvas, &Response, &T);
 
-impl<'a> SkiaWidget<'a> {
+impl<T> SkiaWidget<T> {
 	pub fn new(
 		texture_handle: TextureHandle,
-		render_data: &'a [RenderElement],
+		render_data: T,
 		sense: Sense,
-		render_callback: Box<SkiaCallback>,
+		render_callback: Box<SkiaCallback<T>>,
 	) -> Self {
 		Self {
 			texture_handle,
@@ -34,7 +32,7 @@ impl<'a> SkiaWidget<'a> {
 	}
 }
 
-impl Widget for SkiaWidget<'_> {
+impl<T> Widget for SkiaWidget<T> {
 	fn ui(mut self, ui: &mut Ui) -> Response {
 		ScrollArea::vertical()
 			.show(ui, |ui| {
@@ -49,7 +47,7 @@ impl Widget for SkiaWidget<'_> {
 				// canvas.scale((scale, scale));
 				canvas.clear(Color::WHITE);
 
-				(self.render_callback)(canvas, &response, self.render_data);
+				(self.render_callback)(canvas, &response, &self.render_data);
 
 				let image = surface.image_snapshot();
 

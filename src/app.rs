@@ -10,8 +10,10 @@ use poll_promise::Promise;
 use skia_safe::Point;
 
 use crate::api;
+use crate::imagery::esri_imagery;
+use crate::imagery_fetcher::ImageryFetcher;
 use crate::map_data::{Bounds, LatLon, MapData};
-use crate::map_widget::{MapMemory, MapWidget};
+use crate::map_widget::{MapMemory, MapRenderData, MapWidget};
 use crate::render::RenderElement;
 
 pub struct MyApp {
@@ -20,6 +22,7 @@ pub struct MyApp {
 	render_data_promise: Promise<Vec<RenderElement>>,
 	map_data: Arc<Mutex<MapData>>,
 	map_widget_id: Id,
+	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 }
 
 impl MyApp {
@@ -58,6 +61,7 @@ impl MyApp {
 				max: LatLon(51.82344, 12.21268),
 			}))),
 			render_data_promise: Promise::spawn_blocking(Vec::new),
+			imagery_fetcher: Arc::new(Mutex::new(ImageryFetcher::new(esri_imagery()))),
 			map_data: Arc::new(Mutex::new(MapData::new())),
 			map_widget_id,
 		}
@@ -118,7 +122,10 @@ impl eframe::App for MyApp {
 
 			ui.add(MapWidget::new(
 				self.skia_texture.clone(),
-				self.render_data_promise.ready().unwrap_or(&Vec::new()),
+				MapRenderData {
+					elements: self.render_data_promise.ready().unwrap_or(&Vec::new()),
+					imagery_fetcher: self.imagery_fetcher.clone(),
+				},
 				self.map_widget_id,
 			));
 

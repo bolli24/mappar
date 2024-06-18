@@ -1,9 +1,12 @@
+use std::sync::{Arc, Mutex};
+
 use egui::{Context, Id, Modifiers, PointerButton, Sense, TextureHandle, Widget};
 use glam::{dvec2, DVec2};
 use serde::{Deserialize, Serialize};
 use skia_safe::{Canvas, Path, Point};
 use skia_safe::path::FillType;
 
+use crate::imagery_fetcher::ImageryFetcher;
 use crate::map_data::{CIRCUMFERENCE_EARTH, LatLon};
 use crate::render::RenderElement;
 use crate::skia::SkiaWidget;
@@ -12,12 +15,17 @@ const ZOOM_SPEED: f32 = 5.0;
 
 pub struct MapWidget<'a> {
 	texture_handle: TextureHandle,
-	render_data: &'a [RenderElement],
+	render_data: MapRenderData<'a>,
 	id: Id,
 }
 
+pub struct MapRenderData<'a> {
+	pub elements: &'a [RenderElement],
+	pub imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
+}
+
 impl<'a> MapWidget<'a> {
-	pub fn new(texture_handle: TextureHandle, render_data: &'a [RenderElement], id: Id) -> Self {
+	pub fn new(texture_handle: TextureHandle, render_data: MapRenderData<'a>, id: Id) -> Self {
 		Self {
 			texture_handle,
 			render_data,
@@ -85,7 +93,7 @@ impl Widget for MapWidget<'_> {
 				canvas.scale((scale, -scale));
 				// canvas.translate((-mem.camera_pos.x as f32, -mem.camera_pos.y as f32));
 
-				for element in render_data {
+				for element in render_data.elements {
 					Self::draw_element(canvas, element, mem.camera_pos, scale);
 				}
 				mem.store(&response.ctx, self.id);
