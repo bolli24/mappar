@@ -3,8 +3,8 @@ use std::str::from_utf8;
 use std::time::Instant;
 
 use log::{error, info, warn};
-use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesStart, Event};
+use quick_xml::events::attributes::Attributes;
 use quick_xml::Reader;
 use reqwest::{Client, StatusCode};
 
@@ -274,7 +274,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get_data() {
-		simple_logger::init().unwrap();
+		crate::init_test_logger();
+
 		let bounds = Bounds {
 			min: LatLon(51.82887, 12.19731),
 			max: LatLon(51.82344, 12.21268),
