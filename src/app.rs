@@ -29,7 +29,7 @@ impl MyApp {
 		cc.egui_ctx.send_viewport_cmd(ViewportCommand::Maximized(true));
 		let skia_tex = tex_manager.write().alloc(
 			"skia_texture".into(),
-			ImageData::Color(Arc::new(ColorImage::from_rgba_premultiplied(
+			ImageData::Color(Arc::new(ColorImage::from_rgba_unmultiplied(
 				[256, 256],
 				&vec![0; 256 * 256 * 4],
 			))),

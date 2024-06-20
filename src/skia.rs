@@ -1,11 +1,14 @@
 use std::sync::OnceLock;
 
-use egui::load::SizedTexture;
 use egui::{
-	paint_texture_at, ColorImage, ImageOptions, Response, ScrollArea, Sense, TextureHandle, TextureOptions, Ui, Widget,
+	Color32, ColorImage, ImageOptions, paint_texture_at, Response, ScrollArea, Sense, TextureHandle, TextureOptions,
+	Ui, Widget,
 };
-use skia_safe::surfaces::raster_n32_premul;
-use skia_safe::{Canvas, Color, Font, FontMgr, FontStyle, ISize, Point, Typeface};
+use egui::load::SizedTexture;
+use skia_safe::{
+	AlphaType, Canvas, Color, ColorSpace, ColorType, Font, FontMgr, FontStyle, ImageInfo, ISize, Point, Typeface,
+};
+use skia_safe::surfaces::raster;
 
 pub struct SkiaWidget<T> {
 	texture_handle: TextureHandle,
@@ -41,11 +44,16 @@ impl<T> Widget for SkiaWidget<T> {
 				let scale = ui.ctx().pixels_per_point();
 				let size = rect.size() * scale;
 				// TODO: make widget size be pixel perfect
-				let mut surface = raster_n32_premul(ISize::new(size.x as i32, size.y as i32)).unwrap();
+				let image_info = ImageInfo::new_n32(
+					ISize::new(size.x as i32, size.y as i32),
+					AlphaType::Premul,
+					ColorSpace::new_srgb(),
+				)
+				.with_color_type(ColorType::SRGBA8888); // Need to set Colortype to RGB because the default is BGRA
+				let mut surface = raster(&image_info, None, None).unwrap();
 				let canvas = surface.canvas();
 				// TODO: scale canvas properly with ui
-				// canvas.scale((scale, scale));
-				canvas.clear(Color::WHITE);
+				canvas.clear(Color::TRANSPARENT);
 
 				(self.render_callback)(canvas, &response, &self.render_data);
 
@@ -56,12 +64,16 @@ impl<T> Widget for SkiaWidget<T> {
 					[image.width() as _, image.height() as _],
 					pixels.bytes().unwrap(),
 				);
-
 				self.texture_handle.set(color_image, TextureOptions::default());
+				let image_options = ImageOptions {
+					bg_fill: Color32::WHITE,
+					rounding: 3.0.into(),
+					..ImageOptions::default()
+				};
 				paint_texture_at(
 					ui.painter(),
 					rect,
-					&ImageOptions::default(),
+					&image_options,
 					&SizedTexture::from_handle(&self.texture_handle),
 				);
 				response
