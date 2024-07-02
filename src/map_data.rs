@@ -6,6 +6,8 @@ use std::fmt::Debug;
 use chrono::{DateTime, Utc};
 use glam::DVec2;
 
+use crate::render::SkiaPos;
+
 #[derive(Debug)]
 pub struct MapData {
 	elements: HashMap<i64, MapElement>,
@@ -74,6 +76,8 @@ pub struct LatLon(pub f64, pub f64);
 pub const RADIUS_EARTH: f64 = 6_378_137.0;
 pub const CIRCUMFERENCE_EARTH: f64 = 2.0 * PI * RADIUS_EARTH;
 
+pub const WEB_MERCATOR_CUTOFF: f64 = 85.051129; // 2.0 * f64::atan(E.powf(PI)) - PI / 2.0
+
 impl LatLon {
 	#[inline]
 	pub fn to_web_mercator(self) -> DVec2 {
@@ -83,10 +87,25 @@ impl LatLon {
 		}
 	}
 
+	#[inline]
+	pub fn to_web_mercator_skia(self) -> SkiaPos {
+		DVec2 {
+			x: RADIUS_EARTH * self.1.to_radians(),
+			y: -f64::ln(f64::tan(PI / 4.0 + self.0.to_radians() / 2.0)) * RADIUS_EARTH,
+		}
+	}
+
 	pub fn from_web_mercator(pos: DVec2) -> Self {
 		LatLon(
-			(pos.x / RADIUS_EARTH).to_degrees(),
 			(2.0 * f64::atan(f64::exp(pos.y / RADIUS_EARTH)) - PI / 2.0).to_degrees(),
+			(pos.x / RADIUS_EARTH).to_degrees(),
+		)
+	}
+
+	pub fn from_web_mercator_skia(pos: SkiaPos) -> Self {
+		LatLon(
+			(2.0 * f64::atan(f64::exp(-pos.y / RADIUS_EARTH)) - PI / 2.0).to_degrees(),
+			(pos.x / RADIUS_EARTH).to_degrees(),
 		)
 	}
 }

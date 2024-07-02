@@ -3,9 +3,11 @@ use skia_safe::{Color, Paint};
 
 use crate::map_data::{Element, MapData, MapElement};
 
+pub type SkiaPos = DVec2;
+
 pub enum RenderElement {
-	Node(DVec2, Style),
-	Way(Vec<DVec2>, Style),
+	Node(SkiaPos, Style),
+	Way(Vec<SkiaPos>, Style),
 	Collection(Vec<RenderElement>, Style),
 }
 
@@ -47,7 +49,7 @@ pub const DEFAULT_NODE_STYLE: Style = Style::Colored {
 impl RenderElement {
 	pub fn from_map_element(element: &MapElement, map_data: &MapData) -> Self {
 		match &element.element {
-			Element::Node { pos } => Self::Node(pos.to_web_mercator(), DEFAULT_NODE_STYLE),
+			Element::Node { pos } => Self::Node(pos.to_web_mercator_skia(), DEFAULT_NODE_STYLE),
 			Element::Way { nodes } => {
 				let nodes: Vec<DVec2> = nodes
 					.iter()
@@ -55,7 +57,7 @@ impl RenderElement {
 						map_data
 							.get_node_pos(*n)
 							.unwrap_or_else(|| panic!("Couldn't get pos of node {n}"))
-							.to_web_mercator()
+							.to_web_mercator_skia()
 					})
 					.collect();
 

@@ -3,8 +3,8 @@ use std::str::from_utf8;
 use std::time::Instant;
 
 use log::{error, info, warn};
-use quick_xml::events::{BytesStart, Event};
 use quick_xml::events::attributes::Attributes;
+use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 use reqwest::{Client, StatusCode};
 

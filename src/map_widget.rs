@@ -1,14 +1,16 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-use egui::{Context, Id, Modifiers, PointerButton, Pos2, Rect, Sense, TextureHandle, vec2, Widget};
-use glam::{dvec2, DVec2, uvec2, UVec2};
-use log::info;
+use egui::{vec2, Context, Id, Modifiers, PointerButton, Pos2, Rect, Sense, TextureHandle, Widget};
+use glam::{dvec2, uvec2, DVec2, UVec2};
 use serde::{Deserialize, Serialize};
-use skia_safe::{Canvas, Color, Image, ISize, Paint, Path, Point};
 use skia_safe::path::FillType;
+use skia_safe::{Canvas, Color, ISize, Paint, Path, Point};
 
+use crate::debug_text::DebugText;
 use crate::imagery_fetcher::ImageryFetcher;
-use crate::map_data::{CIRCUMFERENCE_EARTH, LatLon};
+use crate::map_data::{LatLon, CIRCUMFERENCE_EARTH};
 use crate::render::RenderElement;
 use crate::skia::SkiaWidget;
 
@@ -18,6 +20,7 @@ pub struct MapWidget<'a> {
 	texture_handle: TextureHandle,
 	render_data: MapRenderData<'a>,
 	id: Id,
+	debug_text: Rc<RefCell<DebugText>>,
 }
 
 pub struct MapRenderData<'a> {
@@ -26,11 +29,17 @@ pub struct MapRenderData<'a> {
 }
 
 impl<'a> MapWidget<'a> {
-	pub fn new(texture_handle: TextureHandle, render_data: MapRenderData<'a>, id: Id) -> Self {
+	pub fn new(
+		texture_handle: TextureHandle,
+		render_data: MapRenderData<'a>,
+		id: Id,
+		debug_text: Rc<RefCell<DebugText>>,
+	) -> Self {
 		Self {
 			texture_handle,
 			render_data,
 			id,
+			debug_text,
 		}
 	}
 
@@ -57,25 +66,44 @@ impl<'a> MapWidget<'a> {
 		}
 	}
 
-	fn draw_tiles(canvas: &Canvas, imagery_fetcher: Arc<Mutex<ImageryFetcher>>, camera_pos: DVec2, zoom_level: f32) {
+	fn draw_tiles(
+		canvas: &Canvas,
+		imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
+		camera_pos: DVec2,
+		zoom_level: f32,
+		debug_text: &mut DebugText,
+	) {
+		debug_text.add(format!(
+			"Cached: {} tiles",
+			imagery_fetcher.lock().unwrap().cached_count(),
+		));
+		debug_text.add(format!(
+			"Pending: {} tiles",
+			imagery_fetcher.lock().unwrap().pending_count(),
+		));
 		let camera_lat_lon = LatLon::from_web_mercator(camera_pos);
-		let scale = Self::scale(zoom_level, camera_lat_lon.1);
-		let world_rect = Self::get_world_rect(canvas.image_info().dimensions(), camera_pos, scale as f32);
-		let tile_size = Self::scale(zoom_level.round_ties_even(), camera_lat_lon.1)
+		debug_text.add(format!("Camera pos: {camera_pos:?}"));
+		debug_text.add(format!("Zoom level: {zoom_level}"));
+		let scale = Self::scale(zoom_level, camera_lat_lon.0);
+		let (north_west, south_east) = Self::get_world_corners(canvas.image_info().dimensions(), camera_pos, scale);
+		let tile_size = Self::scale(zoom_level.round_ties_even(), camera_lat_lon.0)
 			* imagery_fetcher.lock().unwrap().imagery().lock().unwrap().tile_size() as f64;
-		let first = Self::pos_floor_uvec2(world_rect.left_top() / tile_size as f32);
-		let last = Self::pos_floor_uvec2(world_rect.right_bottom() / tile_size as f32);
+		let first = (north_west / tile_size).floor().as_uvec2();
+		let last = (south_east / tile_size).floor().as_uvec2();
 		let paint = Paint::default();
 
-		info!(
+		debug_text.add(format!(
 			"{} {first} -> {last} = {}",
-			zoom_level as u32,
+			zoom_level.round() as u32,
 			(last.x - first.x) * (last.y - first.y)
-		);
+		));
 
 		for y in first.y..=last.y {
 			for x in first.x..=last.x {
-				let tile = imagery_fetcher.lock().unwrap().get_tile(x, y, zoom_level as u32);
+				let tile = imagery_fetcher
+					.lock()
+					.unwrap()
+					.get_tile(x, y, zoom_level.round() as u32);
 				if let Some(image) = tile {
 					let coords = Point::new(
 						(x as f64 * tile_size - camera_pos.x) as f32,
@@ -87,7 +115,8 @@ impl<'a> MapWidget<'a> {
 			}
 		}
 
-		let debug_rect = world_rect.translate(-vec2(camera_pos.x as f32, camera_pos.y as f32));
+		let debug_rect = Rect::from_two_pos(Self::dvec_to_pos(north_west), Self::dvec_to_pos(south_east))
+			.translate(-vec2(camera_pos.x as f32, camera_pos.y as f32));
 
 		let mut path = Path::new();
 		path.move_to(Self::pos_to_point(debug_rect.left_top()));
@@ -104,14 +133,19 @@ impl<'a> MapWidget<'a> {
 		canvas.draw_path(&path, &paint);
 	}
 
-	fn get_world_rect(view: ISize, camera_pos: DVec2, scale: f32) -> Rect {
-		let center = Pos2::new(camera_pos.x as f32, camera_pos.y as f32);
-		let size = vec2(view.width as f32 * scale, view.height as f32 * scale);
-		Rect::from_center_size(center, size)
+	fn get_world_corners(view: ISize, camera_pos: DVec2, scale: f64) -> (DVec2, DVec2) {
+		let half = dvec2(view.width as f64 / 2.0, view.height as f64 / 2.0) * scale;
+		(camera_pos - half, camera_pos + half)
 	}
 
+	// tile width in meters at specified latitude and zoom level
+	pub fn tile_width(zoom_level: u32, lat: f64) -> f64 {
+		(CIRCUMFERENCE_EARTH * f64::cos(lat.to_radians())) / f64::exp2(zoom_level as f64)
+	}
+
+	// aka Resolution in meters per pixel
 	pub fn scale(zoom_level: f32, lat: f64) -> f64 {
-		(CIRCUMFERENCE_EARTH * f64::cos(lat.to_radians())) / f64::exp2(zoom_level as f64 + 7.0)
+		(CIRCUMFERENCE_EARTH * f64::cos(lat.to_radians())) / f64::exp2(zoom_level as f64) / 256.0
 	}
 
 	pub fn scale_cam(zoom_level: f32, camera_pos: DVec2) -> f64 {
@@ -124,6 +158,14 @@ impl<'a> MapWidget<'a> {
 
 	fn pos_floor_uvec2(pos: Pos2) -> UVec2 {
 		uvec2(pos.x.floor() as u32, pos.y.floor() as u32)
+	}
+
+	fn dvec_to_pos(dvec: DVec2) -> Pos2 {
+		Pos2::new(dvec.x as f32, dvec.y as f32)
+	}
+
+	pub fn to_skia_dvec2(v: DVec2) -> DVec2 {
+		dvec2(v.x, -v.y)
 	}
 }
 
@@ -147,7 +189,7 @@ impl Widget for MapWidget<'_> {
 					mem.zoom_level = mem.zoom_level.clamp(1.0, 25.0);
 				}
 
-				let scale = 1.0 / Self::scale(mem.zoom_level, camera_lat_lon.1);
+				let scale = 1.0 / Self::scale(mem.zoom_level, camera_lat_lon.0);
 
 				if response.dragged_by(PointerButton::Middle)
 					|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
@@ -166,10 +208,12 @@ impl Widget for MapWidget<'_> {
 					render_data.imagery_fetcher.clone(),
 					mem.camera_pos,
 					mem.zoom_level,
+					&mut self.debug_text.borrow_mut(),
 				);
 
+				let offset = Self::to_skia_dvec2(mem.camera_pos);
 				for element in render_data.elements {
-					Self::draw_element(canvas, element, mem.camera_pos, scale as f32);
+					Self::draw_element(canvas, element, offset, scale as f32);
 				}
 				mem.store(&response.ctx, self.id);
 			}),

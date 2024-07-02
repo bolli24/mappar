@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -8,6 +10,7 @@ use log::info;
 use poll_promise::Promise;
 
 use crate::api;
+use crate::debug_text::DebugText;
 use crate::imagery::esri_imagery;
 use crate::imagery_fetcher::ImageryFetcher;
 use crate::map_data::{Bounds, LatLon, MapData};
@@ -21,6 +24,7 @@ pub struct MyApp {
 	map_data: Arc<Mutex<MapData>>,
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
+	debug_text: Rc<RefCell<DebugText>>,
 }
 
 impl MyApp {
@@ -44,6 +48,7 @@ impl MyApp {
 		let camera_pos = bounds.center().to_web_mercator() /*- Point::new(2000.0, 2000.0)*/;
 
 		info!("Camera: {camera_pos:?}");
+		info!("Camera: {:?}", LatLon::from_web_mercator(camera_pos));
 
 		let map_widget_id = Id::new("map_widget");
 		let map_mem = MapMemory {
@@ -62,6 +67,7 @@ impl MyApp {
 			imagery_fetcher: Arc::new(Mutex::new(ImageryFetcher::new(esri_imagery()))),
 			map_data: Arc::new(Mutex::new(MapData::new())),
 			map_widget_id,
+			debug_text: Rc::new(RefCell::new(DebugText::new())),
 		}
 	}
 }
@@ -105,6 +111,13 @@ impl eframe::App for MyApp {
 			});
 		});
 
+		egui::SidePanel::right("debug_panel").min_width(240.0).show(ctx, |ui| {
+			ui.heading("Debug Panel");
+			let response = ui.add(self.debug_text.borrow().clone());
+			self.debug_text.borrow_mut().clear();
+			response
+		});
+
 		egui::CentralPanel::default().show(ctx, |ui| {
 			// The central panel the region left after adding TopPanel's and SidePanel's
 			/*ui.heading("eframe template");
@@ -126,6 +139,7 @@ impl eframe::App for MyApp {
 					imagery_fetcher: self.imagery_fetcher.clone(),
 				},
 				self.map_widget_id,
+				self.debug_text.clone(),
 			));
 
 			/*ui.separator();

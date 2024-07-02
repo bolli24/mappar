@@ -1,17 +1,13 @@
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
 
 use log::{error, info};
 use lru::LruCache;
-use skia_safe::{AlphaType, Bitmap, ColorSpace, ColorType, Data, Image, ImageInfo, ISize};
-use skia_safe::images::raster_from_data;
-use tokio::{runtime, spawn, time};
-use tokio::runtime::Runtime;
+use skia_safe::{Data, Image};
 use tokio::task::JoinSet;
-use tokio::time::sleep;
+use tokio::time;
 
 use crate::imagery::Imagery;
 
@@ -51,7 +47,7 @@ impl ImageryFetcher {
 		let cache = fetcher.cache.clone();
 		let imagery = fetcher.imagery.clone();
 
-		spawn(Self::fetching_loop(pending, cache, imagery));
+		tokio::spawn(Self::fetching_loop(pending, cache, imagery));
 
 		fetcher
 	}
@@ -78,14 +74,12 @@ impl ImageryFetcher {
 				join_set.join_next().await.unwrap().unwrap();
 			}
 			let mut pending = pending.lock().unwrap();
-			info!("Pending: {}, Cache {}", pending.len(), cache.lock().unwrap().len());
 			let tile = *pending.iter().next().unwrap();
 			pending.remove(&tile);
 			cache.lock().unwrap().put(tile, None);
 			let cache = cache.clone();
 			let imagery = imagery.clone();
 			join_set.spawn(async move {
-				info!("Fetching tile: {tile:?}.");
 				let result = Self::fetch_tile(imagery, tile).await;
 				match result {
 					Ok(image) => {
@@ -101,11 +95,12 @@ impl ImageryFetcher {
 
 	async fn fetch_tile(imagery: Arc<Mutex<dyn Imagery>>, tile: Tile) -> Result<Image, Error> {
 		// dummy implementation
-		/* sleep(Duration::from_millis(160)).await;
+		/*
+		sleep(Duration::from_millis(160)).await;
 		const TEST_TILE: &[u8] = include_bytes!("../assets/tile.png");
 		let data = Data::from_stream(&mut TEST_TILE, TEST_TILE.len()).ok_or(Error::SkiaImageData)?;
-		return Image::from_encoded(data).ok_or(Error::SkiaImage);*/
-
+		return Image::from_encoded(data).ok_or(Error::SkiaImage);
+		*/
 		let url = imagery.lock().unwrap().tile_url(tile.0, tile.1, tile.2);
 		info!("Fetching tile: {url}");
 
@@ -132,6 +127,14 @@ impl ImageryFetcher {
 
 	pub fn tile_loaded(&self, tile: Tile) -> bool {
 		self.cache.lock().unwrap().contains(&tile)
+	}
+
+	pub fn pending_count(&self) -> usize {
+		self.pending.lock().unwrap().len()
+	}
+
+	pub fn cached_count(&self) -> usize {
+		self.cache.lock().unwrap().len()
 	}
 
 	pub fn get_closest_tile(&self, tile: Tile) -> Option<Tile> {

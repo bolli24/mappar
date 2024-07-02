@@ -9,7 +9,7 @@ pub fn esri_imagery() -> UrlImagery {
 	UrlImagery::new(
 		"https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}".to_string(),
 		256,
-		21,
+		23,
 		0,
 	)
 	.unwrap()

@@ -1,14 +1,14 @@
 use std::sync::OnceLock;
 
+use egui::load::SizedTexture;
 use egui::{
-	Color32, ColorImage, ImageOptions, paint_texture_at, Response, ScrollArea, Sense, TextureHandle, TextureOptions,
+	paint_texture_at, Color32, ColorImage, ImageOptions, Response, ScrollArea, Sense, TextureHandle, TextureOptions,
 	Ui, Widget,
 };
-use egui::load::SizedTexture;
-use skia_safe::{
-	AlphaType, Canvas, Color, ColorSpace, ColorType, Font, FontMgr, FontStyle, ImageInfo, ISize, Point, Typeface,
-};
 use skia_safe::surfaces::raster;
+use skia_safe::{
+	AlphaType, Canvas, Color, ColorSpace, ColorType, Font, FontMgr, FontStyle, ISize, ImageInfo, Point, Typeface,
+};
 
 pub struct SkiaWidget<T> {
 	texture_handle: TextureHandle,

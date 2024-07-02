@@ -4,6 +4,7 @@ pub use app::MyApp;
 
 mod api;
 mod app;
+mod debug_text;
 mod imagery;
 mod imagery_fetcher;
 mod map_data;
