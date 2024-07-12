@@ -30,6 +30,7 @@ quick-xml = { version = "0.36.0", default-features = false }
 chrono = "0.4.38"
 
 lru = "0.12.3"
+itertools = "0.13.0"
 
 [profile.release]
 opt-level = 2 # fast and small wasm

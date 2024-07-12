@@ -1,10 +1,13 @@
 use std::cell::RefCell;
+use std::ops::RangeInclusive;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use egui::{vec2, Context, Id, Modifiers, PointerButton, Pos2, Rect, Sense, TextureHandle, Widget};
-use glam::{dvec2, uvec2, DVec2, UVec2};
+use glam::{dvec2, uvec2, DVec2, UVec2, Vec2Swizzles};
+use itertools::{Itertools, Product};
 use serde::{Deserialize, Serialize};
+use skia_safe::image_filters::tile;
 use skia_safe::path::FillType;
 use skia_safe::{Canvas, Color, ISize, Paint, Path, Point};
 
@@ -85,37 +88,38 @@ impl<'a> MapWidget<'a> {
 		debug_text.add(format!("Camera pos: {camera_pos:?}"));
 		debug_text.add(format!("Zoom level: {zoom_level}"));
 		let scale = Self::scale(zoom_level, camera_lat_lon.0);
-		let (north_west, south_east) = Self::get_world_corners(canvas.image_info().dimensions(), camera_pos, scale);
+		let corners = Self::get_world_corners(canvas.image_info().dimensions(), camera_pos, scale);
+		let corners_lat_lon = (
+			LatLon::from_web_mercator(corners.0),
+			LatLon::from_web_mercator(corners.1),
+		);
+		debug_text.add(format!("Corners: {corners_lat_lon:?}"));
 		let tile_size = Self::scale(zoom_level.round_ties_even(), camera_lat_lon.0)
 			* imagery_fetcher.lock().unwrap().imagery().lock().unwrap().tile_size() as f64;
-		let first = (north_west / tile_size).floor().as_uvec2();
-		let last = (south_east / tile_size).floor().as_uvec2();
+		let (x_tiles, y_tiles) = Self::tiles_in_rect(corners, tile_size);
+
 		let paint = Paint::default();
 
 		debug_text.add(format!(
-			"{} {first} -> {last} = {}",
+			"{} {x_tiles:?} -> {y_tiles:?} = {}",
 			zoom_level.round() as u32,
-			(last.x - first.x) * (last.y - first.y)
+			x_tiles.clone().collect::<Vec<_>>().len() * y_tiles.clone().collect::<Vec<_>>().len()
 		));
 
-		for y in first.y..=last.y {
-			for x in first.x..=last.x {
-				let tile = imagery_fetcher
-					.lock()
-					.unwrap()
-					.get_tile(x, y, zoom_level.round() as u32);
-				if let Some(image) = tile {
-					let coords = Point::new(
-						(x as f64 * tile_size - camera_pos.x) as f32,
-						(y as f64 * tile_size - camera_pos.y) as f32,
-					);
-					let dst_rect = skia_safe::Rect::from_xywh(coords.x, coords.y, tile_size as f32, tile_size as f32);
-					canvas.draw_image_rect(image, None, dst_rect, &paint);
-				};
-			}
+		for (x, y) in x_tiles.cartesian_product(y_tiles) {
+			let tile = imagery_fetcher
+				.lock()
+				.unwrap()
+				.get_tile(x, y, zoom_level.round() as u32);
+			if let Some(image) = tile {
+				let coords = Self::get_tile_pos(x, y, tile_size);
+				let coords = dvec2_to_point(coords - camera_pos);
+				let dst_rect = skia_safe::Rect::from_xywh(coords.x, coords.y, tile_size as f32, tile_size as f32);
+				canvas.draw_image_rect(image, None, dst_rect, &paint);
+			};
 		}
 
-		let debug_rect = Rect::from_two_pos(Self::dvec_to_pos(north_west), Self::dvec_to_pos(south_east))
+		let debug_rect = Rect::from_two_pos(Self::dvec_to_pos(corners.0), Self::dvec_to_pos(corners.1))
 			.translate(-vec2(camera_pos.x as f32, camera_pos.y as f32));
 
 		let mut path = Path::new();
@@ -131,6 +135,30 @@ impl<'a> MapWidget<'a> {
 		paint.set_stroke(true);
 		paint.set_stroke_width(2.0 * scale as f32);
 		canvas.draw_path(&path, &paint);
+	}
+
+	const CENTER: DVec2 = dvec2(2.0037508342787E7, 2.0037508342787E7);
+
+	fn tiles_in_rect(corners: (DVec2, DVec2), tile_size: f64) -> (RangeInclusive<u32>, RangeInclusive<u32>) {
+		let tiles = (
+			Self::get_tile(corners.0, tile_size),
+			Self::get_tile(corners.1, tile_size),
+		);
+		let min = uvec2(tiles.0.x.min(tiles.1.x), tiles.0.y.min(tiles.1.y));
+		let max = uvec2(tiles.0.x.max(tiles.1.x), tiles.0.y.max(tiles.1.y));
+		(min.x..=max.x, min.y..=max.y)
+	}
+
+	fn get_tile(coords: DVec2, tile_size: f64) -> UVec2 {
+		let coords = dvec2(Self::CENTER.x - coords.x, Self::CENTER.y + coords.y);
+		(coords / tile_size).floor().as_uvec2()
+	}
+
+	fn get_tile_pos(x: u32, y: u32, tile_size: f64) -> DVec2 {
+		dvec2(
+			Self::CENTER.x - (x as f64 * tile_size),
+			(y as f64 * tile_size) - Self::CENTER.y,
+		)
 	}
 
 	fn get_world_corners(view: ISize, camera_pos: DVec2, scale: f64) -> (DVec2, DVec2) {
