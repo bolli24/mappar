@@ -1,20 +1,26 @@
+use bytes::Buf;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::Duration;
 
 use log::{error, info};
 use lru::LruCache;
 use skia_safe::{Data, Image};
 use tokio::task::JoinSet;
-use tokio::time;
+use tokio::{task, time};
 
 use crate::imagery::Imagery;
+use crate::local_cache;
+use crate::local_cache::LocalCache;
 
 pub struct ImageryFetcher {
-	cache: Arc<Mutex<LruCache<Tile, Option<Image>>>>,
+	memory_cache: Arc<Mutex<LruCache<Tile, Option<Image>>>>,
 	imagery: Arc<Mutex<dyn Imagery>>,
 	pending: Arc<Mutex<HashSet<Tile>>>,
+	local_cache: Arc<tokio::sync::Mutex<LocalCache>>,
 }
 
 pub type Tile = (u32, u32, u32);
@@ -36,18 +42,20 @@ impl std::fmt::Display for Error {
 }
 
 impl ImageryFetcher {
-	pub fn new(imagery: impl Imagery + 'static) -> Self {
+	pub fn new(imagery: impl Imagery + 'static, cache_directory: PathBuf) -> Self {
 		let fetcher = Self {
-			cache: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(4192).unwrap()))),
+			memory_cache: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(4192).unwrap()))),
 			imagery: Arc::new(Mutex::new(imagery)),
 			pending: Arc::new(Mutex::new(HashSet::new())),
+			local_cache: Arc::new(tokio::sync::Mutex::new(LocalCache::new(cache_directory))),
 		};
 
 		let pending = fetcher.pending.clone();
-		let cache = fetcher.cache.clone();
+		let cache = fetcher.memory_cache.clone();
 		let imagery = fetcher.imagery.clone();
+		let local_cache = fetcher.local_cache.clone();
 
-		tokio::spawn(Self::fetching_loop(pending, cache, imagery));
+		tokio::spawn(Self::fetching_loop(pending, cache, imagery, local_cache));
 
 		fetcher
 	}
@@ -60,6 +68,7 @@ impl ImageryFetcher {
 		pending: Arc<Mutex<HashSet<Tile>>>,
 		cache: Arc<Mutex<LruCache<Tile, Option<Image>>>>,
 		imagery: Arc<Mutex<dyn Imagery>>,
+		local_cache: Arc<tokio::sync::Mutex<LocalCache>>,
 	) {
 		let mut join_set: JoinSet<()> = JoinSet::new();
 		let mut interval = time::interval(Duration::from_millis(10));
@@ -79,8 +88,9 @@ impl ImageryFetcher {
 			cache.lock().unwrap().put(tile, None);
 			let cache = cache.clone();
 			let imagery = imagery.clone();
+			let local_cache = local_cache.clone();
 			join_set.spawn(async move {
-				let result = Self::fetch_tile(imagery, tile).await;
+				let result = Self::fetch_tile(imagery, local_cache, tile).await;
 				match result {
 					Ok(image) => {
 						cache.lock().unwrap().put(tile, Some(image));
@@ -93,7 +103,11 @@ impl ImageryFetcher {
 		}
 	}
 
-	async fn fetch_tile(imagery: Arc<Mutex<dyn Imagery>>, tile: Tile) -> Result<Image, Error> {
+	async fn fetch_tile(
+		imagery: Arc<Mutex<dyn Imagery>>,
+		local_cache: Arc<tokio::sync::Mutex<LocalCache>>,
+		tile: Tile,
+	) -> Result<Image, Error> {
 		// dummy implementation
 		/*
 		sleep(Duration::from_millis(160)).await;
@@ -101,6 +115,16 @@ impl ImageryFetcher {
 		let data = Data::from_stream(&mut TEST_TILE, TEST_TILE.len()).ok_or(Error::SkiaImageData)?;
 		return Image::from_encoded(data).ok_or(Error::SkiaImage);
 		*/
+		if let Some(image_data) = local_cache
+			.lock()
+			.await
+			.get_image(tile, local_cache::FileFormat::JPG)
+			.await
+		{
+			let data = Data::from_stream(&mut image_data.as_ref(), image_data.len()).ok_or(Error::SkiaImageData)?;
+			return Image::from_encoded(data).ok_or(Error::SkiaImage);
+		}
+
 		let url = imagery.lock().unwrap().tile_url(tile.0, tile.1, tile.2);
 		info!("Fetching tile: {url}");
 
@@ -111,6 +135,11 @@ impl ImageryFetcher {
 			.map_err(Error::Reqwest)?;
 
 		let bytes = response.bytes().await.map_err(Error::Reqwest)?;
+		local_cache
+			.lock()
+			.await
+			.save_image(tile, &bytes, local_cache::FileFormat::JPG)
+			.await; // TODO: do this on a separate thread
 
 		let data = Data::from_stream(&mut bytes.as_ref(), bytes.len()).ok_or(Error::SkiaImageData)?;
 		Image::from_encoded(data).ok_or(Error::SkiaImage)
@@ -118,7 +147,7 @@ impl ImageryFetcher {
 
 	pub fn get_tile(&mut self, x: u32, y: u32, zoom: u32) -> Option<Image> {
 		let mut pending = self.pending.lock().unwrap();
-		if let Some(image) = self.cache.lock().unwrap().get(&(x, y, zoom)) {
+		if let Some(image) = self.memory_cache.lock().unwrap().get(&(x, y, zoom)) {
 			return image.clone();
 		}
 		pending.insert((x, y, zoom));
@@ -126,15 +155,22 @@ impl ImageryFetcher {
 	}
 
 	pub fn tile_loaded(&self, tile: Tile) -> bool {
-		self.cache.lock().unwrap().contains(&tile)
+		self.memory_cache.lock().unwrap().contains(&tile)
 	}
 
 	pub fn pending_count(&self) -> usize {
 		self.pending.lock().unwrap().len()
 	}
 
-	pub fn cached_count(&self) -> usize {
-		self.cache.lock().unwrap().len()
+	pub fn memory_cached_count(&self) -> usize {
+		self.memory_cache.lock().unwrap().len()
+	}
+
+	pub fn local_cached_count(&self) -> Option<usize> {
+		self.local_cache
+			.try_lock()
+			.ok()
+			.map(|local_cache| local_cache.cached_count())
 	}
 
 	pub fn get_closest_tile(&self, tile: Tile) -> Option<Tile> {
@@ -172,7 +208,7 @@ mod tests {
 	async fn test_fetch_tile() {
 		crate::init_test_logger();
 
-		let mut fetcher = ImageryFetcher::new(esri_imagery());
+		let mut fetcher = ImageryFetcher::new(esri_imagery(), std::path::PathBuf::from("cache"));
 		let image = fetcher.get_tile(0, 0, 0);
 		assert!(image.is_none());
 

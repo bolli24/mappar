@@ -28,6 +28,8 @@ pub struct MyApp {
 }
 
 impl MyApp {
+	pub const APP_NAME: &'static str = "mappar";
+
 	pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
 		let tex_manager = cc.egui_ctx.tex_manager();
 		cc.egui_ctx.send_viewport_cmd(ViewportCommand::Maximized(true));
@@ -57,6 +59,9 @@ impl MyApp {
 		};
 		map_mem.store(&cc.egui_ctx, map_widget_id);
 
+		let mut cache_path = eframe::storage_dir(Self::APP_NAME).expect("Failed to get storage dir");
+		cache_path.push("cache");
+		
 		MyApp {
 			skia_texture: TextureHandle::new(cc.egui_ctx.tex_manager(), skia_tex),
 			map_data_promise: Some(Promise::spawn_async(api::get_data(Bounds {
@@ -64,7 +69,7 @@ impl MyApp {
 				max: LatLon(51.82344, 12.21268),
 			}))),
 			render_data_promise: Promise::spawn_blocking(Vec::new),
-			imagery_fetcher: Arc::new(Mutex::new(ImageryFetcher::new(esri_imagery()))),
+			imagery_fetcher: Arc::new(Mutex::new(ImageryFetcher::new(esri_imagery(), cache_path))),
 			map_data: Arc::new(Mutex::new(MapData::new())),
 			map_widget_id,
 			debug_text: Rc::new(RefCell::new(DebugText::new())),

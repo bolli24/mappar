@@ -19,15 +19,12 @@ async fn main() -> eframe::Result<()> {
 				// NOTE: Adding an icon is optional
 				eframe::icon_data::from_png_bytes(&include_bytes!("../assets/icon-256.png")[..])
 					.expect("Failed to load icon"),
-			),
+			)
+			.with_app_id(MyApp::APP_NAME),
 		..Default::default()
 	};
 
-	eframe::run_native(
-		"eframe template",
-		native_options,
-		Box::new(|cc| Ok(Box::new(MyApp::new(cc)))),
-	)
+	eframe::run_native(MyApp::APP_NAME, native_options, Box::new(|cc| Ok(Box::new(MyApp::new(cc)))))
 }
 
 // When compiling to web using trunk:

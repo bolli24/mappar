@@ -77,8 +77,17 @@ impl<'a> MapWidget<'a> {
 		debug_text: &mut DebugText,
 	) {
 		debug_text.add(format!(
-			"Cached: {} tiles",
-			imagery_fetcher.lock().unwrap().cached_count(),
+			"Local Cached: {} tiles",
+			imagery_fetcher
+				.lock()
+				.unwrap()
+				.local_cached_count()
+				.map(|c| c as i32)
+				.unwrap_or(-1)
+		));
+		debug_text.add(format!(
+			"Memory Cached: {} tiles",
+			imagery_fetcher.lock().unwrap().memory_cached_count()
 		));
 		debug_text.add(format!(
 			"Pending: {} tiles",
@@ -96,6 +105,7 @@ impl<'a> MapWidget<'a> {
 		debug_text.add(format!("Corners: {corners_lat_lon:?}"));
 		let tile_size = Self::scale(zoom_level.round_ties_even(), camera_lat_lon.0)
 			* imagery_fetcher.lock().unwrap().imagery().lock().unwrap().tile_size() as f64;
+		debug_text.add(format!("Tile size: {tile_size}"));
 		let (x_tiles, y_tiles) = Self::tiles_in_rect(corners, tile_size);
 
 		let paint = Paint::default();
