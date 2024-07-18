@@ -196,3 +196,36 @@ pub enum Element {
 	Way { nodes: Vec<i64> },
 	Relation { members: Vec<Member> },
 }
+
+mod tests {
+	use glam::{dvec2, uvec2};
+	use log::info;
+	use super::*;
+
+	#[test]
+	fn test_lat_lon() {
+		crate::init_test_logger();
+		let lat_lon = LatLon(51.82887, 12.19731);
+		let web_mercator = lat_lon.to_web_mercator();
+		info!("Web Mercator: {:?}", web_mercator);
+		let lat_lon2 = LatLon::from_web_mercator(web_mercator);
+		let diff = (lat_lon.0 - lat_lon2.0).abs() + (lat_lon.1 - lat_lon2.1).abs();
+		assert!(diff < 0.0001);
+		
+		let zoom_level = 8.0;
+		let scale = 2.0f64.powi(zoom_level as i32);
+		let mut siny = lat_lon.0.to_radians().sin();
+		siny = siny.clamp(-0.9999, 0.9999);
+		const TILE_SIZE: f64 = 256.0;
+		let world_coords = dvec2(
+			0.5 + lat_lon.1 / 360.0,
+			0.5 - f64::ln((1.0 + siny) / (1.0 - siny)) / (4.0 * PI),
+		);
+
+		let tile_coords = (world_coords * scale).floor().as_uvec2();
+		let world_coords = world_coords * TILE_SIZE;
+
+		info!("World coords: {world_coords}");
+		info!("Tile coords: {tile_coords}");
+	}
+}
