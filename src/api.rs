@@ -20,32 +20,15 @@ const API_BOUNDING_BOX: &str = "/api/0.6/map?bbox=";
 
 const USER_AGENT: &str = "mappar/0.1-alpha";
 
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-	Reqwest(reqwest::Error),
+	#[error("Reqwest error: {0}")]
+	Reqwest(#[from] reqwest::Error),
+	#[error("API error: {0} - {1}")]
 	ApiError(StatusCode, String),
+	#[error("XML error")]
+	XMLError,
 }
-
-impl Display for Error {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Reqwest(error) => write!(f, "Reqwest error: {error}"),
-			Self::ApiError(status, body) => write!(f, "API error: {status} - {body}"),
-		}
-	}
-}
-
-impl Debug for Error {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		Display::fmt(self, f)
-	}
-}
-
-impl From<reqwest::Error> for Error {
-	fn from(error: reqwest::Error) -> Self {
-		Self::Reqwest(error)
-	}
-}
-
 pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 	info!("Getting data from the API");
 	let start = Instant::now();
@@ -66,7 +49,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 	info!("Time taken: {:?}", start.elapsed());
 	let start = Instant::now();
 
-	let data = parse_osm_xml(&xml);
+	let data = parse_osm_xml(&xml).ok_or(Error::XMLError)?;
 
 	if cfg!(debug_assertions) {
 		std::fs::write("api_data.xml", xml).expect("Error writing debug xml file");
@@ -77,7 +60,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 	Ok(data)
 }
 
-fn parse_osm_xml(xml: &str) -> MapData {
+fn parse_osm_xml(xml: &str) -> Option<MapData> {
 	let mut data = MapData::new();
 	let mut reader = Reader::from_str(xml);
 
@@ -101,9 +84,9 @@ fn parse_osm_xml(xml: &str) -> MapData {
 									parse_tag(&mut tags, e);
 								}
 								b"nd" => {
-									let node_ref = e.attributes().next().unwrap().unwrap();
+									let node_ref = e.attributes().next()?.ok()?;
 									if node_ref.key.as_ref() == b"ref" {
-										nodes.push(from_utf8(&node_ref.value).unwrap().parse().unwrap());
+										nodes.push(from_utf8(&node_ref.value).ok()?.parse().ok()?);
 									}
 								}
 								b"member" => {
@@ -115,7 +98,7 @@ fn parse_osm_xml(xml: &str) -> MapData {
 									});
 								}
 								name => {
-									warn!("Unknown tag: {:?}", from_utf8(name).unwrap());
+									warn!("Unknown tag: {:?}", from_utf8(name).ok()?);
 								}
 							},
 							Ok(Event::End(_)) => {
@@ -125,10 +108,10 @@ fn parse_osm_xml(xml: &str) -> MapData {
 						}
 					}
 
-					let (id, lat_lon, info) = parse_attributes(attributes);
+					let (id, lat_lon, info) = parse_attributes(attributes)?;
 
 					let element = match e.name().as_ref() {
-						b"node" => Element::Node { pos: lat_lon.unwrap() },
+						b"node" => Element::Node { pos: lat_lon? },
 						b"way" => Element::Way { nodes },
 						b"relation" => Element::Relation { members },
 						_ => {
@@ -148,11 +131,11 @@ fn parse_osm_xml(xml: &str) -> MapData {
 						warn!("Unknown element type: {e:?}");
 						continue;
 					}
-					let (id, lat_lon, info) = parse_attributes(e.attributes());
+					let (id, lat_lon, info) = parse_attributes(e.attributes())?;
 
 					data.add(MapElement {
 						info,
-						element: Element::Node { pos: lat_lon.unwrap() },
+						element: Element::Node { pos: lat_lon? },
 						tags: None,
 						id,
 					});
@@ -168,7 +151,7 @@ fn parse_osm_xml(xml: &str) -> MapData {
 			}
 		}
 	}
-	data
+	Some(data)
 }
 
 fn parse_member(e: &BytesStart) -> (i64, String, ElementType) {
@@ -217,53 +200,53 @@ fn parse_tag(tags: &mut Option<Vec<Tag>>, e: &BytesStart) {
 	}
 }
 
-fn parse_attributes(attributes: Attributes) -> (i64, Option<LatLon>, ElementInfo) {
+fn parse_attributes(attributes: Attributes) -> Option<(i64, Option<LatLon>, ElementInfo)> {
 	let mut lat = f64::NAN;
 	let mut lon = f64::NAN;
 	let mut id = 0;
 	let mut info = ElementInfo::default();
 
 	for attr in attributes {
-		let attr = attr.unwrap();
+		let attr = attr.ok()?;
 		match attr.key.as_ref() {
 			b"lat" => {
-				lat = from_utf8(&attr.value).unwrap().parse().unwrap();
+				lat = from_utf8(&attr.value).ok()?.parse().ok()?;
 			}
 			b"lon" => {
-				lon = from_utf8(&attr.value).unwrap().parse().unwrap();
+				lon = from_utf8(&attr.value).ok()?.parse().ok()?;
 			}
 			b"id" => {
-				id = from_utf8(&attr.value).unwrap().parse().unwrap();
+				id = from_utf8(&attr.value).ok()?.parse().ok()?;
 			}
 			b"version" => {
-				info.version = from_utf8(&attr.value).unwrap().parse().unwrap();
+				info.version = from_utf8(&attr.value).ok()?.parse().ok()?;
 			}
 			b"changeset" => {
-				info.changeset = from_utf8(&attr.value).unwrap().parse().unwrap();
+				info.changeset = from_utf8(&attr.value).ok()?.parse().ok()?;
 			}
 			b"uid" => {
-				info.uid = from_utf8(&attr.value).unwrap().parse().ok();
+				info.uid = from_utf8(&attr.value).ok()?.parse().ok();
 			}
 			b"user" => {
-				info.user = Some(from_utf8(&attr.value).unwrap().to_string());
+				info.user = Some(from_utf8(&attr.value).ok()?.to_string());
 			}
 			b"visible" => {
-				info.visible = from_utf8(&attr.value).unwrap() == "true";
+				info.visible = from_utf8(&attr.value).ok()? == "true";
 			}
 			b"timestamp" => {
-				info.timestamp = from_utf8(&attr.value).unwrap().parse().unwrap();
+				info.timestamp = from_utf8(&attr.value).ok()?.parse().ok()?;
 			}
 			_ => {
 				warn!("Unknown attribute: {:?}", attr);
 			}
 		}
 	}
-	let lat_lon = if lat != f64::MAX && lon != f64::MAX {
+	let lat_lon = if !lat.is_nan() && !lon.is_nan() {
 		Some(LatLon(lat, lon))
 	} else {
 		None
 	};
-	(id, lat_lon, info)
+	Some((id, lat_lon, info))
 }
 
 #[cfg(test)]

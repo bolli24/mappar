@@ -24,21 +24,14 @@ pub struct ImageryFetcher {
 }
 
 pub type Tile = (u32, u32, u32);
-
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-	Reqwest(reqwest::Error),
+	#[error("Reqwest error: {0}")]
+	Reqwest(#[from] reqwest::Error),
+	#[error("Error creating image data")]
 	SkiaImageData,
+	#[error("Error creating image")]
 	SkiaImage,
-}
-
-impl std::fmt::Display for Error {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Error::Reqwest(e) => write!(f, "Reqwest error: {e}"),
-			Error::SkiaImageData => write!(f, "Skia error creating image data"),
-			Error::SkiaImage => write!(f, "Skia error creating image"),
-		}
-	}
 }
 
 impl ImageryFetcher {
@@ -128,13 +121,9 @@ impl ImageryFetcher {
 		let url = imagery.lock().unwrap().tile_url(tile.0, tile.1, tile.2);
 		info!("Fetching tile: {url}");
 
-		let response = reqwest::Client::new()
-			.get(url.clone())
-			.send()
-			.await
-			.map_err(Error::Reqwest)?;
+		let response = reqwest::Client::new().get(url.clone()).send().await?;
 
-		let bytes = response.bytes().await.map_err(Error::Reqwest)?;
+		let bytes = response.bytes().await?;
 		local_cache
 			.lock()
 			.await
