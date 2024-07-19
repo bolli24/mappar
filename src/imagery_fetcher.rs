@@ -3,12 +3,15 @@ use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
+use std::{slice, thread};
+use egui::load::SizedTexture;
 
 use log::{error, info};
 use lru::LruCache;
-use skia_safe::{Data, Image};
+use skia_safe::encode::pixmap;
+use skia_safe::image::CachingHint;
+use skia_safe::{Bitmap, Codec, Data, EncodedImageFormat, Image, images, TextureCompressionType};
 use tokio::task::JoinSet;
 use tokio::{task, time};
 
@@ -86,7 +89,36 @@ impl ImageryFetcher {
 				let result = Self::fetch_tile(imagery, local_cache, tile).await;
 				match result {
 					Ok(image) => {
-						cache.lock().unwrap().put(tile, Some(image));
+						let info = image.image_info();
+						let bytes_per_pixel = info.bytes_per_pixel();
+						if  bytes_per_pixel != 4{
+							error!("Image has wrong number of bytes per pixel: {bytes_per_pixel}");
+							return;
+						}
+
+						let mut bitmap = Bitmap::new();
+						if !bitmap.set_info(info, None) {
+							error!("Couldn't set bitmap info.");
+							return;
+						}
+
+						if !bitmap.try_alloc_pixels() {
+							error!("Couldn't allocating pixels.");
+							return;
+						}
+						let pixels: &mut [u32] = unsafe {
+							slice::from_raw_parts_mut(bitmap.pixels() as *mut u32, (bitmap.width() * bitmap.height()) as usize)
+						};
+						if !image.read_pixels(info, pixels, bitmap.row_bytes(), (0,0), CachingHint::Allow) {
+							error!("Couldn't read image into bitmap.");
+							return;
+						}
+
+						let raster = images::raster_from_bitmap(&bitmap).unwrap();
+
+						//texture
+						
+						cache.lock().unwrap().put(tile, Some(raster));
 					}
 					Err(error) => {
 						error!("Error fetching tile {tile:?}: {error}");

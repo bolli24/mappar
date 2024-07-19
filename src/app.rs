@@ -25,6 +25,7 @@ pub struct MyApp {
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	debug_text: Rc<RefCell<DebugText>>,
+	last_update: Instant,
 }
 
 impl MyApp {
@@ -73,6 +74,7 @@ impl MyApp {
 			map_data: Arc::new(Mutex::new(MapData::new())),
 			map_widget_id,
 			debug_text: Rc::new(RefCell::new(DebugText::new())),
+			last_update: Instant::now(),
 		}
 	}
 }
@@ -159,6 +161,10 @@ impl eframe::App for MyApp {
 				egui::warn_if_debug_build(ui);
 			});*/
 		});
+		puffin::GlobalProfiler::lock().new_frame();
+		let diff = self.last_update.elapsed();
+		self.debug_text.borrow_mut().add(format!("Frame Time: {:.1}ms", diff.as_millis()));
+		self.last_update = Instant::now();
 	}
 }
 

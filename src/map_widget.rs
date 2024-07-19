@@ -78,6 +78,7 @@ impl<'a> MapWidget<'a> {
 		zoom_level: f32,
 		debug_text: &mut DebugText,
 	) {
+		puffin::profile_function!();
 		debug_text.add(format!(
 			"Local Cached: {} tiles",
 			imagery_fetcher
@@ -135,6 +136,7 @@ impl<'a> MapWidget<'a> {
 		debug_text.add(format!("Offset: {offset:?}"));
 
 		for (x, y) in x_tiles.cartesian_product(y_tiles) {
+			puffin::profile_scope!("Draw Tile", format!("{x} {y}"));
 			let tile = imagery_fetcher
 				.lock()
 				.unwrap()

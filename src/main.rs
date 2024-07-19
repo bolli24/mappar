@@ -11,6 +11,11 @@ use mappar::MyApp;
 async fn main() -> eframe::Result<()> {
 	simple_logger::init_with_level(Level::Info).expect("Error initializing logger");
 
+	let server_addr = format!("127.0.0.1:{}", puffin_http::DEFAULT_PORT);
+	let _puffin_server = puffin_http::Server::new(&server_addr).unwrap();
+	eprintln!("Run this to view profiling data:  puffin_viewer {server_addr}");
+	puffin::set_scopes_on(true);
+	
 	let native_options = eframe::NativeOptions {
 		viewport: egui::ViewportBuilder::default()
 			.with_inner_size([400.0, 300.0])

@@ -36,6 +36,9 @@ regex = "1.10.5"
 
 thiserror = "1.0.63"
 
+puffin = "0.19.0"
+puffin_http = "0.16.0"
+
 [profile.release]
 opt-level = 2 # fast and small wasm
 
