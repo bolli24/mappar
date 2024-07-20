@@ -213,8 +213,8 @@ impl ImageryFetcher {
 		}
 	}
 
-	const fn get_larger_tile(tile: Tile) -> Option<Tile> {
-		if tile.2 == 0 {
+	fn get_larger_tile(&self, tile: Tile) -> Option<Tile> {
+		if tile.2 <= self.imagery.lock().unwrap().min_zoom() {
 			None
 		} else {
 			Some((tile.0 / 2, tile.1 / 2, tile.0 - 1))
