@@ -3,7 +3,6 @@ use bytes::Bytes;
 use log::info;
 use regex::Regex;
 use std::collections::HashSet;
-use std::io::Write;
 use std::path::PathBuf;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -13,22 +12,24 @@ pub struct LocalCache {
 	cached_images: HashSet<Tile>,
 }
 
+#[derive(Copy, Clone)]
 pub enum FileFormat {
 	PNG,
 	JPG,
 }
 
 impl FileFormat {
-	pub fn file_extension(&self) -> &'static str {
+	pub const fn file_extension(&self) -> &'static str {
 		match self {
-			FileFormat::PNG => "png",
-			FileFormat::JPG => "jpg",
+			Self::PNG => "png",
+			Self::JPG => "jpg",
 		}
 	}
 }
 impl LocalCache {
 	pub fn new(file_path: PathBuf) -> Self {
 		info!("Using cache directory: {}", file_path.to_str().unwrap());
+		let start = std::time::Instant::now();
 		std::fs::DirBuilder::new()
 			.recursive(true)
 			.create(&file_path)
@@ -59,7 +60,7 @@ impl LocalCache {
 			cached_images.insert(tile);
 		}
 
-		info!("Found {} cached images", cached_images.len());
+		info!("Found {} cached images. Took: {:.1}ms", cached_images.len(), start.elapsed().as_millis());
 
 		Self {
 			file_path,

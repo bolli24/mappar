@@ -6,7 +6,7 @@ pub struct DebugText {
 }
 
 impl DebugText {
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self { text: Vec::new() }
 	}
 

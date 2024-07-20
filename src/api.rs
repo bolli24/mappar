@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug};
 use std::str::from_utf8;
 use std::time::Instant;
 
@@ -25,9 +25,9 @@ pub enum Error {
 	#[error("Reqwest error: {0}")]
 	Reqwest(#[from] reqwest::Error),
 	#[error("API error: {0} - {1}")]
-	ApiError(StatusCode, String),
+	Api(StatusCode, String),
 	#[error("XML error")]
-	XMLError,
+	XML,
 }
 pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 	info!("Getting data from the API");
@@ -39,7 +39,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 
 	if !response.status().is_success() {
 		error!("Failed to get data from the API");
-		return Err(Error::ApiError(response.status(), response.text().await?));
+		return Err(Error::Api(response.status(), response.text().await?));
 	}
 
 	info!("Status: {:?}", response.status());
@@ -49,7 +49,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 	info!("Time taken: {:?}", start.elapsed());
 	let start = Instant::now();
 
-	let data = parse_osm_xml(&xml).ok_or(Error::XMLError)?;
+	let data = parse_osm_xml(&xml).ok_or(Error::XML)?;
 
 	if cfg!(debug_assertions) {
 		std::fs::write("api_data.xml", xml).expect("Error writing debug xml file");

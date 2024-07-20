@@ -3,8 +3,6 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use eframe::epaint::textures::TextureOptions;
-use eframe::epaint::{ColorImage, ImageData, TextureHandle};
 use egui::{Id, ViewportCommand};
 use log::info;
 use poll_promise::Promise;
@@ -18,7 +16,6 @@ use crate::map_widget::{MapMemory, MapRenderData, MapWidget};
 use crate::render::RenderElement;
 
 pub struct MyApp {
-	skia_texture: TextureHandle,
 	map_data_promise: Option<Promise<Result<MapData, api::Error>>>,
 	render_data_promise: Promise<Vec<RenderElement>>,
 	map_data: Arc<Mutex<MapData>>,
@@ -32,23 +29,14 @@ impl MyApp {
 	pub const APP_NAME: &'static str = "mappar";
 
 	pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-		let tex_manager = cc.egui_ctx.tex_manager();
 		cc.egui_ctx.send_viewport_cmd(ViewportCommand::Maximized(true));
-		let skia_tex = tex_manager.write().alloc(
-			"skia_texture".into(),
-			ImageData::Color(Arc::new(ColorImage::from_rgba_unmultiplied(
-				[256, 256],
-				&vec![0; 256 * 256 * 4],
-			))),
-			TextureOptions::default(),
-		);
 
 		let bounds = Bounds {
 			min: LatLon(51.82887, 12.19731),
 			max: LatLon(51.82344, 12.21268),
 		};
 
-		let camera_pos = bounds.center().to_web_mercator() /*- Point::new(2000.0, 2000.0)*/;
+		let camera_pos = bounds.center().to_web_mercator();
 
 		info!("Camera: {camera_pos:?}");
 		info!("Camera: {:?}", LatLon::from_web_mercator(camera_pos));
@@ -62,15 +50,18 @@ impl MyApp {
 
 		let mut cache_path = eframe::storage_dir(Self::APP_NAME).expect("Failed to get storage dir");
 		cache_path.push("cache");
-		
-		MyApp {
-			skia_texture: TextureHandle::new(cc.egui_ctx.tex_manager(), skia_tex),
+
+		Self {
 			map_data_promise: Some(Promise::spawn_async(api::get_data(Bounds {
 				min: LatLon(51.82887, 12.19731),
 				max: LatLon(51.82344, 12.21268),
 			}))),
 			render_data_promise: Promise::spawn_blocking(Vec::new),
-			imagery_fetcher: Arc::new(Mutex::new(ImageryFetcher::new(esri_imagery(), cache_path))),
+			imagery_fetcher: Arc::new(Mutex::new(ImageryFetcher::new(
+				esri_imagery(),
+				cc.egui_ctx.tex_manager(),
+				cache_path,
+			))),
 			map_data: Arc::new(Mutex::new(MapData::new())),
 			map_widget_id,
 			debug_text: Rc::new(RefCell::new(DebugText::new())),
@@ -95,8 +86,7 @@ impl eframe::App for MyApp {
 					let start = Instant::now();
 					let mut render_data = Vec::new();
 					let map_data = mutex_data.lock().unwrap();
-					let iter = map_data.iter();
-					for element in iter {
+					for element in map_data.iter() {
 						render_data.push(RenderElement::from_map_element(element, &map_data));
 					}
 					info!("Calculated render data. Took: {:?} ", start.elapsed());
@@ -140,7 +130,6 @@ impl eframe::App for MyApp {
 			}*/
 
 			ui.add(MapWidget::new(
-				self.skia_texture.clone(),
 				MapRenderData {
 					elements: self.render_data_promise.ready().unwrap_or(&Vec::new()),
 					imagery_fetcher: self.imagery_fetcher.clone(),
@@ -163,7 +152,9 @@ impl eframe::App for MyApp {
 		});
 		puffin::GlobalProfiler::lock().new_frame();
 		let diff = self.last_update.elapsed();
-		self.debug_text.borrow_mut().add(format!("Frame Time: {:.1}ms", diff.as_millis()));
+		self.debug_text
+			.borrow_mut()
+			.add(format!("Frame Time: {:.1}ms", diff.as_millis()));
 		self.last_update = Instant::now();
 	}
 }

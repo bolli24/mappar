@@ -1,26 +1,25 @@
-use bytes::Buf;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::{slice, thread};
-use egui::load::SizedTexture;
 
-use log::{error, info};
+use bytes::Bytes;
+use epaint::mutex::RwLock;
+use epaint::textures::TextureOptions;
+use epaint::{ColorImage, ImageData, TextureId, TextureManager};
+use image::EncodableLayout;
+use log::error;
 use lru::LruCache;
-use skia_safe::encode::pixmap;
-use skia_safe::image::CachingHint;
-use skia_safe::{Bitmap, Codec, Data, EncodedImageFormat, Image, images, TextureCompressionType};
 use tokio::task::JoinSet;
-use tokio::{task, time};
+use tokio::time;
 
 use crate::imagery::Imagery;
 use crate::local_cache;
 use crate::local_cache::LocalCache;
 
 pub struct ImageryFetcher {
-	memory_cache: Arc<Mutex<LruCache<Tile, Option<Image>>>>,
+	memory_cache: Arc<Mutex<LruCache<Tile, Option<TextureId>>>>,
 	imagery: Arc<Mutex<dyn Imagery>>,
 	pending: Arc<Mutex<HashSet<Tile>>>,
 	local_cache: Arc<tokio::sync::Mutex<LocalCache>>,
@@ -31,14 +30,18 @@ pub type Tile = (u32, u32, u32);
 pub enum Error {
 	#[error("Reqwest error: {0}")]
 	Reqwest(#[from] reqwest::Error),
-	#[error("Error creating image data")]
-	SkiaImageData,
-	#[error("Error creating image")]
-	SkiaImage,
+	#[error("Error creating image: {0}")]
+	ImageDecode(#[from] image::ImageError),
+	#[error("Error reading image data: {0}")]
+	ImageIo(#[from] std::io::Error),
 }
 
 impl ImageryFetcher {
-	pub fn new(imagery: impl Imagery + 'static, cache_directory: PathBuf) -> Self {
+	pub fn new(
+		imagery: impl Imagery + 'static,
+		texture_manager: Arc<RwLock<TextureManager>>,
+		cache_directory: PathBuf,
+	) -> Self {
 		let fetcher = Self {
 			memory_cache: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(4192).unwrap()))),
 			imagery: Arc::new(Mutex::new(imagery)),
@@ -51,7 +54,13 @@ impl ImageryFetcher {
 		let imagery = fetcher.imagery.clone();
 		let local_cache = fetcher.local_cache.clone();
 
-		tokio::spawn(Self::fetching_loop(pending, cache, imagery, local_cache));
+		tokio::spawn(Self::fetching_loop(
+			pending,
+			cache,
+			imagery,
+			local_cache,
+			texture_manager,
+		));
 
 		fetcher
 	}
@@ -62,13 +71,15 @@ impl ImageryFetcher {
 
 	async fn fetching_loop(
 		pending: Arc<Mutex<HashSet<Tile>>>,
-		cache: Arc<Mutex<LruCache<Tile, Option<Image>>>>,
+		cache: Arc<Mutex<LruCache<Tile, Option<TextureId>>>>,
 		imagery: Arc<Mutex<dyn Imagery>>,
 		local_cache: Arc<tokio::sync::Mutex<LocalCache>>,
+		texture_manager: Arc<RwLock<TextureManager>>,
 	) {
+		const MAX_CONCURRENT: usize = 8;
 		let mut join_set: JoinSet<()> = JoinSet::new();
 		let mut interval = time::interval(Duration::from_millis(10));
-		const MAX_CONCURRENT: usize = 8;
+
 		loop {
 			interval.tick().await;
 			if pending.lock().unwrap().is_empty() {
@@ -81,44 +92,21 @@ impl ImageryFetcher {
 			let mut pending = pending.lock().unwrap();
 			let tile = *pending.iter().next().unwrap();
 			pending.remove(&tile);
-			cache.lock().unwrap().put(tile, None);
+			drop(pending);
+			if let Some((_, Some(texture_id))) = cache.lock().unwrap().push(tile, None) {
+				texture_manager.write().free(texture_id);
+			}
 			let cache = cache.clone();
 			let imagery = imagery.clone();
 			let local_cache = local_cache.clone();
+			let texture_manager = texture_manager.clone();
 			join_set.spawn(async move {
-				let result = Self::fetch_tile(imagery, local_cache, tile).await;
+				let result = Self::fetch_tile(&texture_manager, imagery, local_cache, tile).await;
 				match result {
-					Ok(image) => {
-						let info = image.image_info();
-						let bytes_per_pixel = info.bytes_per_pixel();
-						if  bytes_per_pixel != 4{
-							error!("Image has wrong number of bytes per pixel: {bytes_per_pixel}");
-							return;
+					Ok(texture) => {
+						if let Some((_, Some(texture_id))) = cache.lock().unwrap().push(tile, Some(texture)) {
+							texture_manager.write().free(texture_id);
 						}
-
-						let mut bitmap = Bitmap::new();
-						if !bitmap.set_info(info, None) {
-							error!("Couldn't set bitmap info.");
-							return;
-						}
-
-						if !bitmap.try_alloc_pixels() {
-							error!("Couldn't allocating pixels.");
-							return;
-						}
-						let pixels: &mut [u32] = unsafe {
-							slice::from_raw_parts_mut(bitmap.pixels() as *mut u32, (bitmap.width() * bitmap.height()) as usize)
-						};
-						if !image.read_pixels(info, pixels, bitmap.row_bytes(), (0,0), CachingHint::Allow) {
-							error!("Couldn't read image into bitmap.");
-							return;
-						}
-
-						let raster = images::raster_from_bitmap(&bitmap).unwrap();
-
-						//texture
-						
-						cache.lock().unwrap().put(tile, Some(raster));
 					}
 					Err(error) => {
 						error!("Error fetching tile {tile:?}: {error}");
@@ -129,10 +117,11 @@ impl ImageryFetcher {
 	}
 
 	async fn fetch_tile(
+		texture_manager: &Arc<RwLock<TextureManager>>,
 		imagery: Arc<Mutex<dyn Imagery>>,
 		local_cache: Arc<tokio::sync::Mutex<LocalCache>>,
 		tile: Tile,
-	) -> Result<Image, Error> {
+	) -> Result<TextureId, Error> {
 		// dummy implementation
 		/*
 		sleep(Duration::from_millis(160)).await;
@@ -146,12 +135,10 @@ impl ImageryFetcher {
 			.get_image(tile, local_cache::FileFormat::JPG)
 			.await
 		{
-			let data = Data::from_stream(&mut image_data.as_ref(), image_data.len()).ok_or(Error::SkiaImageData)?;
-			return Image::from_encoded(data).ok_or(Error::SkiaImage);
+			return Self::create_texture(texture_manager, tile, &image_data);
 		}
 
 		let url = imagery.lock().unwrap().tile_url(tile.0, tile.1, tile.2);
-		info!("Fetching tile: {url}");
 
 		let response = reqwest::Client::new().get(url.clone()).send().await?;
 
@@ -162,14 +149,38 @@ impl ImageryFetcher {
 			.save_image(tile, &bytes, local_cache::FileFormat::JPG)
 			.await; // TODO: do this on a separate thread
 
-		let data = Data::from_stream(&mut bytes.as_ref(), bytes.len()).ok_or(Error::SkiaImageData)?;
-		Image::from_encoded(data).ok_or(Error::SkiaImage)
+		Self::create_texture(texture_manager, tile, &bytes)
 	}
 
-	pub fn get_tile(&mut self, x: u32, y: u32, zoom: u32) -> Option<Image> {
+	fn create_texture(
+		texture_manager: &Arc<RwLock<TextureManager>>,
+		tile: Tile,
+		bytes: &Bytes,
+	) -> Result<TextureId, Error> {
+		use image::io::Reader as ImageReader;
+		use std::io::Cursor;
+
+		let decoded = ImageReader::new(Cursor::new(bytes))
+			.with_guessed_format()?
+			.decode()?
+			.to_rgba8();
+		let color_image = Arc::new(ColorImage::from_rgba_unmultiplied(
+			[decoded.width() as usize, decoded.height() as usize],
+			decoded.as_bytes(),
+		));
+		let texture_id = texture_manager.write().alloc(
+			format!("tile_{}_{}_{}", tile.0, tile.1, tile.2),
+			ImageData::Color(color_image),
+			TextureOptions::LINEAR,
+		);
+
+		Ok(texture_id)
+	}
+
+	pub fn get_tile(&mut self, x: u32, y: u32, zoom: u32) -> Option<TextureId> {
 		let mut pending = self.pending.lock().unwrap();
-		if let Some(image) = self.memory_cache.lock().unwrap().get(&(x, y, zoom)) {
-			return image.clone();
+		if let Some(texture) = self.memory_cache.lock().unwrap().get(&(x, y, zoom)) {
+			return *texture;
 		}
 		pending.insert((x, y, zoom));
 		None
@@ -202,7 +213,7 @@ impl ImageryFetcher {
 		}
 	}
 
-	fn get_larger_tile(&self, tile: Tile) -> Option<Tile> {
+	const fn get_larger_tile(tile: Tile) -> Option<Tile> {
 		if tile.2 == 0 {
 			None
 		} else {
@@ -228,7 +239,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_fetch_tile() {
 		crate::init_test_logger();
-
+		todo!();
 		let mut fetcher = ImageryFetcher::new(esri_imagery(), std::path::PathBuf::from("cache"));
 		let image = fetcher.get_tile(0, 0, 0);
 		assert!(image.is_none());

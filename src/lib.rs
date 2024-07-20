@@ -7,11 +7,10 @@ mod app;
 mod debug_text;
 mod imagery;
 mod imagery_fetcher;
+mod local_cache;
 mod map_data;
 mod map_widget;
 mod render;
-mod skia;
-mod local_cache;
 
 #[cfg(test)]
 static INIT: std::sync::Once = std::sync::Once::new();

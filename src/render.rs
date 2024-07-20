@@ -1,47 +1,30 @@
+use egui::Color32;
 use glam::DVec2;
-use skia_safe::{Color, Paint};
 
 use crate::map_data::{Element, MapData, MapElement};
 
-pub type SkiaPos = DVec2;
+pub type RenderPos = DVec2;
 
 pub enum RenderElement {
-	Node(SkiaPos, Style),
-	Way(Vec<SkiaPos>, Style),
+	Node(RenderPos, Style),
+	Way(Vec<RenderPos>, Style),
 	Collection(Vec<RenderElement>, Style),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Style {
-	Colored { color: Color, size: f32, fill: bool },
+	Colored { color: Color32, size: f32, fill: bool },
 	Invisible,
 }
 
-impl Style {
-	pub fn get_paint(&self, scale: f32) -> Option<Paint> {
-		match self {
-			Self::Colored { color, size, fill } => {
-				let mut paint = Paint::default();
-				paint.set_color(*color);
-				let size = f32::max(size / scale.sqrt(), size / scale);
-				paint.set_stroke_width(size);
-				paint.set_stroke(!fill);
-				paint.set_anti_alias(true);
-				Some(paint)
-			}
-			Self::Invisible => None,
-		}
-	}
-}
-
 pub const DEFAULT_WAY_STYLE: Style = Style::Colored {
-	color: Color::BLACK,
+	color: Color32::BLACK,
 	size: 1.0,
 	fill: false,
 };
 
 pub const DEFAULT_NODE_STYLE: Style = Style::Colored {
-	color: Color::BLACK,
+	color: Color32::BLACK,
 	size: 5.0,
 	fill: true,
 };
@@ -49,7 +32,7 @@ pub const DEFAULT_NODE_STYLE: Style = Style::Colored {
 impl RenderElement {
 	pub fn from_map_element(element: &MapElement, map_data: &MapData) -> Self {
 		match &element.element {
-			Element::Node { pos } => Self::Node(pos.to_web_mercator_skia(), DEFAULT_NODE_STYLE),
+			Element::Node { pos } => Self::Node(pos.to_web_mercator_render(), DEFAULT_NODE_STYLE),
 			Element::Way { nodes } => {
 				let nodes: Vec<DVec2> = nodes
 					.iter()
@@ -57,7 +40,7 @@ impl RenderElement {
 						map_data
 							.get_node_pos(*n)
 							.unwrap_or_else(|| panic!("Couldn't get pos of node {n}"))
-							.to_web_mercator_skia()
+							.to_web_mercator_render()
 					})
 					.collect();
 

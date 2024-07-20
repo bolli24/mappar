@@ -6,17 +6,19 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-egui = "0.28.1"
+egui = { version = "0.28.1", features = ["mint"] }
 eframe = { version = "0.28.1", default-features = false, features = [
     # "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts",
     "wgpu",
     "x11",
     "wayland",
-    "persistence"
+    "persistence",
 ] }
-skia-safe = "0.75.0"
-glam = { version = "0.28.0", features = ["serde"] }
+epaint = { version = "0.28.1", features = ["mint"] }
+image = { version = "0.25.1" ,default-features = false, features = ["jpeg"]}
+glam = { version = "0.28.0", features = ["serde", "mint"] }
+mint = "0.5.9"
 
 log = "0.4"
 simple_logger = "5.0.0"

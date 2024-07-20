@@ -1,12 +1,11 @@
 use std::collections::hash_map::Values;
 use std::collections::HashMap;
-use std::f64::consts::PI;
+use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 use std::fmt::Debug;
 
+use crate::render::RenderPos;
 use chrono::{DateTime, Utc};
-use glam::DVec2;
-
-use crate::render::SkiaPos;
+use glam::{dvec2, DVec2};
 
 #[derive(Debug)]
 pub struct MapData {
@@ -83,28 +82,19 @@ impl LatLon {
 	pub fn to_web_mercator(self) -> DVec2 {
 		DVec2 {
 			x: RADIUS_EARTH * self.1.to_radians(),
-			y: f64::ln(f64::tan(PI / 4.0 + self.0.to_radians() / 2.0)) * RADIUS_EARTH,
+			y: f64::ln(f64::tan(self.0.to_radians().mul_add(0.5, FRAC_PI_4))) * RADIUS_EARTH,
 		}
 	}
 
 	#[inline]
-	pub fn to_web_mercator_skia(self) -> SkiaPos {
-		DVec2 {
-			x: RADIUS_EARTH * self.1.to_radians(),
-			y: -f64::ln(f64::tan(PI / 4.0 + self.0.to_radians() / 2.0)) * RADIUS_EARTH,
-		}
+	pub fn to_web_mercator_render(self) -> RenderPos {
+		let pos = self.to_web_mercator();
+		dvec2(pos.x, -pos.y)
 	}
 
 	pub fn from_web_mercator(pos: DVec2) -> Self {
-		LatLon(
-			(2.0 * f64::atan(f64::exp(pos.y / RADIUS_EARTH)) - PI / 2.0).to_degrees(),
-			(pos.x / RADIUS_EARTH).to_degrees(),
-		)
-	}
-
-	pub fn from_web_mercator_skia(pos: SkiaPos) -> Self {
-		LatLon(
-			(2.0 * f64::atan(f64::exp(-pos.y / RADIUS_EARTH)) - PI / 2.0).to_degrees(),
+		Self(
+			f64::atan(f64::exp(pos.y / RADIUS_EARTH)).mul_add(2.0, -FRAC_PI_2).to_degrees(),
 			(pos.x / RADIUS_EARTH).to_degrees(),
 		)
 	}
@@ -175,9 +165,9 @@ pub enum ElementType {
 impl ElementType {
 	pub fn from_str(str: &str) -> Option<Self> {
 		match str {
-			"node" => Some(ElementType::Node),
-			"way" => Some(ElementType::Way),
-			"relation" => Some(ElementType::Relation),
+			"node" => Some(Self::Node),
+			"way" => Some(Self::Way),
+			"relation" => Some(Self::Relation),
 			_ => None,
 		}
 	}
@@ -197,10 +187,11 @@ pub enum Element {
 	Relation { members: Vec<Member> },
 }
 
+#[cfg(test)]
 mod tests {
-	use glam::{dvec2, uvec2};
-	use log::info;
 	use super::*;
+	use glam::dvec2;
+	use log::info;
 
 	#[test]
 	fn test_lat_lon() {
@@ -211,21 +202,5 @@ mod tests {
 		let lat_lon2 = LatLon::from_web_mercator(web_mercator);
 		let diff = (lat_lon.0 - lat_lon2.0).abs() + (lat_lon.1 - lat_lon2.1).abs();
 		assert!(diff < 0.0001);
-		
-		let zoom_level = 8.0;
-		let scale = 2.0f64.powi(zoom_level as i32);
-		let mut siny = lat_lon.0.to_radians().sin();
-		siny = siny.clamp(-0.9999, 0.9999);
-		const TILE_SIZE: f64 = 256.0;
-		let world_coords = dvec2(
-			0.5 + lat_lon.1 / 360.0,
-			0.5 - f64::ln((1.0 + siny) / (1.0 - siny)) / (4.0 * PI),
-		);
-
-		let tile_coords = (world_coords * scale).floor().as_uvec2();
-		let world_coords = world_coords * TILE_SIZE;
-
-		info!("World coords: {world_coords}");
-		info!("Tile coords: {tile_coords}");
 	}
 }
