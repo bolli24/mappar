@@ -19,7 +19,7 @@ pub enum FileFormat {
 }
 
 impl FileFormat {
-	pub const fn file_extension(&self) -> &'static str {
+	pub const fn file_extension(self) -> &'static str {
 		match self {
 			Self::PNG => "png",
 			Self::JPG => "jpg",

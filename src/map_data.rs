@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 use std::fmt::Debug;
 
-use crate::render::RenderPos;
 use chrono::{DateTime, Utc};
 use glam::{dvec2, DVec2};
 
@@ -87,14 +86,16 @@ impl LatLon {
 	}
 
 	#[inline]
-	pub fn to_web_mercator_render(self) -> RenderPos {
+	pub fn to_web_mercator_render(self) -> DVec2 {
 		let pos = self.to_web_mercator();
 		dvec2(pos.x, -pos.y)
 	}
 
 	pub fn from_web_mercator(pos: DVec2) -> Self {
 		Self(
-			f64::atan(f64::exp(pos.y / RADIUS_EARTH)).mul_add(2.0, -FRAC_PI_2).to_degrees(),
+			f64::atan(f64::exp(pos.y / RADIUS_EARTH))
+				.mul_add(2.0, -FRAC_PI_2)
+				.to_degrees(),
 			(pos.x / RADIUS_EARTH).to_degrees(),
 		)
 	}

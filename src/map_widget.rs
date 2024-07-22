@@ -6,7 +6,8 @@ use std::sync::{Arc, Mutex};
 
 use eframe::emath::RectTransform;
 use egui::{
-	pos2, vec2, Color32, Context, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, ScrollArea, Sense, Vec2, Widget,
+	pos2, vec2, Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, ScrollArea, Sense, Vec2, Widget,
+	WidgetInfo,
 };
 use epaint::{PathShape, PathStroke, RectShape, Rounding, Shape};
 use glam::{dvec2, uvec2, DVec2, UVec2};
@@ -16,7 +17,8 @@ use serde::{Deserialize, Serialize};
 use crate::debug_text::DebugText;
 use crate::imagery_fetcher::ImageryFetcher;
 use crate::map_data::{LatLon, CIRCUMFERENCE_EARTH};
-use crate::render::{RenderElement, Style};
+use crate::render::{DetailedElement, RenderElement, Style};
+
 
 const ZOOM_SPEED: f64 = 5.0;
 
@@ -43,30 +45,37 @@ impl<'a> MapWidget<'a> {
 	// We translate every element instead of moving the canvas to avoid errors
 	// due to epaint only supporting 32-bit floating point number
 	#[inline]
-	fn draw_element(element: &RenderElement, transform: RectTransform, camera_pos: DVec2, scale: f32) -> Option<Shape> {
-		if *element.style() == Style::Invisible {
+	fn draw_element(
+		element: &DetailedElement,
+		transform: RectTransform,
+		camera_pos: DVec2,
+		map_scale: f32,
+		ui_scale: f32,
+		pointer_pos: Option<Pos2>,
+	) -> Option<Shape> {
+		if element.style == Style::Invisible {
 			return None;
 		}
 
-		let shape = match element {
-			RenderElement::Node(pos, _) => Shape::rect_filled(
-				Rect::from_center_size(transform * dvec2_to_pos(*pos - camera_pos), Vec2::splat(5.0 * scale)),
+		let shape = match &element.element {
+			RenderElement::Node(pos) => Shape::rect_filled(
+				Rect::from_center_size(transform * dvec2_to_pos(*pos - camera_pos), Vec2::splat(3.0 * ui_scale)),
 				Rounding::ZERO,
 				Color32::BLACK,
 			),
-			RenderElement::Way(nodes, _) => {
+			RenderElement::Way(nodes) => {
 				let nodes: Vec<Pos2> = nodes
 					.iter()
 					.map(|p| transform * dvec2_to_pos(*p - camera_pos))
 					.collect();
-				let stroke = PathStroke::new(1.0 * scale, Color32::BLACK);
+				let stroke = PathStroke::new(1.5 * ui_scale, Color32::BLACK);
 				if nodes.first() == nodes.last() {
 					Shape::Path(PathShape::closed_line(nodes, stroke))
 				} else {
 					Shape::Path(PathShape::line(nodes, stroke))
 				}
 			}
-			RenderElement::Collection(_, _) => {
+			RenderElement::Collection(_) => {
 				todo!()
 			}
 		};
@@ -76,35 +85,33 @@ impl<'a> MapWidget<'a> {
 	fn draw_tiles(
 		painter: &Painter,
 		viewport: Rect,
+		transform: RectTransform,
 		imagery_fetcher: &Arc<Mutex<ImageryFetcher>>,
 		camera_pos: DVec2,
 		zoom_level: f64,
+		ui_scale: f32,
 		debug_text: &mut DebugText,
 	) {
 		puffin::profile_function!();
+		let mut imagery_fetcher = imagery_fetcher.lock().unwrap();
 		debug_text.add(format!(
 			"Local cached tiles: {}",
-			imagery_fetcher
-				.lock()
-				.unwrap()
-				.local_cached_count()
-				.map_or(-1, |c| c as i32)
+			imagery_fetcher.local_cached_count().map_or(-1, |c| c as i32)
 		));
 		debug_text.add(format!(
-			"Memory cached tiles: {}",
-			imagery_fetcher.lock().unwrap().memory_cached_count()
+			"Memory cached tiles: {} (≈{}MiB)",
+			imagery_fetcher.memory_cached_count(),
+			imagery_fetcher.vram_used()
 		));
-		debug_text.add(format!(
-			"Pending tiles: {}",
-			imagery_fetcher.lock().unwrap().pending_count(),
-		));
+		debug_text.add(format!("Pending tiles: {}", imagery_fetcher.pending_count(),));
 
 		let scale = Self::scale(zoom_level);
 		let corners = Self::get_world_corners(viewport, camera_pos, scale);
 
-		let base_tile_size = imagery_fetcher.lock().unwrap().imagery().lock().unwrap().tile_size();
-		let max_zoom = imagery_fetcher.lock().unwrap().imagery().lock().unwrap().max_zoom();
-		let tile_zoom_level = u32::min(zoom_level.round() as u32 + 1, max_zoom);
+		let base_tile_size = imagery_fetcher.imagery().lock().unwrap().tile_size();
+		let max_zoom = imagery_fetcher.imagery().lock().unwrap().max_zoom();
+
+		let tile_zoom_level = u32::min((zoom_level + (ui_scale as f64 - 1.0)).round() as u32, max_zoom);
 
 		let tile_size = ((CIRCUMFERENCE_EARTH) / f64::exp2(tile_zoom_level as f64) / 256.0) * base_tile_size as f64;
 		let (x_tiles, y_tiles) = Self::tiles_in_rect(corners, tile_zoom_level);
@@ -116,7 +123,8 @@ impl<'a> MapWidget<'a> {
 
 		for (x, y) in x_tiles.cartesian_product(y_tiles) {
 			puffin::profile_scope!("Draw Tile", format!("{x} {y}"));
-			let tile = imagery_fetcher.lock().unwrap().get_tile(x, y, tile_zoom_level);
+			// TODO don't fetch new tiles when moving fast
+			let tile = imagery_fetcher.get_tile(x, y, tile_zoom_level, true);
 			if let Some(image) = tile {
 				const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 				let coords = Self::get_tile_pos(x, y, tile_zoom_level);
@@ -126,12 +134,6 @@ impl<'a> MapWidget<'a> {
 				painter.image(image, rect, UV, Color32::WHITE);
 			};
 		}
-		// TODO: Align properly with viewport.
-		// let debug_rect = Rect::from_two_pos(
-		// 	transform * dvec2_to_pos(corners.0 - camera_pos),
-		// 	transform * dvec2_to_pos(corners.1 - camera_pos),
-		// );
-		// painter.debug_rect(debug_rect, Color32::RED, "Debug Rect");
 	}
 
 	fn tiles_in_rect(corners: (DVec2, DVec2), zoom_level: u32) -> (RangeInclusive<u32>, RangeInclusive<u32>) {
@@ -169,7 +171,14 @@ impl<'a> MapWidget<'a> {
 	}
 
 	fn get_world_corners(view: Rect, camera_pos: DVec2, scale: f64) -> (DVec2, DVec2) {
-		let half = dvec2(view.width() as f64 * 0.5, view.height() as f64 * 0.5) * scale;
+		let half = (dvec2(view.width() as f64 * 0.5, view.height() as f64 * 0.5) + pos_to_dvec2(view.min)) * scale;
+		(camera_pos - half, camera_pos + half)
+	}
+
+	fn get_tile_bound(view: Rect, camera_pos: DVec2, scale: f64) -> (DVec2, DVec2) {
+		const EXPAND: f64 = 1.2; // Load some extra tiles
+		let half =
+			(dvec2(view.width() as f64 * 0.5, view.height() as f64 * 0.5) + pos_to_dvec2(view.min)) * scale * EXPAND;
 		(camera_pos - half, camera_pos + half)
 	}
 
@@ -195,13 +204,15 @@ impl Widget for MapWidget<'_> {
 				Frame::canvas(ui.style()).show(ui, |ui| {
 					let ui_scale = ui.ctx().pixels_per_point();
 					let mut debug_text = self.debug_text.borrow_mut();
-					let (viewport, response) = ui.allocate_at_least(ui.available_size(), Sense::click_and_drag());
-					let painter = ui.painter_at(viewport);
+					let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 					ui.ctx().request_repaint();
+					let clip_rect = ui.clip_rect();
+					debug_text.add(format!("Clip Rect: {:?}", clip_rect));
+					let viewport = response.interact_rect;
 
 					let mut shapes: Vec<Shape> = Vec::new();
 
-					let mut mem = MapMemory::load_or_new(&response.ctx, self.id);
+					let mut mem = MapMemory::load_or_default(&response.ctx, self.id);
 
 					let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y as f64;
 					if zoom != 0.0 {
@@ -224,6 +235,7 @@ impl Widget for MapWidget<'_> {
 					debug_text.add(format!("Camera: {:?}", mem.camera_pos));
 					debug_text.add(format!("Zoom: {}", mem.zoom_level));
 					debug_text.add(format!("Scale: {scale}"));
+					debug_text.add(format!("UI Scale: {ui_scale}"));
 
 					let camera_rect = viewport.translate(-viewport.size() / 2.0) / scale as f32;
 					let transform = RectTransform::from_to(camera_rect, viewport);
@@ -242,16 +254,19 @@ impl Widget for MapWidget<'_> {
 						&self.render_data.imagery_fetcher,
 						mem.camera_pos,
 						mem.zoom_level,
+						ui_scale,
 						&mut self.debug_text.borrow_mut(),
 					);
 
-					let camera_skia = dvec2(mem.camera_pos.x, -mem.camera_pos.y);
+					let camera_offset = dvec2(mem.camera_pos.x, -mem.camera_pos.y);
+					let pointer_pos = response.ctx.input(|i| i.pointer.latest_pos());
 					for element in self.render_data.elements {
-						if let Some(shape) = Self::draw_element(element, transform, camera_skia, scale as f32) {
+						if let Some(shape) =
+							Self::draw_element(element, transform, camera_offset, scale as f32, ui_scale, pointer_pos)
+						{
 							shapes.push(shape);
 						}
 					}
-
 					painter.extend(shapes);
 					mem.store(&response.ctx, self.id);
 
@@ -261,6 +276,10 @@ impl Widget for MapWidget<'_> {
 			.inner
 			.response
 	}
+}
+
+pub const fn pos_to_dvec2(pos: Pos2) -> DVec2 {
+	dvec2(pos.x as f64, pos.y as f64)
 }
 
 pub const fn dvec2_to_pos(dvec: DVec2) -> Pos2 {

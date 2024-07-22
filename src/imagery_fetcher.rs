@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
+use std::ops::Div;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -18,6 +19,7 @@ use crate::imagery::Imagery;
 use crate::local_cache;
 use crate::local_cache::LocalCache;
 
+// TODO separate local cache fetching from online fetching
 pub struct ImageryFetcher {
 	memory_cache: Arc<Mutex<LruCache<Tile, Option<TextureId>>>>,
 	imagery: Arc<Mutex<dyn Imagery>>,
@@ -177,12 +179,15 @@ impl ImageryFetcher {
 		Ok(texture_id)
 	}
 
-	pub fn get_tile(&mut self, x: u32, y: u32, zoom: u32) -> Option<TextureId> {
-		let mut pending = self.pending.lock().unwrap();
+	pub fn get_tile(&mut self, x: u32, y: u32, zoom: u32, fetch: bool) -> Option<TextureId> {
+		puffin::profile_function!("get_tile");
+		let mut pending = self.pending.lock().unwrap(); // Lock this before memory_cache
 		if let Some(texture) = self.memory_cache.lock().unwrap().get(&(x, y, zoom)) {
 			return *texture;
 		}
-		pending.insert((x, y, zoom));
+		if fetch {
+			pending.insert((x, y, zoom));
+		}
 		None
 	}
 
@@ -196,6 +201,11 @@ impl ImageryFetcher {
 
 	pub fn memory_cached_count(&self) -> usize {
 		self.memory_cache.lock().unwrap().len()
+	}
+
+	/// Estimated VRAM usages of tiles in MiB
+	pub fn vram_used(&self) -> usize {
+		(self.memory_cached_count() * self.imagery().lock().unwrap().tile_size().pow(2) as usize * 4).div(1024 * 1024)
 	}
 
 	pub fn local_cached_count(&self) -> Option<usize> {

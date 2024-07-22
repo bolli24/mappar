@@ -13,11 +13,12 @@ use crate::imagery::esri_imagery;
 use crate::imagery_fetcher::ImageryFetcher;
 use crate::map_data::{Bounds, LatLon, MapData};
 use crate::map_widget::{MapMemory, MapRenderData, MapWidget};
-use crate::render::RenderElement;
+
+use crate::render::{DetailedElement, RenderElement};
 
 pub struct MyApp {
 	map_data_promise: Option<Promise<Result<MapData, api::Error>>>,
-	render_data_promise: Promise<Vec<RenderElement>>,
+	render_data_promise: Promise<Vec<DetailedElement>>,
 	map_data: Arc<Mutex<MapData>>,
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
