@@ -10,6 +10,7 @@ mod imagery_fetcher;
 mod local_cache;
 mod map_data;
 mod map_widget;
+mod memory;
 mod render;
 
 #[cfg(test)]

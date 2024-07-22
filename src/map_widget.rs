@@ -14,6 +14,7 @@ use glam::{dvec2, uvec2, DVec2, UVec2};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
+use crate::memory::Memory;
 use crate::debug_text::DebugText;
 use crate::imagery_fetcher::ImageryFetcher;
 use crate::map_data::{LatLon, CIRCUMFERENCE_EARTH};
@@ -29,7 +30,7 @@ pub struct MapWidget<'a> {
 }
 
 pub struct MapRenderData<'a> {
-	pub elements: &'a [RenderElement],
+	pub elements: &'a [DetailedElement],
 	pub imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 }
 
@@ -251,6 +252,7 @@ impl Widget for MapWidget<'_> {
 					Self::draw_tiles(
 						&painter,
 						viewport,
+						transform,
 						&self.render_data.imagery_fetcher,
 						mem.camera_pos,
 						mem.zoom_level,
@@ -286,10 +288,15 @@ pub const fn dvec2_to_pos(dvec: DVec2) -> Pos2 {
 	Pos2::new(dvec.x as f32, dvec.y as f32)
 }
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, macros::Memory)]
 pub struct MapMemory {
 	pub zoom_level: f64,
 	pub camera_pos: DVec2,
+}
+impl Default for MapMemory {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl MapMemory {
@@ -298,16 +305,5 @@ impl MapMemory {
 			zoom_level: 1.0,
 			camera_pos: dvec2(0.0, 0.0),
 		}
-	}
-
-	pub fn load_or_new(ctx: &Context, id: Id) -> Self {
-		ctx.data_mut(|d| *d.get_persisted_mut_or(id, Self::new()))
-	}
-	pub fn load(ctx: &Context, id: Id) -> Option<Self> {
-		ctx.data_mut(|d| d.get_persisted(id))
-	}
-
-	pub fn store(self, ctx: &Context, id: Id) {
-		ctx.data_mut(|d| d.insert_persisted(id, self));
 	}
 }

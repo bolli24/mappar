@@ -8,6 +8,7 @@ use log::info;
 use poll_promise::Promise;
 
 use crate::api;
+use crate::memory::Memory;
 use crate::debug_text::DebugText;
 use crate::imagery::esri_imagery;
 use crate::imagery_fetcher::ImageryFetcher;
@@ -88,7 +89,7 @@ impl eframe::App for MyApp {
 					let mut render_data = Vec::new();
 					let map_data = mutex_data.lock().unwrap();
 					for element in map_data.iter() {
-						render_data.push(RenderElement::from_map_element(element, &map_data));
+						render_data.push(DetailedElement::from_map_element(element, &map_data));
 					}
 					info!("Calculated render data. Took: {:?} ", start.elapsed());
 
