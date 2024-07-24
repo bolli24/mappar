@@ -159,10 +159,9 @@ impl ImageryFetcher {
 		tile: Tile,
 		bytes: &Bytes,
 	) -> Result<TextureId, Error> {
-		use image::io::Reader as ImageReader;
 		use std::io::Cursor;
 
-		let decoded = ImageReader::new(Cursor::new(bytes))
+		let decoded = image::ImageReader::new(Cursor::new(bytes))
 			.with_guessed_format()?
 			.decode()?
 			.to_rgba8();

@@ -1,26 +1,37 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::Instant;
 
 use egui::{Id, ViewportCommand};
-use log::info;
-use poll_promise::Promise;
+use log::{error, info};
+use tokio::sync::watch::{channel, Receiver, Sender};
 
-use crate::api;
-use crate::memory::Memory;
+use crate::api::get_data;
 use crate::debug_text::DebugText;
 use crate::imagery::esri_imagery;
 use crate::imagery_fetcher::ImageryFetcher;
 use crate::map_data::{Bounds, LatLon, MapData};
 use crate::map_widget::{MapMemory, MapRenderData, MapWidget};
+use crate::memory::Memory;
 
-use crate::render::{DetailedElement, RenderElement};
+use crate::render::DetailedElement;
+
+pub struct Channel<T> {
+	sender: Sender<T>,
+	receiver: Receiver<T>,
+}
+
+impl<T> From <(Sender<T>, Receiver<T>)> for Channel<T> {
+	fn from((sender, receiver): (Sender<T>, Receiver<T>)) -> Self {
+		Self { sender, receiver }
+	}
+}
 
 pub struct MyApp {
-	map_data_promise: Option<Promise<Result<MapData, api::Error>>>,
-	render_data_promise: Promise<Vec<DetailedElement>>,
-	map_data: Arc<Mutex<MapData>>,
+	map_data: Channel<MapData>,
+	render_data: Channel<Vec<DetailedElement>>,
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	debug_text: Rc<RefCell<DebugText>>,
@@ -53,49 +64,55 @@ impl MyApp {
 		let mut cache_path = eframe::storage_dir(Self::APP_NAME).expect("Failed to get storage dir");
 		cache_path.push("cache");
 
-		Self {
-			map_data_promise: Some(Promise::spawn_async(api::get_data(Bounds {
-				min: LatLon(51.82887, 12.19731),
-				max: LatLon(51.82344, 12.21268),
-			}))),
-			render_data_promise: Promise::spawn_blocking(Vec::new),
+		let app = Self {
+			map_data: channel(MapData::new()).into(),
+			render_data: channel(Vec::new()).into(),
 			imagery_fetcher: Arc::new(Mutex::new(ImageryFetcher::new(
 				esri_imagery(),
 				cc.egui_ctx.tex_manager(),
 				cache_path,
 			))),
-			map_data: Arc::new(Mutex::new(MapData::new())),
 			map_widget_id,
 			debug_text: Rc::new(RefCell::new(DebugText::new())),
 			last_update: Instant::now(),
-		}
+		};
+
+		let map_data_sender = app.map_data.sender.clone();
+
+		tokio::spawn(async move {
+			let map_data = get_data(bounds).await;
+			match map_data {
+				Ok(map_data) => {
+					map_data_sender.send(map_data).unwrap();
+				}
+				Err(err) => {
+					error!("Error fetching data:");
+					error!("{:?}", err);
+				}
+			}
+		});
+
+		app
 	}
 }
 
 impl eframe::App for MyApp {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-		if self.map_data_promise.is_some() {
-			if let Some(Ok(_)) = self.map_data_promise.as_mut().unwrap().ready() {
-				let new_map_data = self
-					.map_data_promise
-					.take()
-					.unwrap()
-					.block_and_take()
-					.expect("Error fetching data");
-				*self.map_data.lock().unwrap() = new_map_data;
-				let mutex_data = self.map_data.clone();
-				self.render_data_promise = Promise::spawn_thread("render_data_calc", move || {
-					let start = Instant::now();
-					let mut render_data = Vec::new();
-					let map_data = mutex_data.lock().unwrap();
-					for element in map_data.iter() {
-						render_data.push(DetailedElement::from_map_element(element, &map_data));
-					}
-					info!("Calculated render data. Took: {:?} ", start.elapsed());
 
-					render_data
-				});
-			}
+		if self.map_data.receiver.borrow_and_update().has_changed() {
+			let map_data = self.map_data.receiver.clone();
+			let render_data_sender = self.render_data.sender.clone();
+			thread::spawn(move || {
+				let start = Instant::now();
+				let mut render_data = Vec::new();
+				let map_data = map_data.borrow();
+				for element in map_data.iter() {
+					render_data.push(DetailedElement::from_map_element(element, &map_data));
+				}
+				info!("Calculated render data. Took: {:?} ", start.elapsed());
+
+				render_data_sender.send(render_data).unwrap();
+			});
 		}
 
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -133,7 +150,7 @@ impl eframe::App for MyApp {
 
 			ui.add(MapWidget::new(
 				MapRenderData {
-					elements: self.render_data_promise.ready().unwrap_or(&Vec::new()),
+					elements: &self.render_data.receiver.borrow(),
 					imagery_fetcher: self.imagery_fetcher.clone(),
 				},
 				self.map_widget_id,
