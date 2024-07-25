@@ -1,12 +1,15 @@
-use std::fmt::{Debug};
-use std::str::from_utf8;
-use std::time::Instant;
-
 use log::{error, info, warn};
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 use reqwest::{Client, StatusCode};
+use std::fmt::Debug;
+use std::str::from_utf8;
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 use crate::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member, Tag};
 
@@ -51,6 +54,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 
 	let data = parse_osm_xml(&xml).ok_or(Error::XML)?;
 
+	#[cfg(not(target_arch = "wasm32"))]
 	if cfg!(debug_assertions) {
 		std::fs::write("api_data.xml", xml).expect("Error writing debug xml file");
 	}

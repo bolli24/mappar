@@ -2,7 +2,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread;
+
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 use egui::{Id, ViewportCommand};
 use log::{error, info};
@@ -11,6 +15,7 @@ use tokio::sync::watch::{channel, Receiver, Sender};
 use crate::api::get_data;
 use crate::debug_text::DebugText;
 use crate::imagery::esri_imagery;
+use crate::imagery_fetcher;
 use crate::imagery_fetcher::ImageryFetcher;
 use crate::map_data::{Bounds, LatLon, MapData};
 use crate::map_widget::{MapMemory, MapRenderData, MapWidget};
@@ -42,6 +47,8 @@ impl MyApp {
 	pub const APP_NAME: &'static str = "mappar";
 
 	pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+		#[cfg(target_arch = "wasm32")]
+		tokio::runtime::Builder::new_current_thread().build().unwrap();
 		cc.egui_ctx.send_viewport_cmd(ViewportCommand::Maximized(true));
 
 		let bounds = Bounds {
@@ -61,25 +68,34 @@ impl MyApp {
 		};
 		map_mem.store(&cc.egui_ctx, map_widget_id);
 
-		let mut cache_path = eframe::storage_dir(Self::APP_NAME).expect("Failed to get storage dir");
-		cache_path.push("cache");
+		#[cfg(not(target_arch = "wasm32"))]
+		let imagery_fetcher = {
+			let mut cache_path = eframe::storage_dir(Self::APP_NAME).expect("Failed to get storage dir");
+			cache_path.push("cache");
+			 Arc::new(Mutex::new(ImageryFetcher::new(
+				esri_imagery(),
+				cc.egui_ctx.tex_manager(),
+				cache_path,
+			)))
+		};
+
+		#[cfg(target_arch = "wasm32")]
+		let imagery_fetcher = Arc::new(Mutex::new(ImageryFetcher::new(
+			esri_imagery(),
+			cc.egui_ctx.tex_manager(),
+		)));
 
 		let app = Self {
 			map_data: channel(MapData::new()).into(),
 			render_data: channel(Vec::new()).into(),
-			imagery_fetcher: Arc::new(Mutex::new(ImageryFetcher::new(
-				esri_imagery(),
-				cc.egui_ctx.tex_manager(),
-				cache_path,
-			))),
+			imagery_fetcher,
 			map_widget_id,
 			debug_text: Rc::new(RefCell::new(DebugText::new())),
 			last_update: Instant::now(),
 		};
 
 		let map_data_sender = app.map_data.sender.clone();
-
-		tokio::spawn(async move {
+		let closure = async move {
 			let map_data = get_data(bounds).await;
 			match map_data {
 				Ok(map_data) => {
@@ -90,7 +106,12 @@ impl MyApp {
 					error!("{:?}", err);
 				}
 			}
-		});
+		};
+
+		#[cfg(not(target_arch = "wasm32"))]
+		tokio::spawn(closure);
+		#[cfg(target_arch = "wasm32")]
+		wasm_bindgen_futures::spawn_local(closure);
 
 		app
 	}
@@ -102,7 +123,7 @@ impl eframe::App for MyApp {
 		if self.map_data.receiver.borrow_and_update().has_changed() {
 			let map_data = self.map_data.receiver.clone();
 			let render_data_sender = self.render_data.sender.clone();
-			thread::spawn(move || {
+			let closure = move || {
 				let start = Instant::now();
 				let mut render_data = Vec::new();
 				let map_data = map_data.borrow();
@@ -112,7 +133,11 @@ impl eframe::App for MyApp {
 				info!("Calculated render data. Took: {:?} ", start.elapsed());
 
 				render_data_sender.send(render_data).unwrap();
-			});
+			};
+			#[cfg(not(target_arch = "wasm32"))]
+			thread::spawn(closure);
+			#[cfg(target_arch = "wasm32")]
+			closure();
 		}
 
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {

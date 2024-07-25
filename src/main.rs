@@ -15,7 +15,7 @@ async fn main() -> eframe::Result<()> {
 	let _puffin_server = puffin_http::Server::new(&server_addr).unwrap();
 	eprintln!("Run this to view profiling data:  puffin_viewer {server_addr}");
 	puffin::set_scopes_on(true);
-	
+
 	let native_options = eframe::NativeOptions {
 		viewport: egui::ViewportBuilder::default()
 			.with_inner_size([400.0, 300.0])
@@ -29,7 +29,11 @@ async fn main() -> eframe::Result<()> {
 		..Default::default()
 	};
 
-	eframe::run_native(MyApp::APP_NAME, native_options, Box::new(|cc| Ok(Box::new(MyApp::new(cc)))))
+	eframe::run_native(
+		MyApp::APP_NAME,
+		native_options,
+		Box::new(|cc| Ok(Box::new(MyApp::new(cc)))),
+	)
 }
 
 // When compiling to web using trunk:
@@ -41,13 +45,28 @@ fn main() {
 	let web_options = eframe::WebOptions::default();
 
 	wasm_bindgen_futures::spawn_local(async {
-		eframe::WebRunner::new()
+		let result = eframe::WebRunner::new()
 			.start(
 				"the_canvas_id", // hardcode it
 				web_options,
-				Box::new(|cc| Box::new(eframe_template::TemplateApp::new(cc))),
+				Box::new(|cc| Ok(Box::new(MyApp::new(cc)))),
 			)
-			.await
-			.expect("failed to start eframe");
+			.await;
+
+		let loading_text = web_sys::window()
+			.and_then(|w| w.document())
+			.and_then(|d| d.get_element_by_id("loading_text"));
+
+		if let Some(loading_text) = loading_text {
+			match result {
+				Ok(_) => {
+					loading_text.remove();
+				}
+				Err(e) => {
+					loading_text.set_inner_html("<p> The app has crashed. See the developer console for details. </p>");
+					panic!("Failed to start eframe: {e:?}");
+				}
+			}
+		}
 	});
 }

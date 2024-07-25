@@ -7,11 +7,19 @@ mod app;
 mod debug_text;
 mod imagery;
 mod imagery_fetcher;
-mod local_cache;
+
 mod map_data;
 mod map_widget;
 mod memory;
 mod render;
+
+mod cache;
+#[cfg(not(target_arch = "wasm32"))]
+mod local_cache;
+#[cfg(target_arch = "wasm32")]
+mod sleep;
+#[cfg(target_arch = "wasm32")]
+mod web_cache;
 
 #[cfg(test)]
 static INIT: std::sync::Once = std::sync::Once::new();

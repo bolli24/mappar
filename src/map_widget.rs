@@ -93,11 +93,16 @@ impl<'a> MapWidget<'a> {
 		ui_scale: f32,
 		debug_text: &mut DebugText,
 	) {
+		#[cfg(not(target_arch = "wasm32"))]
+		const ZOOM_ADJUST: f64 = 0.0;
+		#[cfg(target_arch = "wasm32")]
+		const ZOOM_ADJUST: f64 = -0.5;
+
 		puffin::profile_function!();
 		let mut imagery_fetcher = imagery_fetcher.lock().unwrap();
 		debug_text.add(format!(
 			"Local cached tiles: {}",
-			imagery_fetcher.local_cached_count().map_or(-1, |c| c as i32)
+			imagery_fetcher.persistent_cached_count().map_or(-1, |c| c as i32)
 		));
 		debug_text.add(format!(
 			"Memory cached tiles: {} (≈{}MiB)",
@@ -112,7 +117,8 @@ impl<'a> MapWidget<'a> {
 		let base_tile_size = imagery_fetcher.imagery().lock().unwrap().tile_size();
 		let max_zoom = imagery_fetcher.imagery().lock().unwrap().max_zoom();
 
-		let tile_zoom_level = u32::min((zoom_level + (ui_scale as f64 - 1.0)).round() as u32, max_zoom);
+
+		let tile_zoom_level = u32::min((zoom_level + (ui_scale as f64 - 1.0) + ZOOM_ADJUST).round() as u32, max_zoom);
 
 		let tile_size = ((CIRCUMFERENCE_EARTH) / f64::exp2(tile_zoom_level as f64) / 256.0) * base_tile_size as f64;
 		let (x_tiles, y_tiles) = Self::tiles_in_rect(corners, tile_zoom_level);
@@ -227,7 +233,10 @@ impl Widget for MapWidget<'_> {
 						|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
 							&& response.dragged_by(PointerButton::Primary))
 					{
+						#[cfg(not(target_arch = "wasm32"))]
 						let delta = response.drag_motion() / ui_scale;
+						#[cfg(target_arch = "wasm32")]
+						let delta = response.drag_motion();
 						let delta = delta / scale as f32;
 						let delta = dvec2(f64::from(delta.x), -f64::from(delta.y));
 						mem.camera_pos -= delta;

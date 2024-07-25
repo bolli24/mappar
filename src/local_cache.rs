@@ -1,35 +1,25 @@
-use crate::imagery_fetcher::Tile;
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::time::Instant;
+
 use bytes::Bytes;
 use log::info;
 use regex::Regex;
-use std::collections::HashSet;
-use std::path::PathBuf;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+use crate::cache::{Cache, FileFormat};
+use crate::imagery_fetcher::Tile;
+
 pub struct LocalCache {
 	file_path: PathBuf,
-	cached_images: HashSet<Tile>,
+	cached_images: HashSet<(Tile, FileFormat)>,
 }
 
-#[derive(Copy, Clone)]
-pub enum FileFormat {
-	PNG,
-	JPG,
-}
-
-impl FileFormat {
-	pub const fn file_extension(self) -> &'static str {
-		match self {
-			Self::PNG => "png",
-			Self::JPG => "jpg",
-		}
-	}
-}
 impl LocalCache {
 	pub fn new(file_path: PathBuf) -> Self {
 		info!("Using cache directory: {}", file_path.to_str().unwrap());
-		let start = std::time::Instant::now();
+		let start = Instant::now();
 		std::fs::DirBuilder::new()
 			.recursive(true)
 			.create(&file_path)
@@ -48,6 +38,8 @@ impl LocalCache {
 				info!("Cache: Skipping invalid file: {}", file_name);
 				continue;
 			}
+			let file_end = file_name.split('.').last().unwrap();
+			let file_format = FileFormat::from(file_end);
 
 			let tile = file_name.split('.').take(1).collect::<Vec<&str>>()[0]
 				.split('_')
@@ -57,10 +49,14 @@ impl LocalCache {
 				tile[2].parse().unwrap(),
 				tile[0].parse().unwrap(),
 			);
-			cached_images.insert(tile);
+			cached_images.insert((tile, file_format));
 		}
 
-		info!("Found {} cached images. Took: {:.1}ms", cached_images.len(), start.elapsed().as_millis());
+		info!(
+			"Found {} cached images. Took: {:.1}ms",
+			cached_images.len(),
+			start.elapsed().as_millis()
+		);
 
 		Self {
 			file_path,
@@ -68,19 +64,30 @@ impl LocalCache {
 		}
 	}
 
-	pub fn cached_count(&self) -> usize {
+	fn file_path(&self, tile: Tile, file_format: FileFormat) -> PathBuf {
+		self.file_path.join(format!(
+			"{}_{}_{}.{}",
+			tile.2,
+			tile.0,
+			tile.1,
+			file_format.file_extension()
+		))
+	}
+}
+impl Cache for LocalCache {
+	fn cached_count(&self) -> usize {
 		self.cached_images.len()
 	}
 
-	pub async fn save_image(&mut self, tile: Tile, image_data: &Bytes, file_format: FileFormat) {
+	async fn save_image(&mut self, tile: Tile, image_data: &Bytes, file_format: FileFormat) {
 		let file_path = self.file_path(tile, file_format);
 		let mut file = File::create(file_path).await.expect("Failed to create file");
 		file.write_all(image_data).await.expect("Failed to write image data");
-		self.cached_images.insert(tile);
+		self.cached_images.insert((tile, file_format));
 	}
 
-	pub async fn get_image(&self, tile: Tile, file_format: FileFormat) -> Option<Bytes> {
-		if !self.cached_images.contains(&tile) {
+	async fn get_image(&self, tile: Tile, file_format: FileFormat) -> Option<Bytes> {
+		if !self.cached_images.contains(&(tile, file_format)) {
 			return None;
 		}
 
@@ -93,15 +100,5 @@ impl LocalCache {
 			.expect("Failed to read image data");
 
 		Some(Bytes::from(image_data))
-	}
-
-	fn file_path(&self, tile: Tile, file_format: FileFormat) -> PathBuf {
-		self.file_path.join(format!(
-			"{}_{}_{}.{}",
-			tile.2,
-			tile.0,
-			tile.1,
-			file_format.file_extension()
-		))
 	}
 }
