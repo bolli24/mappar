@@ -1,60 +1,89 @@
 use crate::cache::{Cache, FileFormat};
 use crate::imagery_fetcher::Tile;
 use bytes::Bytes;
-use js_sys::{Promise, Reflect};
-use log::info;
+use js_sys::Reflect;
+use log::{error, info};
 use std::collections::HashSet;
-use std::result;
-use tokio::task::spawn_blocking;
-use wasm_bindgen::{JsCast, JsValue};
-use wasm_bindgen::__rt::IntoJsResult;
-use wasm_bindgen::closure::Closure;
+use std::sync::{Arc, Mutex};
+use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::StorageManager;
+use web_sys::IdbFactory;
 
 pub struct WebCache {
-	storage: StorageManager,
 	cached_images: HashSet<(Tile, FileFormat)>,
-}
-
-pub struct Estimate {
-	pub usage: f64,
-	pub quota: f64,
-}
-
-impl JsCast for Estimate {
-	fn instanceof(val: &JsValue) -> bool {
-		Reflect::has(val, "usage") && Reflect::has(val, &JsValue::from_str("quota"))
-	}
-
-	fn unchecked_from_js(val: JsValue) -> Self {
-		todo!()
-	}
-
-	fn unchecked_from_js_ref(val: &JsValue) -> &Self {
-		todo!()
-	}
+	estimate: Arc<Mutex<(f64, f64)>>,
 }
 
 impl WebCache {
 	pub fn new() -> Self {
-		let window = web_sys::window().unwrap();
-		let navigator = window.navigator();
-		let storage = navigator.storage();
 		// let closure = Closure::new(closure);
-		let promise = storage
-			.estimate()
-			.expect("Failed to get storage estimate promise");
 
-		wasm_bindgen_futures::spawn_local(async {
-			let result = JsFuture::from(promise).await;
-			let estimate = result.unwrap().dyn_into::<Estimate>().expect("Failed to convert storage estimate result")
+		let estimate = Arc::new(Mutex::new((0.0, 0.0)));
+		let estimate_clone = estimate.clone();
+		wasm_bindgen_futures::spawn_local(async move {
+			match Self::init_database(estimate_clone).await {
+				Ok(_) => {
+					info!("IndexedDB initialized");
+				}
+				Err(e) => {
+					error!("Failed to initialize IndexedDB: {}", e);
+				}
+			}
 		});
 
 		let cached_images = HashSet::new();
 
-		Self { storage, cached_images }
+		Self {
+			cached_images,
+			estimate,
+		}
 	}
+
+	async fn init_database(estimate: Arc<Mutex<(f64, f64)>>) -> Result<(), Error> {
+		let window = web_sys::window().ok_or(Error::GetWindow)?;
+		let navigator = window.navigator();
+		let storage = navigator.storage();
+		let promise = storage.estimate().map_err(|_| Error::GetStorageEstimate)?;
+
+		let result = JsFuture::from(promise).await.map_err(|_| Error::GetStorageEstimate)?;
+		let quota = Reflect::get(&result, &JsValue::from_str("quota"))
+			.unwrap()
+			.as_f64()
+			.unwrap();
+		let usage = Reflect::get(&result, &JsValue::from_str("usage"))
+			.unwrap()
+			.as_f64()
+			.unwrap();
+
+		*estimate.lock().unwrap() = (quota, usage);
+
+		info!(
+			"Quota: {:.0} MiB, Usage: {:.0} MiB",
+			quota / 1024.0 / 1024.0,
+			usage / 1024.0 / 1024.0
+		);
+
+		let idb_factory: IdbFactory = window
+			.indexed_db()
+			.map_err(|_| Error::GetIndexedDB)?
+			.ok_or(Error::GetIndexedDB)?;
+		let open_request = idb_factory.open("cache").map_err(|_| Error::GetOpenRequest)?.result();
+		if open_request.is_err() {
+			return Err(Error::GetOpenRequest);
+		}
+		Ok(())
+	}
+}
+#[derive(Debug, thiserror::Error)]
+enum Error {
+	#[error("Failed to get window object")]
+	GetWindow,
+	#[error("Failed to get storage estimate")]
+	GetStorageEstimate,
+	#[error("Failed to get indexed db")]
+	GetIndexedDB,
+	#[error("Failed to get open request")]
+	GetOpenRequest,
 }
 
 impl Cache for WebCache {

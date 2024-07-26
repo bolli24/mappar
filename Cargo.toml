@@ -16,7 +16,7 @@ eframe = { version = "0.28.1", default-features = false, features = [
     "persistence",
 ] }
 epaint = { version = "0.28.1", features = ["mint"] }
-image = { version = "0.25.1" ,default-features = false, features = ["jpeg"]}
+image = { version = "0.25.1" ,default-features = false, features = ["jpeg" ]}
 glam = { version = "0.28.0", features = ["serde", "mint"] }
 mint = "0.5.9"
 
@@ -49,10 +49,11 @@ tokio = { version = "1.39.1", features = ["macros", "sync", "rt-multi-thread", "
 [target.'cfg(target_family = "wasm")'.dependencies]
 tokio = { version = "1.39.1", default-features = false, features = ["macros", "sync", "rt"] }
 js-sys = "0.3.69"
-web-sys = { version = "0.3.69", default-features = false, features = ["Navigator", "StorageManager"] }
+web-sys = { version = "0.3.69", features = ["Navigator", "StorageManager", "IdbFactory", "IdbOpenDbRequest"] }
 wasm-bindgen = "0.2.92"
 wasm-bindgen-futures = "0.4.42"
 web-time = "1.1.0"
+gloo-worker = "0.5.0"
 
 
 # to access the DOM (to hide the loading text)
@@ -68,3 +69,7 @@ lto = false
 
 [profile.dev.package."*"]
 opt-level = 2
+
+[[bin]] # This is used for gloo-worker
+name = "dummy_worker"
+path = "src/dummy_worker.rs"

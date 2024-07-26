@@ -20,6 +20,8 @@ mod local_cache;
 mod sleep;
 #[cfg(target_arch = "wasm32")]
 mod web_cache;
+#[cfg(target_arch = "wasm32")]
+pub mod image_worker;
 
 #[cfg(test)]
 static INIT: std::sync::Once = std::sync::Once::new();
