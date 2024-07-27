@@ -2,8 +2,8 @@ use egui::{Color32, Pos2, Rect, Vec2};
 use glam::DVec2;
 use itertools::Itertools;
 
-use crate::map_data::{Element, MapData, MapElement};
-use crate::map_widget::dvec2_to_pos;
+use crate::map::map_data::{Element, MapData, MapElement};
+use crate::ui::map_widget::dvec2_to_pos;
 
 pub struct DetailedElement {
 	pub element: RenderElement,
@@ -132,6 +132,5 @@ pub fn point_in_polygon(test: DVec2, verts: &[DVec2]) -> bool {
 		i += 1;
 		j = 1;
 	}
-
-	return result;
+	result
 }

@@ -1,34 +1,32 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+#[cfg(not(target_arch = "wasm32"))]
 use std::thread;
-
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
-#[cfg(target_arch = "wasm32")]
-use web_time::Instant;
 
 use egui::{Id, ViewportCommand};
 use log::{error, info};
 use tokio::sync::watch::{channel, Receiver, Sender};
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
-use crate::api::get_data;
-use crate::debug_text::DebugText;
 use crate::imagery::esri_imagery;
-use crate::imagery_fetcher;
-use crate::imagery_fetcher::ImageryFetcher;
-use crate::map_data::{Bounds, LatLon, MapData};
-use crate::map_widget::{MapMemory, MapRenderData, MapWidget};
-use crate::memory::Memory;
-
-use crate::render::DetailedElement;
+use crate::imagery::imagery_fetcher::ImageryFetcher;
+use crate::map::api::get_data;
+use crate::map::map_data::{Bounds, LatLon, MapData};
+use crate::map::render::DetailedElement;
+use crate::ui::debug_text::DebugText;
+use crate::ui::map_widget::{MapMemory, MapRenderData, MapWidget};
+use crate::ui::memory::Memory;
 
 pub struct Channel<T> {
 	sender: Sender<T>,
 	receiver: Receiver<T>,
 }
 
-impl<T> From <(Sender<T>, Receiver<T>)> for Channel<T> {
+impl<T> From<(Sender<T>, Receiver<T>)> for Channel<T> {
 	fn from((sender, receiver): (Sender<T>, Receiver<T>)) -> Self {
 		Self { sender, receiver }
 	}
@@ -72,7 +70,7 @@ impl MyApp {
 		let imagery_fetcher = {
 			let mut cache_path = eframe::storage_dir(Self::APP_NAME).expect("Failed to get storage dir");
 			cache_path.push("cache");
-			 Arc::new(Mutex::new(ImageryFetcher::new(
+			Arc::new(Mutex::new(ImageryFetcher::new(
 				esri_imagery(),
 				cc.egui_ctx.tex_manager(),
 				cache_path,
@@ -119,7 +117,6 @@ impl MyApp {
 
 impl eframe::App for MyApp {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-
 		if self.map_data.receiver.borrow_and_update().has_changed() {
 			let map_data = self.map_data.receiver.clone();
 			let render_data_sender = self.render_data.sender.clone();
@@ -143,6 +140,7 @@ impl eframe::App for MyApp {
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
 			egui::menu::bar(ui, |ui| {
 				ui.menu_button("File", |ui| {
+					#[cfg(not(target_arch = "wasm32"))]
 					if ui.button("Quit").clicked() {
 						ctx.send_viewport_cmd(ViewportCommand::Close);
 					}

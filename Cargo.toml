@@ -1,20 +1,24 @@
 [package]
 name = "mappar"
-description = "A modern OpenStreetMap for Desktop built using Rust, egui and skia"
+description = "A modern OpenStreetMap for Desktop built using Rust and egui"
 authors = ["bolli24"]
 version = "0.1.0"
 edition = "2021"
+default-run = "mappar"
 
 [dependencies]
+macros = { path = "src/macros" }
+
 egui = { version = "0.28.1", features = ["mint"] }
 eframe = { version = "0.28.1", default-features = false, features = [
     # "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts",
-    "glow",
+    "wgpu",
     "x11",
     "wayland",
     "persistence",
 ] }
+wgpu = { version = "*", features = ["webgpu", "webgl"] }
 epaint = { version = "0.28.1", features = ["mint"] }
 image = { version = "0.25.1" ,default-features = false, features = ["jpeg" ]}
 glam = { version = "0.28.0", features = ["serde", "mint"] }
@@ -23,6 +27,7 @@ mint = "0.5.9"
 log = "0.4"
 simple_logger = "5.0.0"
 serde = { version = "1", features = ["derive"] }
+thiserror = "1.0.63"
 
 reqwest = { version = "0.12.5" }
 quick-xml = { version = "0.36.1", default-features = false }
@@ -34,13 +39,8 @@ lru = "0.12.3"
 itertools = "0.13.0"
 regex = "1.10.5"
 
-thiserror = "1.0.63"
-
 puffin = "0.19.0"
 puffin_http = "0.16.0"
-
-macros = { path = "src/macros" }
-async-trait = "0.1.81"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { version = "1.39.1", features = ["macros", "sync", "rt-multi-thread", "fs"] }
@@ -55,21 +55,30 @@ wasm-bindgen-futures = "0.4.42"
 web-time = "1.1.0"
 gloo-worker = "0.5.0"
 
-
-# to access the DOM (to hide the loading text)
-[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
-version = "0.3.69"
+[[bin]] # This is used for gloo-worker
+name = "dummy_worker"
+path = "src/imagery/dummy_worker.rs"
+test = false
+bench = false
+doc = false
+doctest = false
+plugin = false
+proc-macro = false
+harness = false
 
 [profile.dev]
-lto = false
-
-[profile.release]
-opt-level = 2 # fast and small wasm
-lto = false
+opt-level = 1   # this is needed to the performance of the web worker not suck
 
 [profile.dev.package."*"]
 opt-level = 2
 
-[[bin]] # This is used for gloo-worker
-name = "dummy_worker"
-path = "src/dummy_worker.rs"
+[profile.release]
+opt-level = 2   # fast and small wasm
+
+#   level   size
+#    0      8
+#    1      8
+#    2      5.7
+#    3      5.9
+#    s      5.0
+#    z      4.7

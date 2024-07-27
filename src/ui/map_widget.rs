@@ -7,18 +7,17 @@ use std::sync::{Arc, Mutex};
 use eframe::emath::RectTransform;
 use egui::{
 	pos2, vec2, Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, ScrollArea, Sense, Vec2, Widget,
-	WidgetInfo,
 };
 use epaint::{PathShape, PathStroke, RectShape, Rounding, Shape};
 use glam::{dvec2, uvec2, DVec2, UVec2};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-use crate::memory::Memory;
-use crate::debug_text::DebugText;
-use crate::imagery_fetcher::ImageryFetcher;
-use crate::map_data::{LatLon, CIRCUMFERENCE_EARTH};
-use crate::render::{DetailedElement, RenderElement, Style};
+use crate::ui::memory::Memory;
+use crate::ui::debug_text::DebugText;
+use crate::imagery::imagery_fetcher::ImageryFetcher;
+use crate::map::map_data::{LatLon, CIRCUMFERENCE_EARTH};
+use crate::map::render::{DetailedElement, RenderElement, Style};
 
 
 const ZOOM_SPEED: f64 = 5.0;
@@ -99,7 +98,7 @@ impl<'a> MapWidget<'a> {
 		const ZOOM_ADJUST: f64 = -0.5;
 
 		puffin::profile_function!();
-		let mut imagery_fetcher = imagery_fetcher.lock().unwrap();
+		let imagery_fetcher = imagery_fetcher.lock().unwrap();
 		debug_text.add(format!(
 			"Local cached tiles: {}",
 			imagery_fetcher.persistent_cached_count().map_or(-1, |c| c as i32)

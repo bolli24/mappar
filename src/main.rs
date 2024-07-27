@@ -1,7 +1,6 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use log::Level;
 
 use mappar::MyApp;
 
@@ -9,7 +8,7 @@ use mappar::MyApp;
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
-	simple_logger::init_with_level(Level::Info).expect("Error initializing logger");
+	simple_logger::init_with_level(log::Level::Info).expect("Error initializing logger");
 
 	let server_addr = format!("127.0.0.1:{}", puffin_http::DEFAULT_PORT);
 	let _puffin_server = puffin_http::Server::new(&server_addr).unwrap();
@@ -39,8 +38,7 @@ async fn main() -> eframe::Result<()> {
 // When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]
 fn main() {
-	// Redirect `log` message to `console.log` and friends:
-	eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+	eframe::WebLogger::init(log::LevelFilter::Info).ok();
 
 	let web_options = eframe::WebOptions::default();
 

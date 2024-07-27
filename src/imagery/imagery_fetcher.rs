@@ -1,7 +1,6 @@
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
-use std::ops::{AddAssign, DerefMut, Div, SubAssign};
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -12,27 +11,26 @@ use epaint::{ColorImage, ImageData, TextureId, TextureManager};
 #[cfg(target_arch = "wasm32")]
 use gloo_worker::{Spawnable, WorkerBridge};
 use image::{EncodableLayout, RgbaImage};
-use itertools::Itertools;
-use log::{error, info};
+use log::error;
 use lru::LruCache;
-use tokio::task::{JoinHandle, JoinSet, LocalSet};
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::task::JoinSet;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::time;
 
-use crate::cache::{Cache, FileFormat};
+use crate::imagery::cache::{Cache, FileFormat};
 #[cfg(target_arch = "wasm32")]
-use crate::image_worker::ImageWorker;
-use crate::imagery::Imagery;
+use crate::imagery::image_worker::ImageWorker;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::local_cache;
+use crate::imagery::local_cache;
 #[cfg(target_arch = "wasm32")]
-use crate::sleep::timer;
+use crate::imagery::web_cache;
+use crate::imagery::Imagery;
 #[cfg(target_arch = "wasm32")]
-use crate::web_cache;
+use crate::util::sleep::timer;
 
-// TODO separate local cache fetching from online fetching
 pub struct ImageryFetcher {
-	memory_cache: Arc<Mutex<LruCache<Tile, Option<TextureId>>>>,
+	memory_cache: MemoryCache,
 	imagery: Arc<Mutex<dyn Imagery>>,
 	pending: Arc<Mutex<HashSet<Tile>>>,
 	#[cfg(not(target_arch = "wasm32"))]
@@ -53,6 +51,12 @@ pub enum Error {
 	#[error("Error reading image data: {0}")]
 	ImageIo(#[from] std::io::Error),
 }
+
+type MemoryCache = Arc<Mutex<LruCache<Tile, Option<TextureId>>>>;
+#[cfg(not(target_arch = "wasm32"))]
+type PersistentCache = Arc<tokio::sync::Mutex<local_cache::LocalCache>>;
+#[cfg(target_arch = "wasm32")]
+type PersistentCache = Arc<tokio::sync::Mutex<web_cache::WebCache>>;
 
 impl ImageryFetcher {
 	pub fn new(
@@ -106,7 +110,7 @@ impl ImageryFetcher {
 	#[cfg(target_arch = "wasm32")]
 	fn get_worker_bridge(
 		texture_manager: Arc<RwLock<TextureManager>>,
-		memory_cache: Arc<Mutex<LruCache<Tile, Option<TextureId>>>>,
+		memory_cache: MemoryCache,
 	) -> Arc<Mutex<WorkerBridge<ImageWorker>>> {
 		let worker_bridge = Arc::new(Mutex::new(
 			ImageWorker::spawner()
@@ -114,43 +118,43 @@ impl ImageryFetcher {
 					let tile = output.0;
 					let result = output.1;
 					let Some(image_data) = result else {
-						error!("Failed to decode image for tile: {:?}", output.0);
+						error!("Failed to decode image for tile: {:?}", tile);
 						return;
 					};
 					let Some(image) = RgbaImage::from_raw(256, 256, image_data) else {
-						error!("Failed to create image for tile: {:?}", output.0);
+						error!("Failed to create image for tile: {:?}", tile);
 						return;
 					};
 
-					let result = Self::create_texture_from_decoded(&texture_manager, output.0, image);
-
-					match result {
-						Ok(texture) => {
-							if let Some((_, Some(texture_id))) = memory_cache.lock().unwrap().push(tile, Some(texture))
-							{
-								texture_manager.write().free(texture_id);
-							}
-						}
-						Err(error) => {
-							error!("Error fetching tile {tile:?}: {error}");
-						}
-					}
+					let texture = Self::create_texture_from_decoded(&texture_manager, output.0, &image);
+					Self::store_texture(&texture_manager, &memory_cache, tile, texture);
 				})
 				.spawn("./dummy_worker.js"),
 		));
 		worker_bridge
 	}
 
+	fn store_texture(
+		texture_manager: &Arc<RwLock<TextureManager>>,
+		memory_cache: &MemoryCache,
+		tile: Tile,
+		texture: TextureId,
+	) {
+		if let Some((_, Some(texture_id))) = memory_cache.lock().unwrap().push(tile, Some(texture)) {
+			texture_manager.write().free(texture_id);
+		}
+	}
+
+	#[must_use]
 	pub fn imagery(&self) -> Arc<Mutex<dyn Imagery>> {
 		self.imagery.clone()
 	}
 
 	async fn fetching_loop(
 		pending: Arc<Mutex<HashSet<Tile>>>,
-		cache: Arc<Mutex<LruCache<Tile, Option<TextureId>>>>,
+		memory_cache: MemoryCache,
 		imagery: Arc<Mutex<dyn Imagery>>,
-		#[cfg(not(target_arch = "wasm32"))] persistent_cache: Arc<tokio::sync::Mutex<local_cache::LocalCache>>,
-		#[cfg(target_arch = "wasm32")] persistent_cache: Arc<tokio::sync::Mutex<web_cache::WebCache>>,
+		persistent_cache: PersistentCache,
 		texture_manager: Arc<RwLock<TextureManager>>,
 		#[cfg(target_arch = "wasm32")] worker_bridge: Arc<Mutex<WorkerBridge<ImageWorker>>>,
 	) {
@@ -166,7 +170,7 @@ impl ImageryFetcher {
 		let mut join_set: JoinSet<()> = JoinSet::new();
 
 		#[cfg(not(target_arch = "wasm32"))]
-		let mut interval = time::interval(time::Duration::from_millis(FETCH_INTERVAL as u64));
+		let mut interval = time::interval(time::Duration::from_millis(FETCH_INTERVAL));
 
 		#[cfg(target_arch = "wasm32")]
 		let concurrent = Arc::new(Mutex::new(0));
@@ -195,11 +199,11 @@ impl ImageryFetcher {
 			let tile = *pending.iter().next().unwrap();
 			pending.remove(&tile);
 			drop(pending);
-			if let Some((_, Some(texture_id))) = cache.lock().unwrap().push(tile, None) {
+			if let Some((_, Some(texture_id))) = memory_cache.lock().unwrap().push(tile, None) {
 				texture_manager.write().free(texture_id);
 			}
 			#[cfg(not(target_arch = "wasm32"))]
-			let cache = cache.clone();
+			let memory_cache = memory_cache.clone();
 			#[cfg(not(target_arch = "wasm32"))]
 			let texture_manager = texture_manager.clone();
 			let imagery = imagery.clone();
@@ -210,30 +214,30 @@ impl ImageryFetcher {
 			let worker_bridge = worker_bridge.clone();
 			let closure = async move {
 				#[cfg(not(target_arch = "wasm32"))]
-				let result = Self::fetch_tile(&texture_manager, imagery, persistent_cache, tile).await;
+				let result = Self::fetch_tile(&texture_manager, imagery, persistent_cache.clone(), tile).await;
 				#[cfg(target_arch = "wasm32")]
 				let result = Self::fetch_tile(worker_bridge, imagery, persistent_cache, tile).await;
 
 				match result {
 					Ok(texture) => {
 						#[cfg(not(target_arch = "wasm32"))]
-						if let Some((_, Some(texture_id))) = cache.lock().unwrap().push(tile, Some(texture)) {
-							texture_manager.write().free(texture_id);
-						}
+						Self::store_texture(&texture_manager, &memory_cache, tile, texture);
 					}
 					Err(error) => {
 						error!("Error fetching tile {tile:?}: {error}");
 					}
 				}
 				#[cfg(target_arch = "wasm32")]
-				concurrent_clone.lock().unwrap().sub_assign(1);
+				{
+					*concurrent_clone.lock().unwrap() -= 1;
+				}
 			};
 			#[cfg(not(target_arch = "wasm32"))]
 			join_set.spawn(closure);
 			#[cfg(target_arch = "wasm32")]
 			{
 				wasm_bindgen_futures::spawn_local(closure);
-				concurrent.lock().unwrap().add_assign(1);
+				*concurrent.lock().unwrap() += 1;
 			}
 		}
 	}
@@ -269,7 +273,7 @@ impl ImageryFetcher {
 		persistent_cache: Arc<tokio::sync::Mutex<web_cache::WebCache>>,
 		tile: Tile,
 	) -> Result<(), Error> {
-		use crate::image_worker::Input;
+		use crate::imagery::image_worker::Input;
 		if let Some(image_data) = persistent_cache.lock().await.get_image(tile, FileFormat::JPG).await {
 			worker_bridge.lock().unwrap().send(Input(tile, image_data.to_vec()));
 		}
@@ -301,28 +305,26 @@ impl ImageryFetcher {
 			.decode()?
 			.to_rgba8();
 
-		Self::create_texture_from_decoded(texture_manager, tile, image)
+		Ok(Self::create_texture_from_decoded(texture_manager, tile, &image))
 	}
 
 	fn create_texture_from_decoded(
 		texture_manager: &Arc<RwLock<TextureManager>>,
 		tile: Tile,
-		image: RgbaImage,
-	) -> Result<TextureId, Error> {
+		image: &RgbaImage,
+	) -> TextureId {
 		let color_image = Arc::new(ColorImage::from_rgba_unmultiplied(
 			[image.width() as usize, image.height() as usize],
 			image.as_bytes(),
 		));
-		let texture_id = texture_manager.write().alloc(
+		texture_manager.write().alloc(
 			format!("tile_{}_{}_{}", tile.0, tile.1, tile.2),
 			ImageData::Color(color_image),
 			TextureOptions::LINEAR,
-		);
-
-		Ok(texture_id)
+		)
 	}
 
-	pub fn get_tile(&mut self, x: u32, y: u32, zoom: u32, fetch: bool) -> Option<TextureId> {
+	pub fn get_tile(&self, x: u32, y: u32, zoom: u32, fetch: bool) -> Option<TextureId> {
 		puffin::profile_function!("get_tile");
 		let mut pending = self.pending.lock().unwrap(); // Lock this before memory_cache
 		if let Some(texture) = self.memory_cache.lock().unwrap().get(&(x, y, zoom)) {
@@ -348,7 +350,8 @@ impl ImageryFetcher {
 
 	/// Estimated VRAM usages of tiles in MiB
 	pub fn vram_used(&self) -> usize {
-		(self.memory_cached_count() * self.imagery().lock().unwrap().tile_size().pow(2) as usize * 4).div(1024 * 1024)
+		let tile_size = self.imagery().lock().unwrap().tile_size().pow(2) as usize;
+		self.memory_cached_count() * tile_size * 4 / 1024 / 1024
 	}
 
 	pub fn persistent_cached_count(&self) -> Option<usize> {
@@ -372,40 +375,5 @@ impl ImageryFetcher {
 		} else {
 			Some((tile.0 / 2, tile.1 / 2, tile.0 - 1))
 		}
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use std::sync::Once;
-	use std::time::Duration;
-
-	use log::info;
-	use tokio::time::sleep_until;
-
-	use crate::imagery::esri_imagery;
-
-	use super::*;
-
-	static INIT: Once = Once::new();
-
-	#[tokio::test]
-	async fn test_fetch_tile() {
-		crate::init_test_logger();
-		todo!();
-		let mut fetcher = ImageryFetcher::new(esri_imagery(), std::path::PathBuf::from("cache"));
-		let image = fetcher.get_tile(0, 0, 0);
-		assert!(image.is_none());
-
-		loop {
-			sleep_until(tokio::time::Instant::now() + Duration::from_secs(1)).await;
-			let image = fetcher.get_tile(0, 0, 0);
-			if image.is_some() {
-				break;
-			}
-		}
-		let image = fetcher.get_tile(0, 0, 0);
-		info!("Image: {:?}", image);
-		assert!(image.is_some());
 	}
 }

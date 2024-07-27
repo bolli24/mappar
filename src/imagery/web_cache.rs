@@ -1,5 +1,5 @@
-use crate::cache::{Cache, FileFormat};
-use crate::imagery_fetcher::Tile;
+use crate::imagery::cache::{Cache, FileFormat};
+use crate::imagery::imagery_fetcher::Tile;
 use bytes::Bytes;
 use js_sys::Reflect;
 use log::{error, info};

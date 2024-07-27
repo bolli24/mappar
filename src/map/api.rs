@@ -11,7 +11,7 @@ use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
-use crate::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member, Tag};
+use crate::map::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member, Tag};
 
 #[cfg(not(debug_assertions))]
 const API_URL: &str = "https://api.openstreetmap.org";
@@ -97,7 +97,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 									let (ref_id, role, member_type) = parse_member(e);
 									members.push(Member {
 										ref_id,
-										member_type,
+										element_type: member_type,
 										role,
 									});
 								}
@@ -255,7 +255,7 @@ fn parse_attributes(attributes: Attributes) -> Option<(i64, Option<LatLon>, Elem
 
 #[cfg(test)]
 mod tests {
-	use crate::map_data::LatLon;
+	use crate::map::map_data::LatLon;
 
 	use super::*;
 

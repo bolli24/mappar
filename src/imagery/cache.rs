@@ -1,4 +1,4 @@
-use crate::imagery_fetcher::Tile;
+use crate::imagery::imagery_fetcher::Tile;
 use bytes::Bytes;
 
 pub trait Cache {
@@ -27,7 +27,7 @@ impl From<&str> for FileFormat {
 		match s {
 			"png" => Self::PNG,
 			"jpg" => Self::JPG,
-			_ => panic!("Unknown file format: {}", s),
+			_ => panic!("Unknown file format: {s}"),
 		}
 	}
 }

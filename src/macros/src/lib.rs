@@ -7,7 +7,7 @@ use syn::{parse_macro_input, DeriveInput};
 #[proc_macro_derive(Memory)]
 pub fn memory_derive(input: TokenStream) -> TokenStream {
 	let ast = parse_macro_input!(input as DeriveInput);
-	let name = &ast.ident; // The struct's name (e.g., MapMemory)
+	let name = &ast.ident;
 
 	let expanded = quote! {
 		use egui::Context;

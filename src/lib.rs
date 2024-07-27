@@ -1,27 +1,11 @@
 #![allow(dead_code)]
+pub use ui::app::MyApp;
 
-pub use app::MyApp;
+pub mod imagery;
 
-mod api;
-mod app;
-mod debug_text;
-mod imagery;
-mod imagery_fetcher;
-
-mod map_data;
-mod map_widget;
-mod memory;
-mod render;
-
-mod cache;
-#[cfg(not(target_arch = "wasm32"))]
-mod local_cache;
-#[cfg(target_arch = "wasm32")]
-mod sleep;
-#[cfg(target_arch = "wasm32")]
-mod web_cache;
-#[cfg(target_arch = "wasm32")]
-pub mod image_worker;
+mod map;
+mod ui;
+pub mod util;
 
 #[cfg(test)]
 static INIT: std::sync::Once = std::sync::Once::new();

@@ -1,3 +1,12 @@
+mod cache;
+#[cfg(target_arch = "wasm32")]
+pub mod image_worker;
+pub mod imagery_fetcher;
+#[cfg(not(target_arch = "wasm32"))]
+mod local_cache;
+#[cfg(target_arch = "wasm32")]
+mod web_cache;
+
 pub trait Imagery: Send {
 	fn tile_size(&self) -> u32;
 	fn max_zoom(&self) -> u32;
@@ -5,6 +14,7 @@ pub trait Imagery: Send {
 	fn tile_url(&self, x: u32, y: u32, zoom: u32) -> String;
 }
 
+#[must_use]
 pub fn esri_imagery() -> UrlImagery {
 	UrlImagery::new(
 		"https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}".to_string(),
@@ -23,6 +33,7 @@ pub struct UrlImagery {
 }
 
 impl UrlImagery {
+	#[must_use]
 	pub fn new(url: String, tile_size: u32, max_zoom: u32, min_zoom: u32) -> Option<Self> {
 		if max_zoom < min_zoom {
 			return None;

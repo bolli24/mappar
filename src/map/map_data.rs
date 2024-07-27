@@ -74,7 +74,7 @@ pub struct LatLon(pub f64, pub f64);
 pub const RADIUS_EARTH: f64 = 6_378_137.0;
 pub const CIRCUMFERENCE_EARTH: f64 = 2.0 * PI * RADIUS_EARTH;
 
-pub const WEB_MERCATOR_CUTOFF: f64 = 85.051129; // 2.0 * f64::atan(E.powf(PI)) - PI / 2.0
+pub const WEB_MERCATOR_CUTOFF: f64 = 85.051_129; // 2.0 * f64::atan(E.powf(PI)) - PI / 2.0
 
 impl LatLon {
 	#[inline]
@@ -177,7 +177,7 @@ impl ElementType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Member {
 	pub ref_id: i64,
-	pub member_type: ElementType,
+	pub element_type: ElementType,
 	pub role: String,
 }
 
@@ -191,7 +191,6 @@ pub enum Element {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use glam::dvec2;
 	use log::info;
 
 	#[test]

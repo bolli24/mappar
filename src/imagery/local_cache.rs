@@ -8,8 +8,8 @@ use regex::Regex;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::cache::{Cache, FileFormat};
-use crate::imagery_fetcher::Tile;
+use crate::imagery::cache::{Cache, FileFormat};
+use crate::imagery::imagery_fetcher::Tile;
 
 pub struct LocalCache {
 	file_path: PathBuf,
