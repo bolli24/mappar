@@ -1,7 +1,7 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-
+use log::{error, info};
 use mappar::MyApp;
 
 // When compiling natively:
@@ -11,8 +11,15 @@ async fn main() -> eframe::Result<()> {
 	simple_logger::init_with_level(log::Level::Info).expect("Error initializing logger");
 
 	let server_addr = format!("127.0.0.1:{}", puffin_http::DEFAULT_PORT);
-	let _puffin_server = puffin_http::Server::new(&server_addr).unwrap();
-	eprintln!("Run this to view profiling data:  puffin_viewer {server_addr}");
+	match puffin_http::Server::new(&server_addr) {
+		Ok(_) => {
+			info!("Run this to view profiling data:  puffin_viewer {server_addr}");
+		}
+		Err(err) => {
+			error!("Failed to start puffin server on {server_addr}: {err:?}", );
+		}
+	}
+	
 	puffin::set_scopes_on(true);
 
 	let native_options = eframe::NativeOptions {

@@ -132,7 +132,10 @@ impl eframe::App for MyApp {
 				render_data_sender.send(render_data).unwrap();
 			};
 			#[cfg(not(target_arch = "wasm32"))]
-			thread::spawn(closure);
+			let _ = thread::Builder::new()
+				.name("render_data".into())
+				.spawn(closure)
+				.expect("Couldn't launch render data thread.");
 			#[cfg(target_arch = "wasm32")]
 			closure();
 		}

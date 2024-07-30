@@ -148,6 +148,49 @@ impl Bounds {
 	}
 }
 
+impl MapElement {
+	pub fn is_area(&self) -> bool {
+		match &self.element {
+			Element::Node { .. } => false,
+			Element::Way { nodes } => {
+				if !is_closed(nodes.as_slice()) {
+					return false;
+				}
+				if let Some(tags) = &self.tags {
+					tags.iter()
+						.any(|t| (t.key == "area" && t.value == "yes") || is_area_tag(&t.key, &t.value))
+				} else {
+					false
+				}
+			}
+			Element::Relation { .. } => {
+				false // TODO
+			}
+		}
+	}
+}
+
+pub fn is_closed(nodes: &[i64]) -> bool {
+	nodes.len() >= 2 && nodes[0] == nodes[nodes.len() - 1]
+}
+
+fn is_area_tag(key: &str, value: &str) -> bool {
+	AREA_TAGS.iter().any(|tag| match tag {
+		(t_key, None) => **t_key == *key,
+		(t_key, Some(t_value)) => **t_key == *key && **t_value == *value,
+	})
+}
+
+// TODO Expand
+// TODO Maybe use perfect hash table or other better data structure
+pub const AREA_TAGS: [(&str, Option<&str>); 5] = [
+	("building", None),
+	("natural", Some("water")),
+	("landuse", None),
+	("area:highway", None),
+	("leisure", Some("park")),
+];
+
 #[derive(Debug)]
 pub struct MapElement {
 	pub id: i64,

@@ -8,17 +8,16 @@ use eframe::emath::RectTransform;
 use egui::{
 	pos2, vec2, Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, ScrollArea, Sense, Vec2, Widget,
 };
-use epaint::{PathShape, PathStroke, RectShape, Rounding, Shape};
+use epaint::{ColorMode, PathShape, PathStroke, RectShape, Rounding, Shape};
 use glam::{dvec2, uvec2, DVec2, UVec2};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-use crate::ui::memory::Memory;
-use crate::ui::debug_text::DebugText;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::map::map_data::{LatLon, CIRCUMFERENCE_EARTH};
 use crate::map::render::{DetailedElement, RenderElement, Style};
-
+use crate::ui::debug_text::DebugText;
+use crate::ui::memory::Memory;
 
 const ZOOM_SPEED: f64 = 5.0;
 
@@ -49,37 +48,79 @@ impl<'a> MapWidget<'a> {
 		element: &DetailedElement,
 		transform: RectTransform,
 		camera_pos: DVec2,
+		shapes: &mut Vec<Shape>,
 		map_scale: f32,
 		ui_scale: f32,
 		pointer_pos: Option<Pos2>,
-	) -> Option<Shape> {
+		debug: bool,
+	) {
 		if element.style == Style::Invisible {
-			return None;
+			return;
 		}
 
+		let Style::Colored {color, size, .. } = element.style else {
+			return;
+		};
+
 		let shape = match &element.element {
-			RenderElement::Node(pos) => Shape::rect_filled(
-				Rect::from_center_size(transform * dvec2_to_pos(*pos - camera_pos), Vec2::splat(3.0 * ui_scale)),
+			RenderElement::Node(pos) => Some(Shape::rect_filled(
+				Rect::from_center_size(transform * dvec2_to_pos(*pos - camera_pos), Vec2::splat(size * ui_scale)),
 				Rounding::ZERO,
-				Color32::BLACK,
-			),
-			RenderElement::Way(nodes) => {
+				color,
+			)),
+			RenderElement::Way(nodes, is_closed) => {
 				let nodes: Vec<Pos2> = nodes
 					.iter()
 					.map(|p| transform * dvec2_to_pos(*p - camera_pos))
 					.collect();
-				let stroke = PathStroke::new(1.5 * ui_scale, Color32::BLACK);
-				if nodes.first() == nodes.last() {
-					Shape::Path(PathShape::closed_line(nodes, stroke))
+				let stroke = PathStroke::new(size * ui_scale, color);
+				let shape = if *is_closed {
+					if element.is_area {
+						// TODO: render concave Polygons
+						Shape::Path(PathShape::closed_line(
+							nodes,
+							PathStroke {
+								color: ColorMode::Solid(Color32::DARK_BLUE),
+								..stroke
+							},
+						))
+					} else {
+						Shape::Path(PathShape::closed_line(nodes, stroke))
+					}
 				} else {
 					Shape::Path(PathShape::line(nodes, stroke))
-				}
+				};
+				Some(shape)
 			}
-			RenderElement::Collection(_) => {
-				todo!()
+			RenderElement::Collection(elements) => {
+				for e in elements.iter() {
+					Self::draw_element(
+						e,
+						transform,
+						camera_pos,
+						shapes,
+						map_scale,
+						ui_scale,
+						pointer_pos,
+						debug,
+					);
+				}
+				None
 			}
 		};
-		Some(shape)
+
+		if debug {
+			let bounding_box = transform.transform_rect(
+				element
+					.bounding_box
+					.translate(vec2(-camera_pos.x as f32, -camera_pos.y as f32)),
+			);
+			shapes.push(Shape::rect_stroke(bounding_box, 0.0, (1.0f32, Color32::LIGHT_RED)));
+		}
+
+		if let Some(shape) = shape {
+			shapes.push(shape);
+		}
 	}
 
 	fn draw_tiles(
@@ -116,8 +157,10 @@ impl<'a> MapWidget<'a> {
 		let base_tile_size = imagery_fetcher.imagery().lock().unwrap().tile_size();
 		let max_zoom = imagery_fetcher.imagery().lock().unwrap().max_zoom();
 
-
-		let tile_zoom_level = u32::min((zoom_level + (ui_scale as f64 - 1.0) + ZOOM_ADJUST).round() as u32, max_zoom);
+		let tile_zoom_level = u32::min(
+			(zoom_level + (ui_scale as f64 - 1.0) + ZOOM_ADJUST).round() as u32,
+			max_zoom,
+		);
 
 		let tile_size = ((CIRCUMFERENCE_EARTH) / f64::exp2(tile_zoom_level as f64) / 256.0) * base_tile_size as f64;
 		let (x_tiles, y_tiles) = Self::tiles_in_rect(corners, tile_zoom_level);
@@ -216,12 +259,11 @@ impl Widget for MapWidget<'_> {
 					debug_text.add(format!("Clip Rect: {:?}", clip_rect));
 					let viewport = response.interact_rect;
 
-					let mut shapes: Vec<Shape> = Vec::new();
-
 					let mut mem = MapMemory::load_or_default(&response.ctx, self.id);
 
 					let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y as f64;
 					if zoom != 0.0 {
+						// TODO: fix zoom speed on chrome
 						mem.zoom_level += zoom / 1000.0 * ZOOM_SPEED;
 						mem.zoom_level = mem.zoom_level.clamp(1.0, 25.0);
 					}
@@ -268,14 +310,20 @@ impl Widget for MapWidget<'_> {
 						&mut self.debug_text.borrow_mut(),
 					);
 
+					let mut shapes = Vec::with_capacity(self.render_data.elements.len());
 					let camera_offset = dvec2(mem.camera_pos.x, -mem.camera_pos.y);
 					let pointer_pos = response.ctx.input(|i| i.pointer.latest_pos());
 					for element in self.render_data.elements {
-						if let Some(shape) =
-							Self::draw_element(element, transform, camera_offset, scale as f32, ui_scale, pointer_pos)
-						{
-							shapes.push(shape);
-						}
+						Self::draw_element(
+							element,
+							transform,
+							camera_offset,
+							&mut shapes,
+							scale as f32,
+							ui_scale,
+							pointer_pos,
+							false,
+						);
 					}
 					painter.extend(shapes);
 					mem.store(&response.ctx, self.id);
