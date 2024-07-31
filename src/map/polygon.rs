@@ -1,6 +1,9 @@
-use glam::DVec2;
 use std::cell::{Cell, RefCell};
 use std::fmt::Debug;
+
+use egui::{Pos2, Rect};
+use glam::DVec2;
+use itertools::Itertools;
 
 /// **Adapted From** <https://github.com/ivanfratric/polypartition/> (MIT Licence)
 // TODO: Maybe make code more rusty
@@ -13,6 +16,16 @@ pub struct Polygon {
 
 #[derive(Clone)]
 pub struct Multipolygon(Vec<Polygon>);
+
+impl Multipolygon {
+	pub fn bounding_box(&self) -> Rect {
+		self.0
+			.iter()
+			.filter(|p| !p.is_hole)
+			.map(|p| p.bounding_box())
+			.fold(Rect::NOTHING, |acc, r| acc.union(r))
+	}
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct Triangle(pub DVec2, pub DVec2, pub DVec2);
@@ -55,13 +68,6 @@ impl Default for PartitionVertex<'_> {
 		}
 	}
 }
-
-impl Polygon {
-	pub fn new(points: Vec<DVec2>, is_hole: bool) -> Self {
-		Self { points, is_hole }
-	}
-}
-
 impl From<Triangle> for Polygon {
 	fn from(t: Triangle) -> Self {
 		Polygon::new(vec![t.0, t.1, t.2], false)
@@ -76,6 +82,17 @@ pub enum Orientation {
 }
 
 impl Polygon {
+	pub fn new(points: Vec<DVec2>, is_hole: bool) -> Self {
+		Self { points, is_hole }
+	}
+
+	pub fn bounding_box(&self) -> Rect {
+		let min_max_x = self.points.iter().map(|n| n.x as f32).minmax().into_option().unwrap();
+		let min_max_y = self.points.iter().map(|n| n.y as f32).minmax().into_option().unwrap();
+
+		Rect::from_min_max(Pos2::new(min_max_x.0, min_max_y.0), Pos2::new(min_max_x.1, min_max_y.1))
+	}
+
 	pub fn get_orientation(&self) -> Orientation {
 		let mut area = 0.0;
 		for (i, _) in self.points.iter().enumerate() {
@@ -112,33 +129,14 @@ impl Polygon {
 	}
 
 	pub fn convex_partition(&self) -> Option<Vec<Polygon>> {
+		puffin::profile_function!();
 		if !self.is_valid() {
 			return None;
 		}
 
 		let mut parts = Vec::new();
-
-		let mut num_reflex = 0;
-		let mut i12 = 0;
-		let mut i13 = 0;
-		for i11 in 0..self.num_points() {
-			if i11 == 0 {
-				i12 = self.num_points() - 1;
-			} else {
-				i12 = i11 - 1;
-			}
-			if i11 == self.num_points() - 1 {
-				i13 = 0;
-			} else {
-				i13 = i11 + 1;
-			}
-			if is_reflex(self.points[i12], self.points[i11], self.points[i13]) {
-				num_reflex = 1;
-				break;
-			}
-		}
-
-		if num_reflex == 0 {
+		
+		if self.is_convex(){
 			parts.push(self.clone());
 			return Some(parts);
 		}
@@ -158,7 +156,7 @@ impl Polygon {
 			while i11_outer < triangles[iter1].num_points() {
 				i11_outer += 1;
 				let i11 = i11_outer - 1;
-				i12 = (i11 + 1) % triangles[iter1].num_points();
+				let i12 = (i11 + 1) % triangles[iter1].num_points();
 				let d1 = triangles[iter1].points[i11];
 				let d2 = triangles[iter1].points[i12];
 
@@ -175,13 +173,14 @@ impl Polygon {
 
 					i21 = 0;
 					while i21 < triangles[iter2].num_points() {
-						i22 = (i21 + 1) % triangles[iter2].num_points();
 						let p21 = triangles[iter2].points[i21];
 
 						if (d2.x != p21.x) || (d2.y != p21.y) {
 							i21 += 1;
 							continue;
 						}
+
+						i22 = (i21 + 1) % triangles[iter2].num_points();
 
 						let p22 = triangles[iter2].points[i22];
 						if (d1.x != p22.x) || (d1.y != p22.y) {
@@ -200,8 +199,6 @@ impl Polygon {
 					continue;
 				}
 
-				println!("{i11} \t {i12} \t {i21} \t {i22}");
-
 				let p2 = triangles[iter1].points[i11];
 				let i13 = if i11 == 0 {
 					triangles[iter1].num_points() - 1
@@ -219,7 +216,7 @@ impl Polygon {
 				if !is_convex(p1, p2, p3) {
 					continue;
 				}
-				
+
 				let p2 = triangles[iter1].points[i12];
 				let i13 = if i12 == triangles[iter1].num_points() - 1 {
 					0
@@ -504,14 +501,28 @@ impl Polygon {
 
 		Some(out_polys)
 	}
+
+	fn is_convex(&self) -> bool {
+		for i11 in 0..self.num_points() {
+			// let i12 = if i11 == 0 { self.num_points() - 1 } else { i11 - 1 };
+			let i12 = (i11 + self.num_points() - 1) % self.num_points();
+			let i13 = (i11 + 1) % self.num_points();
+
+			if is_reflex(self.points[i12], self.points[i11], self.points[i13]) {
+				return false;
+			}
+		}
+		return true;
+	}
 }
 
 fn in_cone(p1: DVec2, p2: DVec2, p3: DVec2, p: DVec2) -> bool {
-	if is_convex(p1, p2, p3) {
-		is_convex(p1, p2, p) && is_convex(p2, p3, p)
-	} else {
-		is_convex(p1, p2, p) || is_convex(p2, p3, p)
-	}
+	!is_convex(p1, p2, p3) ||  is_convex(p1, p2, p) || is_convex(p2, p3, p)
+	// if is_convex(p1, p2, p3) {
+	// 	is_convex(p1, p2, p) && is_convex(p2, p3, p)
+	// } else {
+	// 	is_convex(p1, p2, p) || is_convex(p2, p3, p)
+	// }
 }
 
 fn is_convex(p1: DVec2, p2: DVec2, p3: DVec2) -> bool {
@@ -601,8 +612,9 @@ fn update_vertex(v: &PartitionVertex, vertices: &[PartitionVertex]) {
 
 #[cfg(test)]
 mod tests {
-	use crate::map::polygon::Polygon;
 	use glam::DVec2;
+
+	use crate::map::polygon::Polygon;
 
 	#[test]
 	fn triangulate() {

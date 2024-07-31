@@ -8,7 +8,7 @@ use eframe::emath::RectTransform;
 use egui::{
 	pos2, vec2, Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, ScrollArea, Sense, Vec2, Widget,
 };
-use epaint::{ColorMode, PathShape, PathStroke, RectShape, Rounding, Shape};
+use epaint::{PathShape, PathStroke, RectShape, Rounding, Shape};
 use glam::{dvec2, uvec2, DVec2, UVec2};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -32,6 +32,40 @@ pub struct MapRenderData<'a> {
 	pub imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 }
 
+pub struct DrawList {
+	paths: Vec<Shape>,
+	areas: Vec<Shape>,
+	nodes: Vec<Shape>,
+}
+
+impl DrawList {
+	pub fn new() -> Self {
+		Self {
+			paths: Vec::new(),
+			areas: Vec::new(),
+			nodes: Vec::new(),
+		}
+	}
+
+	pub fn draw(self, painter: &Painter) {
+		puffin::profile_function!();
+		painter.extend(self.areas);
+		painter.extend(self.paths);
+		painter.extend(self.nodes);
+	}
+
+	pub fn count(&self) -> usize {
+		self.paths.len() + self.areas.len() + self.nodes.len()
+	}
+}
+
+// We translate every position directly instead of using the transform
+// due to epaint only supporting 32-bit floating point number
+#[inline]
+fn render_pos(pos: &DVec2, camera_offset: &DVec2, transform: &RectTransform) -> Pos2 {
+	transform * (dvec2_to_pos_render(*pos - *camera_offset))
+}
+
 impl<'a> MapWidget<'a> {
 	pub fn new(render_data: MapRenderData<'a>, id: Id, debug_text: Rc<RefCell<DebugText>>) -> Self {
 		Self {
@@ -41,98 +75,91 @@ impl<'a> MapWidget<'a> {
 		}
 	}
 
-	// We translate every element instead of moving the canvas to avoid errors
-	// due to epaint only supporting 32-bit floating point number
 	#[inline]
 	fn draw_element(
 		element: &DetailedElement,
 		transform: RectTransform,
-		camera_pos: DVec2,
-		shapes: &mut Vec<Shape>,
-		map_scale: f32,
+		camera_offset: DVec2,
+		world_view_rect: Rect,
+		shapes: &mut DrawList,
 		ui_scale: f32,
 		pointer_pos: Option<Pos2>,
-		debug: bool,
 	) {
-		if element.style == Style::Invisible {
+		puffin::profile_function!(element.id.to_string());
+		if !element.bounding_box.intersects(world_view_rect) || element.style == Style::Invisible {
 			return;
 		}
 
-		let Style::Colored {color, size, .. } = element.style else {
+		let Style::Colored { color, size, .. } = element.style else {
 			return;
 		};
 
-		let shape = match &element.element {
-			RenderElement::Node(pos) => Some(Shape::rect_filled(
-				Rect::from_center_size(transform * dvec2_to_pos(*pos - camera_pos), Vec2::splat(size * ui_scale)),
+		match &element.element {
+			RenderElement::Node(pos) => shapes.nodes.push(Shape::rect_filled(
+				Rect::from_center_size(
+					render_pos(pos, &camera_offset, &transform),
+					Vec2::splat(size * ui_scale),
+				),
 				Rounding::ZERO,
 				color,
 			)),
-			RenderElement::Way(nodes, is_closed) => {
+			RenderElement::Path(nodes, is_closed) => {
 				let nodes: Vec<Pos2> = nodes
 					.iter()
-					.map(|p| transform * dvec2_to_pos(*p - camera_pos))
+					.map(|pos| render_pos(pos, &camera_offset, &transform))
 					.collect();
 				let stroke = PathStroke::new(size * ui_scale, color);
-				let shape = if *is_closed {
-					if element.is_area {
-						// TODO: render concave Polygons
-						Shape::Path(PathShape::closed_line(
-							nodes,
-							PathStroke {
-								color: ColorMode::Solid(Color32::DARK_BLUE),
-								..stroke
-							},
-						))
-					} else {
-						Shape::Path(PathShape::closed_line(nodes, stroke))
-					}
-				} else {
-					Shape::Path(PathShape::line(nodes, stroke))
-				};
-				Some(shape)
+				shapes.paths.push(Shape::Path(PathShape::line(nodes, stroke)))
+			}
+			RenderElement::Area(polygons) => {
+				for polygon in polygons {
+					let nodes: Vec<Pos2> = polygon
+						.iter()
+						.map(|pos| render_pos(pos, &camera_offset, &transform))
+						.collect();
+					shapes.areas.push(Shape::convex_polygon(
+						nodes,
+						color,
+						PathStroke::NONE,
+						//	PathStroke::new(1.0, Color32::LIGHT_BLUE),
+					))
+				}
 			}
 			RenderElement::Collection(elements) => {
 				for e in elements.iter() {
 					Self::draw_element(
 						e,
 						transform,
-						camera_pos,
+						camera_offset,
+						world_view_rect,
 						shapes,
-						map_scale,
 						ui_scale,
 						pointer_pos,
-						debug,
 					);
 				}
-				None
 			}
 		};
 
-		if debug {
-			let bounding_box = transform.transform_rect(
-				element
-					.bounding_box
-					.translate(vec2(-camera_pos.x as f32, -camera_pos.y as f32)),
-			);
-			shapes.push(Shape::rect_stroke(bounding_box, 0.0, (1.0f32, Color32::LIGHT_RED)));
-		}
-
-		if let Some(shape) = shape {
-			shapes.push(shape);
-		}
+		// if cfg!() {
+		// 	let bounding_box = transform.transform_rect(
+		// 		element
+		// 			.bounding_box
+		// 			.translate(vec2(-camera_pos.x as f32, -camera_pos.y as f32)),
+		// 	);
+		// 	shapes.push(Shape::rect_stroke(bounding_box, 0.0, (1.0f32, Color32::LIGHT_RED)));
+		// }
 	}
 
 	fn draw_tiles(
 		painter: &Painter,
 		viewport: Rect,
-		transform: RectTransform,
 		imagery_fetcher: &Arc<Mutex<ImageryFetcher>>,
 		camera_pos: DVec2,
 		zoom_level: f64,
 		ui_scale: f32,
 		debug_text: &mut DebugText,
 	) {
+		puffin::profile_function!();
 		#[cfg(not(target_arch = "wasm32"))]
 		const ZOOM_ADJUST: f64 = 0.0;
 		#[cfg(target_arch = "wasm32")]
@@ -251,6 +278,7 @@ impl Widget for MapWidget<'_> {
 		ScrollArea::vertical()
 			.show(ui, |ui| {
 				Frame::canvas(ui.style()).show(ui, |ui| {
+					puffin::profile_function!("Draw Map");
 					let ui_scale = ui.ctx().pixels_per_point();
 					let mut debug_text = self.debug_text.borrow_mut();
 					let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
@@ -268,7 +296,7 @@ impl Widget for MapWidget<'_> {
 						mem.zoom_level = mem.zoom_level.clamp(1.0, 25.0);
 					}
 
-					let scale = 1.0 / Self::scale(mem.zoom_level);
+					let scale = Self::scale(mem.zoom_level);
 
 					if response.dragged_by(PointerButton::Middle)
 						|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
@@ -278,7 +306,7 @@ impl Widget for MapWidget<'_> {
 						let delta = response.drag_motion() / ui_scale;
 						#[cfg(target_arch = "wasm32")]
 						let delta = response.drag_motion();
-						let delta = delta / scale as f32;
+						let delta = delta * scale as f32;
 						let delta = dvec2(f64::from(delta.x), -f64::from(delta.y));
 						mem.camera_pos -= delta;
 					}
@@ -288,21 +316,19 @@ impl Widget for MapWidget<'_> {
 					debug_text.add(format!("Scale: {scale}"));
 					debug_text.add(format!("UI Scale: {ui_scale}"));
 
-					let camera_rect = viewport.translate(-viewport.size() / 2.0) / scale as f32;
+					let camera_rect = viewport.translate(-viewport.size() / 2.0) * scale as f32;
 					let transform = RectTransform::from_to(camera_rect, viewport);
+					let world_corners = Self::get_world_corners(viewport, mem.camera_pos, scale);
+					let world_view_rect =
+						Rect::from_two_pos(dvec2_to_pos(world_corners.0), dvec2_to_pos(world_corners.1));
 
-					ui.painter().add(Shape::Rect(RectShape::filled(
-						viewport,
-						Rounding::ZERO,
-						Color32::LIGHT_GRAY,
-					)));
+					debug_text.add(format!("World View Rect: {:?}", world_view_rect));
 
 					drop(debug_text);
 
 					Self::draw_tiles(
 						&painter,
 						viewport,
-						transform,
 						&self.render_data.imagery_fetcher,
 						mem.camera_pos,
 						mem.zoom_level,
@@ -310,24 +336,35 @@ impl Widget for MapWidget<'_> {
 						&mut self.debug_text.borrow_mut(),
 					);
 
-					let mut shapes = Vec::with_capacity(self.render_data.elements.len());
-					let camera_offset = dvec2(mem.camera_pos.x, -mem.camera_pos.y);
+					// TODO: Maybe reuse this
+					let mut shapes = DrawList::new();
+					let camera_offset = dvec2(mem.camera_pos.x, mem.camera_pos.y);
 					let pointer_pos = response.ctx.input(|i| i.pointer.latest_pos());
 					for element in self.render_data.elements {
 						Self::draw_element(
 							element,
 							transform,
 							camera_offset,
+							world_view_rect,
 							&mut shapes,
-							scale as f32,
 							ui_scale,
 							pointer_pos,
-							false,
 						);
 					}
-					painter.extend(shapes);
-					mem.store(&response.ctx, self.id);
 
+					self.debug_text
+						.borrow_mut()
+						.add(format!("Drawn Elements: {}", shapes.count()));
+
+					shapes.draw(&painter);
+
+					painter.add(Shape::Rect(RectShape::stroke(
+						world_view_rect,
+						Rounding::ZERO,
+						(1.0, Color32::RED),
+					)));
+
+					mem.store(&response.ctx, self.id);
 					response
 				})
 			})
@@ -342,6 +379,10 @@ pub const fn pos_to_dvec2(pos: Pos2) -> DVec2 {
 
 pub const fn dvec2_to_pos(dvec: DVec2) -> Pos2 {
 	Pos2::new(dvec.x as f32, dvec.y as f32)
+}
+
+pub fn dvec2_to_pos_render(dvec: DVec2) -> Pos2 {
+	Pos2::new(dvec.x as f32, -dvec.y as f32)
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, macros::Memory)]

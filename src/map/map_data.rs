@@ -91,6 +91,7 @@ impl LatLon {
 		dvec2(pos.x, -pos.y)
 	}
 
+	#[inline]
 	pub fn from_web_mercator(pos: DVec2) -> Self {
 		Self(
 			f64::atan(f64::exp(pos.y / RADIUS_EARTH))

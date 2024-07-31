@@ -268,7 +268,7 @@ mod tests {
 			max: LatLon(51.82344, 12.21268),
 		};
 		let result = get_data(bounds).await;
-		println!("Result: {result:?}");
+		info!("Result: {result:?}");
 		assert!(result.is_ok());
 	}
 }
