@@ -158,21 +158,35 @@ impl MapElement {
 					return false;
 				}
 				if let Some(tags) = &self.tags {
-					tags.iter()
-						.any(|t| (t.key == "area" && t.value == "yes") || is_area_tag(&t.key, &t.value))
+					has_area_tag(tags)
 				} else {
 					false
 				}
 			}
 			Element::Relation { .. } => {
-				false // TODO
+				// TODO: check if members form a closed area
+				if let Some(tags) = &self.tags {
+					has_multipolygon_tag(tags) && has_area_tag(tags)
+				} else {
+					false
+				}
 			}
 		}
 	}
-}
 
+	
+}
 pub fn is_closed(nodes: &[i64]) -> bool {
 	nodes.len() >= 2 && nodes[0] == nodes[nodes.len() - 1]
+}
+
+fn has_multipolygon_tag(tags: &[Tag]) -> bool {
+	tags.iter().any(|t| t.key == "type" && t.value == "multipolygon")
+}
+
+fn has_area_tag(tags: &[Tag]) -> bool {
+	tags.iter()
+		.any(|t| (t.key == "area" && t.value == "yes") || is_area_tag(&t.key, &t.value))
 }
 
 fn is_area_tag(key: &str, value: &str) -> bool {

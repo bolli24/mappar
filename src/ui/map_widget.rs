@@ -109,7 +109,12 @@ impl<'a> MapWidget<'a> {
 					.map(|pos| render_pos(pos, &camera_offset, &transform))
 					.collect();
 				let stroke = PathStroke::new(size * ui_scale, color);
-				shapes.paths.push(Shape::Path(PathShape::line(nodes, stroke)))
+				shapes.paths.push(Shape::Path(PathShape {
+					points: nodes,
+					stroke,
+					fill: Color32::TRANSPARENT,
+					closed: *is_closed,
+				}))
 			}
 			RenderElement::Area(polygons) => {
 				for polygon in polygons {
@@ -357,12 +362,6 @@ impl Widget for MapWidget<'_> {
 						.add(format!("Drawn Elements: {}", shapes.count()));
 
 					shapes.draw(&painter);
-
-					painter.add(Shape::Rect(RectShape::stroke(
-						world_view_rect,
-						Rounding::ZERO,
-						(1.0, Color32::RED),
-					)));
 
 					mem.store(&response.ctx, self.id);
 					response

@@ -5,6 +5,7 @@ use crate::ui::map_widget::dvec2_to_pos;
 use egui::{Color32, Pos2, Rect, Vec2};
 use glam::DVec2;
 use itertools::Itertools;
+use log::info;
 
 #[derive(Debug)]
 pub struct DetailedElement {
@@ -82,9 +83,9 @@ impl DetailedElement {
 					.collect();
 
 				let mut polygon = Polygon::new(nodes.clone(), false);
-				let is_closed = map_data::is_closed(node_indices.as_slice());
+				let is_area = map_element.is_area();
 
-				let convex = if is_closed {
+				let convex = if is_area {
 					polygon.set_orientation(Orientation::CCW);
 					polygon.convex_partition()
 				} else {
@@ -93,7 +94,8 @@ impl DetailedElement {
 
 				if let Some(partitions) = convex {
 					let path = RenderElement::Path(nodes, true);
-					let area = RenderElement::Area(partitions.into_iter().map(|p| p.points).collect());
+					// TODO improve area rendering
+					// let area = RenderElement::Area(partitions.into_iter().map(|p| p.points).collect());
 
 					RenderElement::Collection(vec![
 						DetailedElement {
@@ -102,18 +104,19 @@ impl DetailedElement {
 							element: path,
 							style: DEFAULT_WAY_STYLE,
 						},
-						DetailedElement {
-							id: map_element.id,
-							bounding_box: area.bounding_box(),
-							element: area,
-							style: Style::Colored {
-								color: Color32::BLACK.gamma_multiply(0.5),
-								size: 1.5,
-								fill: true,
-							},
-						},
+						// DetailedElement {
+						// 	id: map_element.id,
+						// 	bounding_box: area.bounding_box(),
+						// 	element: area,
+						// 	style: Style::Colored {
+						// 		color: Color32::RED.gamma_multiply(0.5),
+						// 		size: 1.5,
+						// 		fill: true,
+						// 	},
+						// },
 					])
 				} else {
+					let is_closed = map_data::is_closed(node_indices.as_slice());
 					RenderElement::Path(nodes, is_closed)
 				}
 			}
