@@ -8,7 +8,7 @@ use eframe::emath::RectTransform;
 use egui::{
 	pos2, vec2, Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, ScrollArea, Sense, Vec2, Widget,
 };
-use epaint::{PathShape, PathStroke, RectShape, Rounding, Shape};
+use epaint::{PathShape, PathStroke, Rounding, Shape};
 use glam::{dvec2, uvec2, DVec2, UVec2};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};

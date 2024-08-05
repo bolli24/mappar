@@ -1,6 +1,6 @@
 [package]
 name = "mappar"
-description = "A modern OpenStreetMap for Desktop built using Rust and egui"
+description = "A modern OpenStreetMap editor for Desktop and Browsers built using Rust and egui"
 authors = ["bolli24"]
 version = "0.1.0"
 edition = "2021"
@@ -9,7 +9,7 @@ default-run = "mappar"
 [dependencies]
 macros = { path = "src/macros" }
 
-egui = { version = "0.28.1", features = ["mint"] }
+egui = { version = "0.28.1" }
 eframe = { version = "0.28.1", default-features = false, features = [
     # "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts",
@@ -19,10 +19,9 @@ eframe = { version = "0.28.1", default-features = false, features = [
     "persistence",
 ] }
 wgpu = { version = "*", features = ["webgpu", "webgl"] }
-epaint = { version = "0.28.1", features = ["mint"] }
-image = { version = "0.25.1" ,default-features = false, features = ["jpeg" ]}
-glam = { version = "0.28.0", features = ["serde", "mint"] }
-mint = "0.5.9"
+epaint = { version = "0.28.1" }
+image = { version = "0.25.2", default-features = false, features = ["jpeg"] }
+glam = { version = "0.28.0", features = ["serde"] }
 
 log = "0.4"
 simple_logger = "5.0.0"

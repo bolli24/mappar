@@ -75,7 +75,7 @@ impl DetailedElement {
 					None
 				};
 
-				if let Some(partitions) = convex {
+				if let Some(_partitions) = convex {
 					let path = RenderElement::Path(nodes, true);
 					// TODO improve area rendering
 					// let area = RenderElement::Area(partitions.into_iter().map(|p| p.points).collect());

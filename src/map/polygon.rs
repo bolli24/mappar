@@ -384,7 +384,7 @@ impl Polygon {
 			return None;
 		}
 
-		let mut polys = in_polys.clone();
+		let polys = in_polys;
 		let mut out_polys = polys.clone();
 		let mut hole_iter = polys.first().unwrap(); // Hole with the largest x
 		let mut hole_iter_index = 0;
