@@ -2,7 +2,6 @@
 // hide console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-#[cfg(not(target_arch = "wasm32"))]
 use log::{error, info};
 
 use mappar::MyApp;
