@@ -18,7 +18,6 @@ eframe = { version = "0.28.1", default-features = false, features = [
     "wayland",
     "persistence",
 ] }
-wgpu = { version = "*", features = ["webgpu", "webgl"] }
 epaint = { version = "0.28.1" }
 image = { version = "0.25.2", default-features = false, features = ["jpeg"] }
 glam = { version = "0.28.0", features = ["serde"] }
@@ -49,6 +48,11 @@ tokio = { version = "1.39.1", features = ["macros", "sync", "rt-multi-thread", "
 
 # web:
 [target.'cfg(target_family = "wasm")'.dependencies]
+eframe = { version = "0.28.1", default-features = false, features = [
+    "default_fonts",
+    "glow", # Use instead of wgpu because eframe does not support webgl with wgpu by default
+    "persistence",
+] }
 tokio = { version = "1.39.1", default-features = false, features = ["macros", "sync", "rt"] }
 js-sys = "0.3.69"
 web-sys = { version = "0.3.69", features = ["Navigator", "StorageManager", "IdbFactory", "IdbOpenDbRequest"] }
