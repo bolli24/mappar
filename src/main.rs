@@ -1,14 +1,19 @@
 #![warn(clippy::all, rust_2018_idioms)]
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+// hide console window on Windows in release
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use log::{error, info};
+
 use mappar::MyApp;
 
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
-	simple_logger::init_with_level(log::Level::Info).expect("Error initializing logger");
+	// simple_logger::init_with_level(log::Level::Info).expect("Error initializing logger");
+	let start = std::time::Instant::now();
+	init_logger();
+	info!("Logger initialized in {:?}", start.elapsed());
 
 	let server_addr = format!("127.0.0.1:{}", puffin_http::DEFAULT_PORT);
 	match puffin_http::Server::new(&server_addr) {
@@ -18,9 +23,10 @@ async fn main() -> eframe::Result<()> {
 			std::mem::forget(server);
 		}
 		Err(err) => {
-			error!("Failed to start puffin server on {server_addr}: {err:?}", );
+			error!("Failed to start puffin server on {server_addr}: {err:?}",);
 		}
 	}
+
 	let native_options = eframe::NativeOptions {
 		viewport: egui::ViewportBuilder::default()
 			.with_inner_size([400.0, 300.0])
@@ -39,6 +45,58 @@ async fn main() -> eframe::Result<()> {
 		native_options,
 		Box::new(|cc| Ok(Box::new(MyApp::new(cc)))),
 	)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn init_logger() {
+	use chrono::{DateTime, Utc};
+	use flate2::write::GzEncoder;
+	use simplelog::*;
+	use std::fs::File;
+
+	let storage_path = eframe::storage_dir(MyApp::APP_NAME).expect("Failed to get storage dir");
+	let storage_path = storage_path.join("logs");
+	std::fs::create_dir_all(&storage_path).expect("Failed to create log directory");
+	let latest = storage_path.join("latest.log");
+
+	if latest.exists() {
+		let creation_time = latest.metadata().map(|m| m.created());
+		if let Ok(Ok(creation_time)) = creation_time {
+			let time: DateTime<Utc> = creation_time.into();
+			let time_string = time.format("%Y-%m-%d_%H-%M-%S").to_string();
+			let new_path = storage_path.join(format!("{time_string}.log"));
+			std::fs::rename(&latest, &new_path).expect("Failed to rename log file");
+			let log_gz = storage_path.join(format!("{time_string}.log.gz"));
+			let mut e = GzEncoder::new(
+				File::create(&log_gz).expect("Failed to create log archive"),
+				flate2::Compression::best(),
+			);
+			tar::Builder::new(&mut e)
+				.append_file(
+					new_path.file_name().unwrap(),
+					&mut File::open(&new_path).expect("Failed to open log file"),
+				)
+				.expect("Failed to append file to tar");
+		} else {
+			eprintln!("Failed to get creation time of latest.log");
+			std::fs::remove_file(&latest).expect("Failed to remove old log file");
+		}
+	}
+
+	CombinedLogger::init(vec![
+		TermLogger::new(
+			LevelFilter::Info,
+			Config::default(),
+			TerminalMode::Mixed,
+			ColorChoice::Auto,
+		),
+		WriteLogger::new(
+			LevelFilter::Info,
+			Config::default(),
+			File::create(&latest).expect("Failed to create log file"),
+		),
+	])
+	.expect("Error initializing logger");
 }
 
 // When compiling to web using trunk:

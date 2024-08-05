@@ -23,14 +23,15 @@ epaint = { version = "0.28.1" }
 image = { version = "0.25.2", default-features = false, features = ["jpeg"] }
 glam = { version = "0.28.0", features = ["serde"] }
 
-log = "0.4"
-simple_logger = "5.0.0"
+log = { version = "0.4", features = ["release_max_level_info"] }
+simplelog = "0.12.2"
 serde = { version = "1", features = ["derive"] }
 thiserror = "1.0.63"
 
 reqwest = { version = "0.12.5" }
 quick-xml = { version = "0.36.1", default-features = false }
 bytes = "1.6.1"
+flate2 = "1.0.31"
 
 chrono = { version = "0.4", features = ["wasmbind"] }
 
@@ -40,6 +41,8 @@ regex = "1.10.5"
 
 puffin = "0.19.0"
 puffin_http = "0.16.0"
+tar = "0.4.41"
+directories = "5.0.1"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { version = "1.39.1", features = ["macros", "sync", "rt-multi-thread", "fs"] }

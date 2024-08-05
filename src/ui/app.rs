@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
-
 use egui::{Id, ViewportCommand};
 use log::{error, info};
 use tokio::sync::watch::{channel, Receiver, Sender};
@@ -43,7 +42,6 @@ pub struct MyApp {
 
 impl MyApp {
 	pub const APP_NAME: &'static str = "mappar";
-
 	pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
 		#[cfg(target_arch = "wasm32")]
 		tokio::runtime::Builder::new_current_thread().build().unwrap();
