@@ -10,14 +10,6 @@ default-run = "mappar"
 macros = { path = "src/macros" }
 
 egui = { version = "0.28.1" }
-eframe = { version = "0.28.1", default-features = false, features = [
-    # "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
-    "default_fonts",
-    "wgpu",
-    "x11",
-    "wayland",
-    "persistence",
-] }
 epaint = { version = "0.28.1" }
 image = { version = "0.25.2", default-features = false, features = ["jpeg"] }
 glam = { version = "0.28.0", features = ["serde"] }
@@ -44,6 +36,14 @@ tar = "0.4.41"
 directories = "5.0.1"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
+eframe = { version = "0.28.1", default-features = false, features = [
+    # "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts",
+    "wgpu",
+    "x11",
+    "wayland",
+    "persistence",
+] }
 tokio = { version = "1.39.1", features = ["macros", "sync", "rt-multi-thread", "fs"] }
 
 # web:
