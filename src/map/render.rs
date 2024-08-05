@@ -1,11 +1,12 @@
-use crate::map::map_data;
-use crate::map::map_data::{Element, MapData, MapElement};
-use crate::map::polygon::{Orientation, Polygon};
-use crate::ui::map_widget::dvec2_to_pos;
 use egui::{Color32, Pos2, Rect, Vec2};
 use glam::DVec2;
 use itertools::Itertools;
-use log::info;
+
+use crate::map::map_data;
+use crate::map::map_data::{Element, MapData, MapElement};
+use crate::map::polygon::{Orientation, Polygon};
+use crate::map::style::{Style, DEFAULT_NODE_STYLE, DEFAULT_WAY_STYLE};
+use crate::ui::map_widget::dvec2_to_pos;
 
 #[derive(Debug)]
 pub struct DetailedElement {
@@ -46,24 +47,6 @@ impl RenderElement {
 		}
 	}
 }
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Style {
-	Colored { color: Color32, size: f32, fill: bool },
-	Invisible,
-}
-
-pub const DEFAULT_WAY_STYLE: Style = Style::Colored {
-	color: Color32::BLACK,
-	size: 1.5,
-	fill: false,
-};
-
-pub const DEFAULT_NODE_STYLE: Style = Style::Colored {
-	color: Color32::BLACK,
-	size: 4.0,
-	fill: true,
-};
 
 impl DetailedElement {
 	pub fn from_map_element(map_element: &MapElement, map_data: &MapData) -> Self {
@@ -133,7 +116,10 @@ impl DetailedElement {
 		let style = match &map_element.element {
 			Element::Node { .. } => DEFAULT_NODE_STYLE,
 			Element::Way { .. } => DEFAULT_WAY_STYLE,
-			Element::Relation { .. } => Style::Invisible,
+			Element::Relation { .. } => Style {
+				color: Color32::TRANSPARENT,
+				..DEFAULT_WAY_STYLE
+			},
 		};
 
 		Self {
@@ -145,10 +131,14 @@ impl DetailedElement {
 	}
 
 	pub fn hovered(&self, pointer_pos: DVec2) -> bool {
+		puffin::profile_function!();
 		match &self.element {
 			RenderElement::Node(pos) => (pointer_pos - *pos).length() < 5.0,
-			RenderElement::Path(nodes, _) => {
+			RenderElement::Path(nodes, true) => {
 				self.bounding_box.contains(dvec2_to_pos(pointer_pos)) && point_in_polygon(pointer_pos, nodes)
+			}
+			RenderElement::Path(_nodes, false) => {
+				false // TODO
 			}
 			RenderElement::Area(polygons) => {
 				self.bounding_box.contains(dvec2_to_pos(pointer_pos))
@@ -169,18 +159,15 @@ impl DetailedElement {
 /// **Adapted from**: <https://wrfranklin.org/Research/Short_Notes/pnpoly.html>
 pub fn point_in_polygon(test: DVec2, verts: &[DVec2]) -> bool {
 	let mut result = false;
-	let mut i = 0;
 	let mut j = 0;
 
-	while i < verts.len() {
+	for i in 0..verts.len() {
 		if ((verts[i].y > test.y) != (verts[j].y > test.y))
 			&& (test.x < (verts[j].x - verts[i].x) * (test.y - verts[i].y) / (verts[j].y - verts[i].y) + verts[i].x)
 		{
 			result = !result;
 		}
-
-		i += 1;
-		j = 1;
+		j = i;
 	}
 	result
 }

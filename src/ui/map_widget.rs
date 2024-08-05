@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::map::map_data::{LatLon, CIRCUMFERENCE_EARTH};
-use crate::map::render::{DetailedElement, RenderElement, Style};
+use crate::map::render::{DetailedElement, RenderElement};
 use crate::ui::debug_text::DebugText;
 use crate::ui::memory::Memory;
 
@@ -66,6 +66,18 @@ fn render_pos(pos: &DVec2, camera_offset: &DVec2, transform: &RectTransform) -> 
 	transform * (dvec2_to_pos_render(*pos - *camera_offset))
 }
 
+#[derive(Debug, Copy, Clone)]
+struct View {
+	transform: RectTransform,
+	viewport: Rect,
+	camera_pos: DVec2,
+	world_view_rect: Rect,
+	zoom_level: f64,
+	scale: f64,
+	ui_scale: f32,
+	pointer_pos: Option<DVec2>,
+}
+
 impl<'a> MapWidget<'a> {
 	pub fn new(render_data: MapRenderData<'a>, id: Id, debug_text: Rc<RefCell<DebugText>>) -> Self {
 		Self {
@@ -76,29 +88,20 @@ impl<'a> MapWidget<'a> {
 	}
 
 	#[inline]
-	fn draw_element(
-		element: &DetailedElement,
-		transform: RectTransform,
-		camera_offset: DVec2,
-		world_view_rect: Rect,
-		shapes: &mut DrawList,
-		ui_scale: f32,
-		pointer_pos: Option<Pos2>,
-	) {
+	fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View) {
 		puffin::profile_function!(element.id.to_string());
-		if !element.bounding_box.intersects(world_view_rect) || element.style == Style::Invisible {
+		if !element.bounding_box.intersects(view.world_view_rect) || element.style.color == Color32::TRANSPARENT {
 			return;
 		}
 
-		let Style::Colored { color, size, .. } = element.style else {
-			return;
-		};
+		let highlighted = view.pointer_pos.map_or(false, |pos| element.hovered(pos));
+		let (color, size) = element.style.highlight(highlighted);
 
 		match &element.element {
 			RenderElement::Node(pos) => shapes.nodes.push(Shape::rect_filled(
 				Rect::from_center_size(
-					render_pos(pos, &camera_offset, &transform),
-					Vec2::splat(size * ui_scale),
+					render_pos(pos, &view.camera_pos, &view.transform),
+					Vec2::splat(size * view.ui_scale),
 				),
 				Rounding::ZERO,
 				color,
@@ -106,9 +109,9 @@ impl<'a> MapWidget<'a> {
 			RenderElement::Path(nodes, is_closed) => {
 				let nodes: Vec<Pos2> = nodes
 					.iter()
-					.map(|pos| render_pos(pos, &camera_offset, &transform))
+					.map(|pos| render_pos(pos, &view.camera_pos, &view.transform))
 					.collect();
-				let stroke = PathStroke::new(size * ui_scale, color);
+				let stroke = PathStroke::new(size * view.ui_scale, color);
 				shapes.paths.push(Shape::Path(PathShape {
 					points: nodes,
 					stroke,
@@ -120,7 +123,7 @@ impl<'a> MapWidget<'a> {
 				for polygon in polygons {
 					let nodes: Vec<Pos2> = polygon
 						.iter()
-						.map(|pos| render_pos(pos, &camera_offset, &transform))
+						.map(|pos| render_pos(pos, &view.camera_pos, &view.transform))
 						.collect();
 					shapes.areas.push(Shape::convex_polygon(
 						nodes,
@@ -132,15 +135,7 @@ impl<'a> MapWidget<'a> {
 			}
 			RenderElement::Collection(elements) => {
 				for e in elements.iter() {
-					Self::draw_element(
-						e,
-						transform,
-						camera_offset,
-						world_view_rect,
-						shapes,
-						ui_scale,
-						pointer_pos,
-					);
+					Self::draw_element(e, shapes, view);
 				}
 			}
 		};
@@ -157,11 +152,8 @@ impl<'a> MapWidget<'a> {
 
 	fn draw_tiles(
 		painter: &Painter,
-		viewport: Rect,
 		imagery_fetcher: &Arc<Mutex<ImageryFetcher>>,
-		camera_pos: DVec2,
-		zoom_level: f64,
-		ui_scale: f32,
+		view: &View,
 		debug_text: &mut DebugText,
 	) {
 		puffin::profile_function!();
@@ -183,14 +175,13 @@ impl<'a> MapWidget<'a> {
 		));
 		debug_text.add(format!("Pending tiles: {}", imagery_fetcher.pending_count(),));
 
-		let scale = Self::scale(zoom_level);
-		let corners = Self::get_world_corners(viewport, camera_pos, scale);
+		let corners = Self::get_world_corners(view.viewport, view.camera_pos, view.scale);
 
 		let base_tile_size = imagery_fetcher.imagery().lock().unwrap().tile_size();
 		let max_zoom = imagery_fetcher.imagery().lock().unwrap().max_zoom();
 
 		let tile_zoom_level = u32::min(
-			(zoom_level + (ui_scale as f64 - 1.0) + ZOOM_ADJUST).round() as u32,
+			(view.zoom_level + (view.ui_scale as f64 - 1.0) + ZOOM_ADJUST).round() as u32,
 			max_zoom,
 		);
 
@@ -209,9 +200,9 @@ impl<'a> MapWidget<'a> {
 			if let Some(image) = tile {
 				const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 				let coords = Self::get_tile_pos(x, y, tile_zoom_level);
-				let coords = dvec2_to_pos(coords - (camera_pos * dvec2(1.0, -1.0)));
-				let rect = Rect::from_min_size(coords, vec2(tile_size as f32, tile_size as f32)) / scale as f32;
-				let rect = rect.translate(viewport.size() * 0.5);
+				let coords = dvec2_to_pos(coords - (view.camera_pos * dvec2(1.0, -1.0)));
+				let rect = Rect::from_min_size(coords, vec2(tile_size as f32, tile_size as f32)) / view.scale as f32;
+				let rect = rect.translate(view.viewport.size() * 0.5);
 				painter.image(image, rect, UV, Color32::WHITE);
 			};
 		}
@@ -251,9 +242,14 @@ impl<'a> MapWidget<'a> {
 		LatLon(-lat_rad.to_degrees(), lon_deg).to_web_mercator()
 	}
 
-	fn get_world_corners(view: Rect, camera_pos: DVec2, scale: f64) -> (DVec2, DVec2) {
-		let half = (dvec2(view.width() as f64 * 0.5, view.height() as f64 * 0.5) + pos_to_dvec2(view.min)) * scale;
+	fn get_world_corners(viewport: Rect, camera_pos: DVec2, scale: f64) -> (DVec2, DVec2) {
+		let half = (pos_to_dvec2(viewport.min + viewport.size() * 0.5)) * scale;
 		(camera_pos - half, camera_pos + half)
+	}
+
+	fn get_world_pos(pos: Pos2, view: Rect, camera_pos: DVec2, scale: f64) -> DVec2 {
+		let pos = pos - view.size() * 0.5;
+		(dvec2(pos.x as f64, -pos.y as f64)) * scale + dvec2(camera_pos.x, camera_pos.y)
 	}
 
 	fn get_tile_bound(view: Rect, camera_pos: DVec2, scale: f64) -> (DVec2, DVec2) {
@@ -329,37 +325,33 @@ impl Widget for MapWidget<'_> {
 
 					debug_text.add(format!("World View Rect: {:?}", world_view_rect));
 
-					drop(debug_text);
+					let pointer_pos = response
+						.ctx
+						.input(|i| i.pointer.latest_pos())
+						.map(|pos| Self::get_world_pos(pos, viewport, mem.camera_pos, scale));
 
-					Self::draw_tiles(
-						&painter,
+					debug_text.add(format!("Pointer Pos: {:?}", pointer_pos));
+					let view = View {
+						transform,
 						viewport,
-						&self.render_data.imagery_fetcher,
-						mem.camera_pos,
-						mem.zoom_level,
+						camera_pos: mem.camera_pos,
+						world_view_rect,
+						scale,
+						zoom_level: mem.zoom_level,
 						ui_scale,
-						&mut self.debug_text.borrow_mut(),
-					);
+						pointer_pos,
+					};
 
-					// TODO: Maybe reuse this
+					Self::draw_tiles(&painter, &self.render_data.imagery_fetcher, &view, &mut debug_text);
+
+					// TODO: Maybe reuse this to avoid reallocation
 					let mut shapes = DrawList::new();
-					let camera_offset = dvec2(mem.camera_pos.x, mem.camera_pos.y);
-					let pointer_pos = response.ctx.input(|i| i.pointer.latest_pos());
+
 					for element in self.render_data.elements {
-						Self::draw_element(
-							element,
-							transform,
-							camera_offset,
-							world_view_rect,
-							&mut shapes,
-							ui_scale,
-							pointer_pos,
-						);
+						Self::draw_element(element, &mut shapes, &view);
 					}
 
-					self.debug_text
-						.borrow_mut()
-						.add(format!("Drawn Elements: {}", shapes.count()));
+					debug_text.add(format!("Drawn Elements: {}", shapes.count()));
 
 					shapes.draw(&painter);
 
