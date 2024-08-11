@@ -1,0 +1,13 @@
+[package]
+name = "mappar_css"
+authors = ["bolli24"]
+description = "A MapCSS parser."
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chumsky = { version = "1.0.0-alpha.7", features = ["label"] }
+logos = "0.14.1"
+ecolor = { version = "0.28.1", features = ["color-hex"] }
+ariadne = "0.4.1"
+

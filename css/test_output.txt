@@ -1,0 +1,17 @@
+Identifier("node")
+Space
+Newline
+Identifier("way")
+Space
+Space
+Space
+Space
+Identifier("relation")
+Space
+Op("*")
+Newline
+Newline
+Space
+Space
+Dot
+Identifier("dumbo")

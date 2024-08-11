@@ -6,6 +6,9 @@ version = "0.1.0"
 edition = "2021"
 default-run = "mappar"
 
+[workspace]
+members = ["src/macros", "css"]
+
 [dependencies]
 macros = { path = "src/macros" }
 
@@ -73,7 +76,7 @@ proc-macro = false
 harness = false
 
 [profile.dev]
-opt-level = 1   # this is needed to the performance of the web worker not suck
+opt-level = 0   # this is needed to the performance of the web worker not suck
 
 [profile.dev.package."*"]
 opt-level = 2
