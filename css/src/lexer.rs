@@ -2,10 +2,9 @@ use crate::Object;
 use ecolor::{Color32, ParseHexColorError};
 use logos::{FilterResult, Lexer, Logos, Skip};
 use std::fmt::Display;
-use std::hash::Hash;
 use std::num::ParseFloatError;
 
-#[derive(Logos, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Logos, Debug, Clone, PartialEq)]
 #[logos(skip r"[\f]+")]
 #[logos(error = LexingError)]
 #[logos(extras = (usize, bool))]
@@ -63,7 +62,8 @@ pub enum Token<'a> {
 	Identifier(&'a str),
 
 	#[regex(r"[-+]?(?:0|[1-9]\d*)?(?:\.\d+)?(?:[eE][+-]?\d+)?", |lex| lex.slice().parse::<f64>().map(|f| f.into()), priority = 2)]
-	Number(F64),
+	// Number(F64),
+	Number(f64),
 
 	#[regex(r#"[\"']"#, string)]
 	Quoted(String),
@@ -98,34 +98,34 @@ impl Token<'_> {
 	}
 }
 
-#[derive(Debug, Clone)]
-pub struct F64(f64);
-
-impl Hash for F64 {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.0.to_bits().hash(state)
-	}
-}
-
-impl PartialEq<Self> for F64 {
-	fn eq(&self, other: &Self) -> bool {
-		self.0.to_bits() == other.0.to_bits()
-	}
-}
-
-impl Eq for F64 {}
-
-impl From<f64> for F64 {
-	fn from(num: f64) -> Self {
-		F64(num)
-	}
-}
-
-impl Into<f64> for F64 {
-	fn into(self) -> f64 {
-		self.0
-	}
-}
+// #[derive(Debug, Clone)]
+// pub struct F64(f64);
+//
+// impl Hash for F64 {
+// 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+// 		self.0.to_bits().hash(state)
+// 	}
+// }
+//
+// impl PartialEq<Self> for F64 {
+// 	fn eq(&self, other: &Self) -> bool {
+// 		self.0.to_bits() == other.0.to_bits()
+// 	}
+// }
+//
+// impl Eq for F64 {}
+//
+// impl From<f64> for F64 {
+// 	fn from(num: f64) -> Self {
+// 		F64(num)
+// 	}
+// }
+//
+// impl From<F64> for f64 {
+// 	fn from(num: F64) -> f64 {
+// 		num.0
+// 	}
+// }
 
 impl Display for Token<'_> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -151,7 +151,7 @@ impl Display for Token<'_> {
 			Token::Color(color) => write!(f, "{:?}", color),
 			Token::Unit(unit) => write!(f, "{}", unit),
 			Token::Identifier(ident) => write!(f, "{}", ident),
-			Token::Number(num) => write!(f, "{}", num.0),
+			Token::Number(num) => write!(f, "{}", num),
 			Token::Quoted(string) => write!(f, "\"{}\"", string),
 			Token::Comment => write!(f, "/*"),
 			Token::Newline => writeln!(f),
@@ -289,17 +289,11 @@ mod tests {
 	#[test]
 	fn numbers() {
 		let mut lex = Token::lexer("4.01\n-456.8\n0.0\n+0.0\n-0.0\n.60\n10e3\n-3.4e-2\n12\n-1");
-
-		assert_eq!(lex.next(), Some(Ok(Token::Number(4.01.into()))));
-		assert_eq!(lex.next(), Some(Ok(Token::Number((-456.8).into()))));
-		assert_eq!(lex.next(), Some(Ok(Token::Number(0.0.into()))));
-		assert_eq!(lex.next(), Some(Ok(Token::Number(0.0.into()))));
-		assert_eq!(lex.next(), Some(Ok(Token::Number((-0.0).into()))));
-		assert_eq!(lex.next(), Some(Ok(Token::Number(0.6.into()))));
-		assert_eq!(lex.next(), Some(Ok(Token::Number(10e3.into()))));
-		assert_eq!(lex.next(), Some(Ok(Token::Number((-3.4e-2).into()))));
-		assert_eq!(lex.next(), Some(Ok(Token::Number(12.0.into()))));
-		assert_eq!(lex.next(), Some(Ok(Token::Number((-1.0).into()))));
+		let numbers = [4.01, -456.8, 0.0, 0.0, -0.0, 0.6, 10e3, -3.4e-2, 12.0, -1.0];
+		for number in numbers.iter() {
+			assert_eq!(lex.next(), Some(Ok(Token::Number(*number))));
+			lex.next();
+		}
 		assert_eq!(lex.next(), None);
 	}
 

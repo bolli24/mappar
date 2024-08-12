@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use crate::lexer::Token;
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 use ecolor::Color32;
@@ -8,7 +9,9 @@ pub mod lexer;
 pub type Ruleset = Vec<Rule>;
 // pub type Span = logos::Span;
 // ~=|=|!=|=~|<=|>=|<|>|\*|\+|-|\^|/|\\
-enum Binary {
+
+#[derive(Debug, Copy, Clone)]
+pub enum BinaryOp {
 	Eq,
 	NotEq,
 	LeftMatch,
@@ -23,13 +26,14 @@ enum Binary {
 	Div,
 }
 
-enum Unary {
+#[derive(Debug, Copy, Clone)]
+pub enum UnaryOp {
 	Not,
 	Neg,
 }
 
 #[derive(Debug)]
-enum Object {
+pub enum Object {
 	Node,
 	Way,
 	Relation,
@@ -57,20 +61,175 @@ impl From<&str> for Object {
 #[derive(Debug)]
 pub struct Zoom(u8, u8);
 
-// fn expr_parser<'a,  I: Input<'a>>(
-// ) -> impl Parser<'a, I, Ruleset, extra::Err<Rich<'a, Token<'a>>>> + Clone {
-// 	// let zoom = select! {
-// 	// 	Token::Zoom(zoom_str) => {
-// 	// 		let mut zoom_str = zoom_str.split('-');
-// 	// 		let a = zoom_str.next().unwrap().parse::<u8>().unwrap_or(0);
-// 	// 		let b = zoom_str.next().unwrap().parse::<u8>().unwrap_or(u8::MAX);
-// 	//
-// 	// 		Zoom(a, b)
-// 	// 	}
-// 	// };
-//
-// 	todo()
-// }
+fn expr_parser<'a, I>() -> impl Parser<'a, I, Vec<Rule>, extra::Err<Rich<'a, Token<'a>>>> + Clone
+where
+	I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
+{
+	// Required whitespace after object
+	let req_space = just(Token::Space)
+		.or(just(Token::Newline))
+		.repeated()
+		.at_least(1)
+		.labelled("whitespace");
+
+	let opt_spaces = just(Token::Space).or(just(Token::Newline)).repeated().ignored();
+
+	// key          ::= ID;
+	let key = select! {
+		Token::Identifier(key) => key.to_string(),
+	};
+	// tag          ::= key | tag ":" key;
+	let tag = key.clone();
+
+	let value = select! {
+		Token::Number(num) => Value::Number(num.into()),
+		Token::Identifier(ident) => Value::Identifier(ident.to_string()),
+	};
+
+	let unary = select! {
+		Token::Exclamation => UnaryOp::Not,
+		Token::Op("-") => UnaryOp::Neg,
+	};
+
+	let binary = select! {
+		Token::Op("=") => BinaryOp::Eq,
+		Token::Op("!=") => BinaryOp::NotEq,
+		Token::Op("=~") => BinaryOp::RightMatch,
+		Token::Op("~=") => BinaryOp::LeftMatch,
+		Token::Op("<=") => BinaryOp::Le,
+		Token::Op(">=") => BinaryOp::Ge,
+		Token::Op("<") => BinaryOp::Lt,
+		Token::Op(">") => BinaryOp::Gt,
+		Token::Op("*") => BinaryOp::Mul,
+		Token::Op("+") => BinaryOp::Add,
+		Token::Op("-") => BinaryOp::Sub,
+		Token::Op("/") => BinaryOp::Div,
+	};
+
+	let unit = select! {
+		Token::Unit(unit) => Unit::from(unit),
+	}
+	.labelled("unit (px, pt, %)");
+
+	let color = select! {Token::Color(c) => c};
+
+	let size = select! { Token::Number(number) => number}
+		.then(unit)
+		.map(|(number, unit)| Size { number, unit });
+
+	let sizes = size
+		.separated_by(just(Token::Comma).padded_by(opt_spaces.clone()))
+		.collect::<Vec<Size>>();
+
+	// specifier    ::= named | sizes | colour | url | eval;
+	let specifier = choice((
+		select! {
+			Token::Identifier(id) => Specifier::Named(id.to_string())
+		},
+		color.map(Specifier::Color),
+		sizes.map(Specifier::Sizes),
+	));
+
+	let style = key
+		.then_ignore(just(Token::Colon).padded_by(opt_spaces.clone()))
+		.then(specifier)
+		.map(|(key, specifier)| Style { key, specifier });
+
+	let styleset = style
+		.padded_by(opt_spaces.clone())
+		.clone()
+		.separated_by(just(Token::Semicolon).padded_by(opt_spaces.clone()))
+		.allow_trailing()
+		.collect::<Vec<Style>>();
+
+	let declaration = styleset
+		.or(empty().map(|_| Vec::new()))
+		.padded_by(opt_spaces.clone())
+		.delimited_by(just(Token::BraceOpen), just(Token::BraceClose))
+		.padded_by(opt_spaces.clone())
+		.labelled("declaration");
+
+	let condition = choice((
+		tag.then_ignore(opt_spaces.clone())
+			.then(binary)
+			.then_ignore(opt_spaces.clone())
+			.then(value)
+			.map(|((tag, op), value)| Condition::Binary(tag, op, value)),
+		unary
+			.then_ignore(opt_spaces.clone())
+			.then(tag)
+			.map(|(op, tag)| Condition::Unary(op, tag)),
+		tag.map(Condition::Tag),
+	))
+	.labelled("condition");
+
+	let test = condition.delimited_by(
+		just(Token::BracketOpen).then(opt_spaces.clone()),
+		opt_spaces.clone().then(just(Token::BracketClose)),
+	);
+
+	let tests = test.repeated().collect::<Vec<_>>();
+
+	// object       ::= "node" | "way" | "relation" | "area" | "line" | "canvas" | "*" | ;
+	let object = any()
+		.filter(|t: &Token| t.try_into_object().is_some())
+		.map(|t| t.try_into_object().unwrap())
+		.labelled("object (node, way, relation, area, line, canvas, *)");
+
+	let class = just(Token::Dot)
+		.or(just(Token::Colon))
+		.then(select! {
+			Token::Identifier(class) => class.to_string(),
+		})
+		.labelled("classname")
+		.map(|(a, b)| match a {
+			Token::Dot => b,
+			Token::Colon => todo!(),
+			_ => unreachable!(),
+		});
+
+	let maybe_class = choice((
+		just(Token::Exclamation)
+			.ignore_then(class.clone())
+			.map(SubSelector::NotClass),
+		class.map(SubSelector::Class),
+	));
+
+	// subselector  ::= object SPACE | object zoom | object zoom tests | maybe_class;
+	let sub_selector = choice((
+		object
+			.then_ignore(req_space.clone())
+			.map(|object| SubSelector::Object(Some(object))),
+		object
+			.then(tests)
+			.map(|(object, tests)| SubSelector::WithTests(Some(object), tests)),
+		maybe_class,
+	))
+	.labelled("subselector");
+
+	// selector     ::= subselector | selector subselector;
+	let selector = sub_selector // .class1 .class2 OR .class1.class2
+		.separated_by(opt_spaces.clone())
+		.collect::<Vec<_>>()
+		.map(Intersection)
+		.labelled("selector");
+
+	// uSelectors   ::= selector | uSelectors "," selector;
+	let union_selector = selector // .class1, .class2 OR .class1,.class2
+		.separated_by(just(Token::Comma).padded_by(opt_spaces.clone()))
+		.allow_trailing()
+		.collect::<Vec<_>>()
+		.map(Union);
+
+	let selectors = union_selector.labelled("selectors");
+
+	let rule = selectors
+		.then(declaration)
+		.map(|(selectors, styles)| Rule { selectors, styles });
+
+	let rule_set = rule.separated_by(opt_spaces.clone()).collect();
+	rule_set
+}
 
 #[derive(Debug)]
 pub struct Rule {
@@ -78,18 +237,24 @@ pub struct Rule {
 	pub styles: Vec<Style>,
 }
 
-pub type Selectors = Vec<Union>;
+pub type Selectors = Union;
 
+/// Applies to all instances with any of the subselectors
+/// .class1, .class2
 #[derive(Debug)]
-pub struct Union(Vec<Intersection>); // .class1, .class2
+pub struct Union(Vec<Intersection>);
 
+/// Applies to all instances with all the subselectors
+/// .class1 .class2
 #[derive(Debug)]
-pub struct Intersection(Vec<SubSelector>); // .class1 .class2
+pub struct Intersection(Vec<SubSelector>);
 
 #[derive(Debug)]
 pub enum SubSelector {
-	Object(Object),
+	Object(Option<Object>),
+	WithTests(Option<Object>, Vec<Condition>),
 	Class(String),
+	NotClass(String),
 }
 
 #[derive(Debug)]
@@ -100,7 +265,7 @@ pub struct Style {
 
 #[derive(Debug)]
 pub enum Specifier {
-	Name(String),
+	Named(String),
 	Sizes(Vec<Size>),
 	Color(Color32),
 	Url(String),
@@ -120,73 +285,39 @@ pub enum Unit {
 	Percent,
 }
 
+impl From<&str> for Unit {
+	fn from(s: &str) -> Self {
+		match s {
+			"px" => Unit::Px,
+			"pt" => Unit::Pt,
+			"%" => Unit::Percent,
+			_ => unreachable!(),
+		}
+	}
+}
+
+#[derive(Debug)]
+pub enum Value {
+	Number(f64),
+	Identifier(String),
+}
+
+#[derive(Debug)]
+pub enum Condition {
+	Binary(String, BinaryOp, Value),
+	Unary(UnaryOp, String),
+	Tag(String),
+}
+
 #[cfg(test)]
 mod tests {
+	use crate::lexer::Token;
 	use ariadne::{Color, Label, Report, ReportKind, Source};
 	use chumsky::input::Stream;
 	use chumsky::prelude::*;
 	use logos::Logos;
 
-	use crate::lexer::Token;
-
 	use super::*;
-
-	fn expr_parser<'a, I>() -> impl Parser<'a, I, Selectors, extra::Err<Rich<'a, Token<'a>>>> + Clone
-	where
-		I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
-	{
-		// Required whitespace after object
-		let req_space = just(Token::Space)
-			.or(just(Token::Newline))
-			.repeated()
-			.at_least(1)
-			.labelled("whitespace");
-		let opt_spaces = just(Token::Space).or(just(Token::Newline)).repeated().ignored();
-
-		// object       ::= "node" | "way" | "relation" | "area" | "line" | "canvas" | "*" | ;
-		let object = any()
-			.filter(|t: &Token| t.try_into_object().is_some())
-			.map(|t| SubSelector::Object(t.try_into_object().unwrap()))
-			.labelled("object (node, way, relation, area, line, canvas, *)")
-			.then_ignore(req_space.clone());
-
-		let class = just(Token::Dot)
-			.or(just(Token::Colon))
-			.then(select! {
-				Token::Identifier(class) => class.to_string(),
-			})
-			.labelled("classname")
-			.map(|(a, b)| match a {
-				Token::Dot => SubSelector::Class(b),
-				Token::Colon => todo!(),
-				_ => unreachable!(),
-			});
-
-		let sub_selector = class.or(object).labelled("selector");
-		let selector = sub_selector // .class1 .class2 OR .class1.class2
-			.separated_by(opt_spaces.clone())
-			.collect::<Vec<_>>()
-			.map(Intersection)
-			.labelled("selector");
-
-		let union_selector = selector // .class1, .class2 OR .class1,.class2
-			.separated_by(just(Token::Comma).padded_by(opt_spaces.clone()))
-			.allow_trailing()
-			.collect::<Vec<_>>()
-			.map(Union);
-
-		let selectors = union_selector
-			.separated_by(just(Token::Comma).padded_by(opt_spaces.clone()))
-			.allow_trailing();
-
-		selectors.collect()
-	}
-
-	fn print_type_of<T>(_: &T) {
-		println!("{}", std::any::type_name::<T>())
-	}
-
-	// type ParserInput<'tokens, 'src> = SpannedInput<Token<'src>, Span, &'tokens [(Token<'src>, Span)]>;
 
 	#[test]
 	fn parse() {
@@ -208,7 +339,6 @@ mod tests {
 				let src = Source::from(&src);
 				for err in errs {
 					Report::build(ReportKind::Error, file_name, err.span().start)
-						// .with_code(3)
 						.with_message(err.to_string())
 						.with_label(
 							Label::new((file_name, err.span().into_range()))
