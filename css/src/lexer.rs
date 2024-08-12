@@ -1,7 +1,8 @@
-use std::fmt::Display;
-use std::hash::Hash;
+use crate::Object;
 use ecolor::{Color32, ParseHexColorError};
 use logos::{FilterResult, Lexer, Logos, Skip};
+use std::fmt::Display;
+use std::hash::Hash;
 use std::num::ParseFloatError;
 
 #[derive(Logos, Debug, Clone, PartialEq, Eq, Hash)]
@@ -78,6 +79,25 @@ pub enum Token<'a> {
 	Newline,
 }
 
+impl Token<'_> {
+	pub fn is_whitespace(&self) -> bool {
+		matches!(self, Token::Space | Token::Newline)
+	}
+
+	pub fn try_into_object(&self) -> Option<Object> {
+		match self {
+			Token::Identifier("node") => Some(Object::Node),
+			Token::Identifier("way") => Some(Object::Way),
+			Token::Identifier("relation") => Some(Object::Relation),
+			Token::Identifier("area") => Some(Object::Area),
+			Token::Identifier("line") => Some(Object::Line),
+			Token::Identifier("canvas") => Some(Object::Canvas),
+			Token::Op("*") => Some(Object::All),
+			_ => None,
+		}
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct F64(f64);
 
@@ -134,7 +154,7 @@ impl Display for Token<'_> {
 			Token::Number(num) => write!(f, "{}", num.0),
 			Token::Quoted(string) => write!(f, "\"{}\"", string),
 			Token::Comment => write!(f, "/*"),
-			Token::Newline => write!(f, "\n"),
+			Token::Newline => writeln!(f),
 		}
 	}
 }

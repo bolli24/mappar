@@ -1,12 +1,10 @@
 #![allow(dead_code)]
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
+use ecolor::Color32;
 
 pub mod lexer;
 
-pub enum Rule {
-	Value,
-}
 pub type Ruleset = Vec<Rule>;
 // pub type Span = logos::Span;
 // ~=|=|!=|=~|<=|>=|<|>|\*|\+|-|\^|/|\\
@@ -30,6 +28,7 @@ enum Unary {
 	Neg,
 }
 
+#[derive(Debug)]
 enum Object {
 	Node,
 	Way,
@@ -37,7 +36,22 @@ enum Object {
 	Area,
 	Line,
 	Canvas,
-	Star,
+	All,
+}
+
+impl From<&str> for Object {
+	fn from(s: &str) -> Self {
+		match s {
+			"node" => Object::Node,
+			"way" => Object::Way,
+			"relation" => Object::Relation,
+			"area" => Object::Area,
+			"line" => Object::Line,
+			"canvas" => Object::Canvas,
+			"*" => Object::All,
+			_ => unreachable!(),
+		}
+	}
 }
 
 #[derive(Debug)]
@@ -58,6 +72,54 @@ pub struct Zoom(u8, u8);
 // 	todo()
 // }
 
+#[derive(Debug)]
+pub struct Rule {
+	pub selectors: Selectors,
+	pub styles: Vec<Style>,
+}
+
+pub type Selectors = Vec<Union>;
+
+#[derive(Debug)]
+pub struct Union(Vec<Intersection>); // .class1, .class2
+
+#[derive(Debug)]
+pub struct Intersection(Vec<SubSelector>); // .class1 .class2
+
+#[derive(Debug)]
+pub enum SubSelector {
+	Object(Object),
+	Class(String),
+}
+
+#[derive(Debug)]
+pub struct Style {
+	pub key: String,
+	pub specifier: Specifier,
+}
+
+#[derive(Debug)]
+pub enum Specifier {
+	Name(String),
+	Sizes(Vec<Size>),
+	Color(Color32),
+	Url(String),
+	Eval(String),
+}
+
+#[derive(Debug)]
+pub struct Size {
+	number: f64,
+	unit: Unit,
+}
+
+#[derive(Debug)]
+pub enum Unit {
+	Px,
+	Pt,
+	Percent,
+}
+
 #[cfg(test)]
 mod tests {
 	use ariadne::{Color, Label, Report, ReportKind, Source};
@@ -69,44 +131,54 @@ mod tests {
 
 	use super::*;
 
-	fn expr_parser<'a, I>() -> impl Parser<'a, I, Vec<String>, extra::Err<Rich<'a, Token<'a>>>> + Clone
+	fn expr_parser<'a, I>() -> impl Parser<'a, I, Selectors, extra::Err<Rich<'a, Token<'a>>>> + Clone
 	where
 		I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 	{
-		let spaces = just(Token::Space).or(just(Token::Newline)).repeated().at_least(1).labelled("whitespace");
+		// Required whitespace after object
+		let req_space = just(Token::Space)
+			.or(just(Token::Newline))
+			.repeated()
+			.at_least(1)
+			.labelled("whitespace");
+		let opt_spaces = just(Token::Space).or(just(Token::Newline)).repeated().ignored();
 
 		// object       ::= "node" | "way" | "relation" | "area" | "line" | "canvas" | "*" | ;
-		let object = select! {
-			Token::Identifier("node") => "node".to_string(),
-			Token::Identifier("way") => "way".to_string(),
-			Token::Identifier("relation") => "relation".to_string(),
-			Token::Identifier("area") => "area".to_string(),
-			Token::Identifier("line") => "line".to_string(),
-			Token::Identifier("canvas") => "canvas".to_string(),
-			Token::Op("*") => "*".to_string(),
-		}
-		.labelled("object (node, way, relation, area, line, canvas, *)")
-		.then_ignore(spaces.clone());
+		let object = any()
+			.filter(|t: &Token| t.try_into_object().is_some())
+			.map(|t| SubSelector::Object(t.try_into_object().unwrap()))
+			.labelled("object (node, way, relation, area, line, canvas, *)")
+			.then_ignore(req_space.clone());
 
 		let class = just(Token::Dot)
-			// .or(just(Token::Colon))
-			.then(
-				select! {
-					Token::Identifier(class) => class.to_string(),
-				}
-				.labelled("classname"),
-			)
+			.or(just(Token::Colon))
+			.then(select! {
+				Token::Identifier(class) => class.to_string(),
+			})
 			.labelled("classname")
 			.map(|(a, b)| match a {
-				Token::Dot => format!(".{}", b),
-				Token::Colon => format!(":{}", b),
+				Token::Dot => SubSelector::Class(b),
+				Token::Colon => todo!(),
 				_ => unreachable!(),
-			})
-			.labelled("classname");
+			});
 
-		let selector = class.or(object);
+		let sub_selector = class.or(object).labelled("selector");
+		let selector = sub_selector // .class1 .class2 OR .class1.class2
+			.separated_by(opt_spaces.clone())
+			.collect::<Vec<_>>()
+			.map(Intersection)
+			.labelled("selector");
 
-		let selectors = selector.repeated();
+		let union_selector = selector // .class1, .class2 OR .class1,.class2
+			.separated_by(just(Token::Comma).padded_by(opt_spaces.clone()))
+			.allow_trailing()
+			.collect::<Vec<_>>()
+			.map(Union);
+
+		let selectors = union_selector
+			.separated_by(just(Token::Comma).padded_by(opt_spaces.clone()))
+			.allow_trailing();
+
 		selectors.collect()
 	}
 

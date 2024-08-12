@@ -1,4 +1,1 @@
-node
-way    relation *
-
-  .dumbo
+node way .dumbo , .dummy
