@@ -18,7 +18,7 @@ use tokio::task::JoinSet;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::time;
 
-use crate::imagery::cache::{Cache, FileFormat};
+use crate::imagery::cache::Cache;
 #[cfg(target_arch = "wasm32")]
 use crate::imagery::image_worker::ImageWorker;
 #[cfg(not(target_arch = "wasm32"))]
@@ -248,22 +248,27 @@ impl ImageryFetcher {
 		persistent_cache: Arc<tokio::sync::Mutex<local_cache::LocalCache>>,
 		tile: Tile,
 	) -> Result<TextureId, Error> {
-		if let Some(image_data) = persistent_cache.lock().await.get_image(tile, FileFormat::JPG).await {
+		let file_format = imagery.lock().unwrap().file_format();
+		if let Some(image_data) = persistent_cache.lock().await.get_image(tile, file_format).await {
 			return Self::create_texture(texture_manager, tile, &image_data);
 		}
 
 		let url = imagery.lock().unwrap().tile_url(tile.0, tile.1, tile.2);
 
 		let response = reqwest::Client::new().get(url.clone()).send().await?;
+		match response.error_for_status() {
+			Err(err) => Err(Error::Reqwest(err)),
+			Ok(response) => {
+				let bytes = response.bytes().await?;
+				persistent_cache
+					.lock()
+					.await
+					.save_image(tile, &bytes, file_format)
+					.await; // TODO: Maybe do this on a separate thread
 
-		let bytes = response.bytes().await?;
-		persistent_cache
-			.lock()
-			.await
-			.save_image(tile, &bytes, FileFormat::JPG)
-			.await; // TODO: do this on a separate thread
-
-		Self::create_texture(texture_manager, tile, &bytes)
+				Self::create_texture(texture_manager, tile, &bytes)
+			}
+		}
 	}
 
 	#[cfg(target_arch = "wasm32")]
@@ -274,7 +279,8 @@ impl ImageryFetcher {
 		tile: Tile,
 	) -> Result<(), Error> {
 		use crate::imagery::image_worker::Input;
-		if let Some(image_data) = persistent_cache.lock().await.get_image(tile, FileFormat::JPG).await {
+		let file_format = imagery.lock().unwrap().file_format();
+		if let Some(image_data) = persistent_cache.lock().await.get_image(tile, file_format).await {
 			worker_bridge.lock().unwrap().send(Input(tile, image_data.to_vec()));
 		}
 
@@ -282,15 +288,21 @@ impl ImageryFetcher {
 
 		let response = reqwest::Client::new().get(url.clone()).send().await?;
 
-		let bytes = response.bytes().await?;
-		persistent_cache
-			.lock()
-			.await
-			.save_image(tile, &bytes, FileFormat::JPG)
-			.await;
+		match response.error_for_status() {
+			Err(err) => Err(Error::Reqwest(err)),
+			Ok(response) => {
+				let bytes = response.bytes().await?;
+				// TODO
+				// persistent_cache
+				// 	.lock()
+				// 	.await
+				// 	.save_image(tile, &bytes, file_format)
+				// 	.await;
 
-		worker_bridge.lock().unwrap().send(Input(tile, bytes.to_vec()));
-		Ok(())
+				worker_bridge.lock().unwrap().send(Input(tile, bytes.to_vec()));
+				Ok(())
+			}
+		}
 	}
 
 	fn create_texture(

@@ -14,7 +14,7 @@ macros = { path = "src/macros" }
 
 egui = { version = "0.28.1" }
 epaint = { version = "0.28.1" }
-image = { version = "0.25.2", default-features = false, features = ["jpeg"] }
+image = { version = "0.25.2", default-features = false, features = ["jpeg", "png"] }
 glam = { version = "0.28.0", features = ["serde"] }
 
 log = { version = "0.4", features = ["release_max_level_info"] }
@@ -76,7 +76,8 @@ proc-macro = false
 harness = false
 
 [profile.dev]
-opt-level = 0   # this is needed to the performance of the web worker not suck
+opt-level = 1   # this not should be 0 for the performance of the web worker to not suck
+                # but it messed with debugging
 
 [profile.dev.package."*"]
 opt-level = 2

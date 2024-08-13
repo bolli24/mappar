@@ -1,3 +1,5 @@
+use crate::imagery::cache::FileFormat;
+
 mod cache;
 #[cfg(target_arch = "wasm32")]
 pub mod image_worker;
@@ -12,6 +14,7 @@ pub trait Imagery: Send {
 	fn max_zoom(&self) -> u32;
 	fn min_zoom(&self) -> u32;
 	fn tile_url(&self, x: u32, y: u32, zoom: u32) -> String;
+	fn file_format(&self) -> FileFormat;
 }
 
 #[must_use]
@@ -21,6 +24,20 @@ pub fn esri_imagery() -> UrlImagery {
 		256,
 		23,
 		0,
+		FileFormat::JPG,
+	)
+	.unwrap()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[must_use]
+pub fn local_image_imagery() -> UrlImagery {
+	UrlImagery::new(
+		"http://localhost:6969/{zoom}/{x}/{y}.png".to_string(),
+		256,
+		19,
+		12,
+		FileFormat::PNG,
 	)
 	.unwrap()
 }
@@ -30,11 +47,12 @@ pub struct UrlImagery {
 	tile_size: u32,
 	max_zoom: u32,
 	min_zoom: u32,
+	file_format: FileFormat,
 }
 
 impl UrlImagery {
 	#[must_use]
-	pub fn new(url: String, tile_size: u32, max_zoom: u32, min_zoom: u32) -> Option<Self> {
+	pub fn new(url: String, tile_size: u32, max_zoom: u32, min_zoom: u32, file_format: FileFormat) -> Option<Self> {
 		if max_zoom < min_zoom {
 			return None;
 		}
@@ -51,6 +69,7 @@ impl UrlImagery {
 			tile_size,
 			max_zoom,
 			min_zoom,
+			file_format,
 		})
 	}
 }
@@ -73,5 +92,9 @@ impl Imagery for UrlImagery {
 			.replace("{x}", &x.to_string())
 			.replace("{y}", &y.to_string())
 			.replace("{zoom}", &zoom.to_string())
+	}
+
+	fn file_format(&self) -> FileFormat {
+		self.file_format
 	}
 }
