@@ -93,6 +93,7 @@ impl Token<'_> {
 			Token::Identifier("line") => Some(Object::Line),
 			Token::Identifier("canvas") => Some(Object::Canvas),
 			Token::Op("*") => Some(Object::All),
+			Token::Identifier("meta") => Some(Object::Meta),
 			_ => None,
 		}
 	}

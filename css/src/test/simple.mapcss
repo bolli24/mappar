@@ -1,6 +1,4 @@
 way[highway=footway][bicycle=yes], way[highway=path][bicycle=yes][foot=designated], way[highway=path][bicycle=yes][foot=official]
 {
-    color: #909090;
-    width: 2px;
-    dimensions: 1px, 2px, 3px, 4%
+    icon: test;
 }
