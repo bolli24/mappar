@@ -6,7 +6,7 @@ use ecolor::Color32;
 
 pub mod lexer;
 
-fn expr_parser<'a, I>() -> impl Parser<'a, I, Vec<Rule>, extra::Err<Rich<'a, Token<'a>>>> + Clone
+fn expr_parser<'a, I>() -> impl Parser<'a, I, Vec<Styleset>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 where
 	I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
@@ -20,22 +20,35 @@ where
 	let opt_spaces = just(Token::Space).or(just(Token::Newline)).repeated().ignored();
 
 	// key          ::= ID;
-	let key = select! {
-		Token::Identifier(key) => key.to_string(),
-	};
-	// tag          ::= key | tag ":" key;
-	let tag = key;
+	let number = select! {Token::Number(n) => n};
 
-	let value = select! {
+	let hex_color = select! {Token::Color(c) => c};
+
+	let identifier = select! {Token::Identifier(s) => s.to_string()}.labelled("identifier");
+
+	let quoted = select! { Token::Quoted(s) => s.to_string()};
+
+	let key = identifier.labelled("key");
+	let tag = identifier.or(quoted).labelled("tag");
+
+	let mut value = Recursive::<_>::declare();
+
+	let function = identifier
+		.then(
+			value
+				.clone()
+				.separated_by(just(Token::Comma).padded_by(opt_spaces.clone()))
+				.collect::<Vec<_>>()
+				.padded_by(opt_spaces.clone())
+				.delimited_by(just(Token::ParenOpen), just(Token::ParenClose)),
+		)
+		.map(|(name, args)| Function(name.to_string(), args));
+
+	value.define(function.clone().map(Value::Function).clone().or(select! {
 		Token::Number(num) => Value::Number(num),
 		Token::Identifier(ident) => Value::Identifier(ident.to_string()),
 		Token::Quoted(s) => Value::String(s)
-	};
-
-	let unary = select! {
-		Token::Exclamation => UnaryOp::Not,
-		Token::Op("-") => UnaryOp::Neg,
-	};
+	}));
 
 	let binary = select! {
 		Token::Op("=") => BinaryOp::Eq,
@@ -51,17 +64,6 @@ where
 		Token::Op("-") => BinaryOp::Sub,
 		Token::Op("/") => BinaryOp::Div,
 	};
-
-	let unit = select! {
-		Token::Unit(unit) => Some(Unit::from(unit)),
-		_ => None
-	};
-
-	let number = select! {Token::Number(n) => n};
-
-	let hex_color = select! {Token::Color(c) => c};
-
-	let identifier = select! {Token::Identifier(s) => s}.labelled("identifier");
 
 	let repeated_u8 = number
 		.map(|f: f64| f.round().clamp(0.0, 255.0) as u8)
@@ -83,10 +85,17 @@ where
 	let rgba_color = just(Token::Identifier("rgba"))
 		.ignore_then(rgba_args.delimited_by(just(Token::ParenOpen), just(Token::ParenClose)));
 
-	let color = choice((hex_color, rgb_color, rgba_color));
+	let color = choice((hex_color, rgb_color, rgba_color)).labelled("color");
+	// JOSM: "if the color is prefixed with a name and #, e.g. color: highway_track#6e541c;
+	// it will appear in the Color Preference and end users can adjust the color there themself"
+	let labelled_color = identifier.or_not().then(color);
+
+	let unit = select! {
+		Token::Unit(unit) => Unit::from(unit),
+	};
 
 	let size = select! { Token::Number(number) => number}
-		.then(unit)
+		.then(unit.or_not())
 		.map(|(number, unit)| Size { number, unit });
 
 	let sizes = size
@@ -94,41 +103,48 @@ where
 		.at_least(1)
 		.collect::<Vec<Size>>();
 
-	let function_args = value
-		.padded_by(opt_spaces.clone())
-		.separated_by(just(Token::Comma))
-		.at_least(1)
-		.collect::<Vec<_>>()
-		.delimited_by(just(Token::ParenOpen), just(Token::ParenClose));
-
-	let function = identifier.then(function_args);
-
-	// specifier    ::= named | sizes | colour | url | eval;
 	let specifier = choice((
-		color.map(Specifier::Color),
-		function.map(|(name, args)| Specifier::Function(name.to_string(), args)),
-		sizes.map(Specifier::Sizes),
-		identifier.map(|s| Specifier::Named(s.to_string())),
-		select! {
-			Token::Quoted(s) => Specifier::Quoted(s)
-		},
+		labelled_color.map(|(label, color)| Specifier::Color(color, label)),
+		sizes.map(|sizes| {
+			// This map is needed to allow parsing of single number and sizes without units
+			if sizes.len() == 1 && sizes[0].unit.is_none() {
+				Specifier::Value(Value::Number(sizes[0].number))
+			} else {
+				Specifier::Sizes(sizes)
+			}
+		}),
+		value.clone().map(|value| match value {
+			Value::Identifier(name) => Specifier::Named(name),
+			_ => Specifier::Value(value),
+		}),
 	))
+	// .map(|spec| {
+	// 	println!("Parsed specifier {spec:?}");
+	// 	spec
+	// })
 	.labelled("specifier");
 
-	let style = key
+	let key_specifier = key
 		.then_ignore(just(Token::Colon).padded_by(opt_spaces.clone()))
 		.then(specifier)
-		.map(|(key, specifier)| Style { key, specifier });
+		.map(|(key, specifier)| Rule::Style(Style { key, specifier }));
+
+	let class_assign = just(Token::Identifier("set"))
+		.ignore_then(req_space.clone())
+		.ignore_then(identifier)
+		.map(|name| Rule::ClassAssign(name.to_string()));
+
+	let style = choice((key_specifier, class_assign));
 
 	let styleset = style
 		.padded_by(opt_spaces.clone())
 		.clone()
 		.separated_by(just(Token::Semicolon).padded_by(opt_spaces.clone()))
 		.allow_trailing()
-		.collect::<Vec<Style>>();
+		.collect::<Vec<Rule>>();
 
 	let declaration = styleset
-		.or(empty().map(|_| Vec::new()))
+		.or(empty().map(|_| Vec::new())) // TODO: do we need this?
 		.padded_by(opt_spaces.clone())
 		.delimited_by(just(Token::BraceOpen), just(Token::BraceClose))
 		.padded_by(opt_spaces.clone())
@@ -143,26 +159,46 @@ where
 		)))
 		.labelled("declaration");
 
+
+	// TODO: at not falsy and not truthy: !building?!  !building?
 	let condition = choice((
-		tag.then_ignore(opt_spaces.clone())
+		just(Token::Exclamation) // !function
+			.ignore_then(opt_spaces.clone())
+			.ignore_then(function.clone())
+			.map(Condition::NotFunction),
+		function.clone().map(Condition::Function), // function
+		tag.then_ignore(opt_spaces.clone()) // tag binary tag
 			.then(binary)
 			.then_ignore(opt_spaces.clone())
 			.then(value)
 			.map(|((tag, op), value)| Condition::Binary(tag, op, value)),
-		unary
-			.then_ignore(opt_spaces.clone())
-			.then(tag)
-			.map(|(op, tag)| Condition::Unary(op, tag)),
-		tag.map(Condition::Tag),
+		just(Token::Exclamation) // !tag
+			.ignore_then(opt_spaces.clone())
+			.ignore_then(tag)
+			.map(Condition::NotTag),
+		tag.then_ignore(just(Token::Question)) // tag?!
+			.then_ignore(just(Token::Exclamation))
+			.map(Condition::Falsy),
+		tag.then_ignore(just(Token::Question)).map(Condition::Truthy), // tag?
+		tag.map(Condition::Tag),                                       // tag
 	))
+	.map(|condition| {
+		println!("Parsed condition {condition:?}");
+		condition
+	})
 	.labelled("condition");
 
-	let test = condition.delimited_by(
-		just(Token::BracketOpen).then(opt_spaces.clone()),
-		opt_spaces.clone().then(just(Token::BracketClose)),
-	);
+	let test = condition
+		.padded_by(opt_spaces.clone())
+		.delimited_by(just(Token::BracketOpen), just(Token::BracketClose));
 
-	let tests = test.repeated().at_least(1).collect::<Vec<_>>();
+	let tests = test.repeated().collect::<Vec<_>>();
+
+	let layer = just(Token::Colon)
+		.ignore_then(just(Token::Colon))
+		.ignore_then(identifier)
+		.map(|layer| layer.to_string())
+		.or_not();
 
 	// object       ::= "node" | "way" | "relation" | "area" | "line" | "canvas" | "*" | ;
 	let object = any()
@@ -199,10 +235,11 @@ where
 	let sub_selector = choice((
 		object
 			.then_ignore(req_space.clone())
-			.map(|object| SubSelector::Object(Some(object))),
+			.map(|object| SubSelector::Object(object, Vec::new(), None)),
 		object
 			.then(tests)
-			.map(|(object, tests)| SubSelector::WithTests(Some(object), tests)),
+			.then(layer)
+			.map(|((object, tests), layer)| SubSelector::Object(object, tests, layer)),
 		maybe_class,
 		setting,
 	))
@@ -229,13 +266,11 @@ where
 
 	let rule = selectors
 		.then(declaration)
-		.map(|(selectors, styles)| Rule { selectors, styles });
+		.map(|(selectors, styles)| Styleset { selectors, styles });
 
 	let rule_set = rule.separated_by(opt_spaces.clone()).collect();
 	rule_set
 }
-
-pub type Ruleset = Vec<Rule>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BinaryOp {
@@ -275,9 +310,9 @@ pub enum Object {
 pub struct Zoom(u8, u8);
 
 #[derive(Debug)]
-pub struct Rule {
+pub struct Styleset {
 	pub selectors: Selectors,
-	pub styles: Vec<Style>,
+	pub styles: Vec<Rule>,
 }
 
 pub type Selectors = Union;
@@ -294,11 +329,18 @@ pub struct Intersection(Vec<SubSelector>);
 
 #[derive(Debug)]
 pub enum SubSelector {
-	Object(Option<Object>),
-	WithTests(Option<Object>, Vec<Condition>),
+	Object(Object, /* Option<Zoom>,*/ Vec<Condition>, Option<Layer>),
 	Class(String),
 	NotClass(String),
 	Setting(String),
+}
+
+type Layer = String;
+
+#[derive(Debug)]
+pub enum Rule {
+	Style(Style),
+	ClassAssign(String),
 }
 
 #[derive(Debug)]
@@ -311,11 +353,10 @@ pub struct Style {
 pub enum Specifier {
 	Named(String),
 	Sizes(Vec<Size>),
-	Color(Color32),
+	Color(Color32, Option<String>),
 	Url(String),
-	Eval(String),
-	Quoted(String),
-	Function(String, Vec<Value>),
+	Value(Value),
+	Function(Function),
 }
 
 #[derive(Debug)]
@@ -347,14 +388,23 @@ pub enum Value {
 	Number(f64),
 	Identifier(String),
 	String(String),
+	Function(Function),
 }
 
 #[derive(Debug)]
 pub enum Condition {
 	Binary(String, BinaryOp, Value),
-	Unary(UnaryOp, String),
+	NotTag(String),
+	Truthy(String),
+	Falsy(String),
 	Tag(String),
+	Function(Function),
+	NotFunction(Function),
 }
+
+#[derive(Debug)]
+// TODO: nested function calls: pub struct Function(String, Vec<Value>);
+pub struct Function(String, Vec<Value>);
 
 #[cfg(test)]
 mod tests {

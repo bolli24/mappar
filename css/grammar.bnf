@@ -1,8 +1,4 @@
-// Source: https://wiki.openstreetmap.org/wiki/MapCSS/0.2/BNF
-// What about "set <class>" ?
-// What about "?" in "node[tunnel?]" ?
-// What about "?!" in "node[tunnel?!]" ?
-// What about "!" in "node[tunnel!]" ?
+function// Source: https://wiki.openstreetmap.org/wiki/MapCSS/0.2/BNF
 
 ruleset      ::= rule | ruleset rule;
 rule         ::= selectors declarations | import;
@@ -10,26 +6,30 @@ import       ::= AT "import" "url" "(" QUOTED ")" ID ";";
 selectors    ::= uSelectors | uSelectors ",";
 uSelectors   ::= selector | uSelectors "," selector;
 selector     ::= subselector | selector subselector;
-subselector  ::= object SPACE | object zoom | object zoom tests | maybe_class | "setting" ":" ":" ID;
-zoom         ::= PIPE "z" range | ;
+subselector  ::= object SPACE | object zoom layer | object zoom tests layer 
+				 | maybe_class | "setting" ":" ":" ID;
+zoom         ::= "|" "z" range | ;
+layer		 ::= ":" ":" ID;
 range        ::= NUMBER | NUMBER "-" NUMBER | NUMBER "-" | "-" NUMBER;
 tests        ::= test | tests test;
 test         ::= "[" condition "]";
-condition    ::= tag binary value | unary tag | tag;
-tag          ::= key | tag ":" key;
+condition    ::= tag binary value | "!" tag | tag | tag "?" | tag "?!" | function | "!" function
+tag          ::= key | QUOTED 		//  tag ":" key ?
 key          ::= ID;
-value        ::= ID | REGEX | NUMBER;
+value        ::= ID | REGEX | NUMBER | QUOTED | function
 binary       ::= "=" | "!=" | "=~" | "<" | ">" | "<=" | ">=";
-unary        ::= "-" | "!";
+unary        ::= "-" | "!" | "?";
 maybe_class  ::= class | "!" class;
 class        ::= "." ID | ":" ID;
 object       ::= "node" | "way" | "relation" | "area" | "line" | "canvas" | "*" | "meta";
 declarations ::= declaration | declarations declaration;
 declaration  ::= "{" styleset "}" | "{" "}";
 styleset     ::= uStyleset | uStyleset ";" ;
-uStyleset    ::= style | uStyleset ";" style;
+uStyleset    ::= rule | uStyleset ";" rule;
+rule		 ::= style | classAssign;
 style        ::= key ":" specifier;
-specifier    ::= named | sizes | colour | url | eval | QUOTED;
+classAssign  ::= "set" ID;
+specifier    ::= named | sizes | colour | url | eval | QUOTED | function;
 named        ::= ID;
 sizes        ::= size | sizes "," size;
 size         ::= NUMBER units;
