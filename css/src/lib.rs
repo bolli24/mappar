@@ -3,8 +3,11 @@ use crate::lexer::Token;
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 use ecolor::Color32;
+use std::fmt::Display;
 
 pub mod lexer;
+
+// TODO: other operators, proper regex, parent relation
 
 fn expr_parser<'a, I>() -> impl Parser<'a, I, Vec<Styleset>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 where
@@ -28,8 +31,14 @@ where
 
 	let quoted = select! { Token::Quoted(s) => s.to_string()};
 
+	let colon_tag = identifier
+		.separated_by(just(Token::Colon))
+		.at_least(1)
+		.collect::<Vec<_>>()
+		.map(|v| v.join(":"));
+
 	let key = identifier.labelled("key");
-	let tag = identifier.or(quoted).labelled("tag");
+	let tag = colon_tag.or(quoted).labelled("tag");
 
 	let mut value = Recursive::<_>::declare();
 
@@ -53,8 +62,8 @@ where
 	let binary = select! {
 		Token::Op("=") => BinaryOp::Eq,
 		Token::Op("!=") => BinaryOp::NotEq,
-		Token::Op("=~") => BinaryOp::RightMatch,
-		Token::Op("~=") => BinaryOp::LeftMatch,
+		Token::Op("=~") => BinaryOp::RegexMatch,
+		Token::Op("~=") => BinaryOp::ListMembership,
 		Token::Op("<=") => BinaryOp::Le,
 		Token::Op(">=") => BinaryOp::Ge,
 		Token::Op("<") => BinaryOp::Lt,
@@ -159,29 +168,35 @@ where
 		)))
 		.labelled("declaration");
 
+	let binary_condition = tag
+		.clone()
+		.then_ignore(opt_spaces.clone())
+		.then(binary)
+		.then_ignore(opt_spaces.clone())
+		.then(value.clone());
 
 	// TODO: at not falsy and not truthy: !building?!  !building?
-	let condition = choice((
-		just(Token::Exclamation) // !function
-			.ignore_then(opt_spaces.clone())
-			.ignore_then(function.clone())
-			.map(Condition::NotFunction),
-		function.clone().map(Condition::Function), // function
-		tag.then_ignore(opt_spaces.clone()) // tag binary tag
-			.then(binary)
-			.then_ignore(opt_spaces.clone())
-			.then(value)
-			.map(|((tag, op), value)| Condition::Binary(tag, op, value)),
-		just(Token::Exclamation) // !tag
-			.ignore_then(opt_spaces.clone())
-			.ignore_then(tag)
-			.map(Condition::NotTag),
-		tag.then_ignore(just(Token::Question)) // tag?!
-			.then_ignore(just(Token::Exclamation))
-			.map(Condition::Falsy),
-		tag.then_ignore(just(Token::Question)).map(Condition::Truthy), // tag?
-		tag.map(Condition::Tag),                                       // tag
-	))
+	let condition = recursive(|condition| {
+		choice((
+			function.clone().map(Condition::Function), // function
+			binary_condition
+				.clone() // tag binary tag
+				.map(|((tag, op), value)| Condition::Binary(tag, op, value)),
+			tag.clone()
+				.then_ignore(just(Token::Question)) // tag?!
+				.then_ignore(just(Token::Exclamation))
+				.map(Condition::Falsy),
+			tag.clone().then_ignore(just(Token::Question)).map(Condition::Truthy), // tag?
+			tag.clone().map(Condition::Tag),                                       // tag
+			just(Token::Exclamation) // !condition
+				.ignore_then(opt_spaces.clone())
+				.ignore_then(condition)
+				.try_map(|c, span| match c {
+					Condition::Binary(_, _, _) => Err(Rich::custom(span, "Can't negate binary expressions.")),
+					_ => Ok(Condition::Not(Box::new(c))),
+				}),
+		))
+	})
 	.map(|condition| {
 		println!("Parsed condition {condition:?}");
 		condition
@@ -206,22 +221,28 @@ where
 		.map(|t| t.try_into_object().unwrap())
 		.labelled("object (node, way, relation, area, line, canvas, *, meta)");
 
-	let class = just(Token::Dot)
-		// TODO: .or(just(Token::Colon))
-		.then(identifier)
-		.labelled("classname")
-		.map(|(a, b)| match a {
-			Token::Dot => b.to_string(),
-			Token::Colon => todo!(),
-			_ => unreachable!(),
-		});
+	let class_name = just(Token::Dot).ignore_then(identifier).labelled("classname");
 
 	let maybe_class = choice((
 		just(Token::Exclamation)
-			.ignore_then(class.clone())
+			.ignore_then(class_name.clone())
 			.map(SubSelector::NotClass),
-		class.map(SubSelector::Class),
+		class_name.map(SubSelector::Class),
+		just(Token::Colon)
+			.ignore_then(identifier)
+			.labelled("classname")
+			.map(SubSelector::PseudoClass)
+			.map(|s| {
+				println!("Pseudo_class: {s:?}");
+				s
+			}),
 	));
+
+	let maybe_pseudo_class = just(Token::Colon)
+		.ignore_then(identifier)
+		.labelled("classname")
+		.map(Some)
+		.or(empty().map(|_| None));
 
 	let setting = just(Token::Identifier("setting"))
 		.ignore_then(just(Token::Colon))
@@ -231,27 +252,67 @@ where
 		})
 		.map(|s| SubSelector::Setting(s.to_string()));
 
-	// subselector  ::= object SPACE | object zoom | object zoom tests | maybe_class;
+	// subselector  ::= object SPACE | object pseudoClass zoom layer | object pseudoClass zoom tests layer
+	// 					| maybe_class | "setting" ":" ":" ID;
 	let sub_selector = choice((
 		object
 			.then_ignore(req_space.clone())
-			.map(|object| SubSelector::Object(object, Vec::new(), None)),
-		object
-			.then(tests)
-			.then(layer)
-			.map(|((object, tests), layer)| SubSelector::Object(object, tests, layer)),
+			.map(|object| SubSelector::Object(object, Vec::new(), None, None)),
+		group((object, maybe_pseudo_class, tests, layer))
+			.map(|(object, p_class, tests, layer)| SubSelector::Object(object, tests, layer, p_class)),
 		maybe_class,
 		setting,
 	))
 	.labelled("subselector");
 
-	// selector     ::= subselector | selector subselector;
-	let selector = sub_selector // .class1 .class2 OR .class1.class2
-		.separated_by(opt_spaces.clone())
-		.at_least(1)
-		.collect::<Vec<_>>()
-		.map(Intersection)
-		.labelled("selector");
+	let property = identifier.try_map(|name, span| match name.as_str() {
+		"index" => Ok(Property::Index),
+		"role" => Ok(Property::Role),
+		_ => Err(Rich::custom(
+			span,
+			format!("Invalid property {name} in link condition. Must be either 'index' or 'role'."),
+		)),
+	});
+
+	let link = property
+		.then_ignore(opt_spaces.clone())
+		.then(binary)
+		.then_ignore(opt_spaces.clone())
+		.then(value)
+		.padded_by(opt_spaces.clone())
+		.delimited_by(just(Token::BracketOpen), just(Token::BracketClose))
+		.try_map(|((a, op), b), span| {
+			if LINK_OPERATIONS.contains(&op) {
+				Ok(Link(a, op, b))
+			} else {
+				Err(Rich::custom(span, format!("Invalid operator {op}")))
+			}
+		})
+		.map(|s| {
+			println!("Link {s:?}");
+			Some(s)
+		})
+		.or(empty().map(|_| None));
+
+	let child_relation = sub_selector
+		.clone()
+		.then_ignore(opt_spaces.clone())
+		.then_ignore(just(Token::Op(">")))
+		.then(link)
+		.then_ignore(opt_spaces.clone())
+		.then(sub_selector.clone())
+		.map(|((a, link), b)| ChildRelation(Box::new(a), Box::new(b), link));
+
+	//	selector     ::= subselector | child;
+	let selector = choice((
+		child_relation.map(Selector::ChildRelation),
+		sub_selector.clone().map(Selector::SubSelector),
+	)) // .class1 .class2 OR .class1.class2
+	.separated_by(opt_spaces.clone())
+	.at_least(1)
+	.collect::<Vec<_>>()
+	.map(Intersection)
+	.labelled("selector");
 
 	// uSelectors   ::= selector | uSelectors "," selector;
 	let union_selector = selector // .class1, .class2 OR .class1,.class2
@@ -272,12 +333,12 @@ where
 	rule_set
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BinaryOp {
 	Eq,
 	NotEq,
-	LeftMatch,
-	RightMatch,
+	ListMembership,
+	RegexMatch,
 	Le,
 	Ge,
 	Lt,
@@ -286,6 +347,25 @@ pub enum BinaryOp {
 	Add,
 	Sub,
 	Div,
+}
+
+impl Display for BinaryOp {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			BinaryOp::Eq => write!(f, "="),
+			BinaryOp::NotEq => write!(f, "!="),
+			BinaryOp::ListMembership => write!(f, "~="),
+			BinaryOp::RegexMatch => write!(f, "=~"),
+			BinaryOp::Le => write!(f, "<="),
+			BinaryOp::Ge => write!(f, ">="),
+			BinaryOp::Lt => write!(f, "<"),
+			BinaryOp::Gt => write!(f, ">"),
+			BinaryOp::Mul => write!(f, "*"),
+			BinaryOp::Add => write!(f, "+"),
+			BinaryOp::Sub => write!(f, "-"),
+			BinaryOp::Div => write!(f, "/"),
+		}
+	}
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -325,17 +405,49 @@ pub struct Union(Vec<Intersection>);
 /// Applies to all instances with all the subselectors
 /// .class1 .class2
 #[derive(Debug)]
-pub struct Intersection(Vec<SubSelector>);
+pub struct Intersection(Vec<Selector>);
+
+#[derive(Debug)]
+pub enum Selector {
+	SubSelector(SubSelector),
+	ChildRelation(ChildRelation),
+}
+
+/// A >[link] B
+/// Only matches if B is child of A with optional link condition
+#[derive(Debug)]
+pub struct ChildRelation(Box<SubSelector>, Box<SubSelector>, Option<Link>);
+// Use box to reduce size of Selector 96 vs 240 bytes
+
+#[derive(Debug)]
+pub struct Link(Property, BinaryOp, Value);
+
+#[derive(Debug)]
+pub enum Property {
+	Index,
+	Role,
+}
+
+/// Opeation permitted in link specifier
+const LINK_OPERATIONS: [BinaryOp; 3] = [BinaryOp::Eq, BinaryOp::NotEq, BinaryOp::ListMembership];
 
 #[derive(Debug)]
 pub enum SubSelector {
-	Object(Object, /* Option<Zoom>,*/ Vec<Condition>, Option<Layer>),
+	Object(
+		Object,
+		/* Option<Zoom>,*/ Vec<Condition>,
+		Option<Layer>,
+		Option<PseudoClass>,
+	),
 	Class(String),
+	PseudoClass(String),
 	NotClass(String),
 	Setting(String),
 }
 
 type Layer = String;
+
+type PseudoClass = String;
 
 #[derive(Debug)]
 pub enum Rule {
@@ -394,12 +506,11 @@ pub enum Value {
 #[derive(Debug)]
 pub enum Condition {
 	Binary(String, BinaryOp, Value),
-	NotTag(String),
+	Not(Box<Condition>),
 	Truthy(String),
 	Falsy(String),
 	Tag(String),
 	Function(Function),
-	NotFunction(Function),
 }
 
 #[derive(Debug)]

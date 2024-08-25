@@ -5,11 +5,15 @@ rule         ::= selectors declarations | import;
 import       ::= AT "import" "url" "(" QUOTED ")" ID ";";
 selectors    ::= uSelectors | uSelectors ",";
 uSelectors   ::= selector | uSelectors "," selector;
-selector     ::= subselector | selector subselector;
-subselector  ::= object SPACE | object zoom layer | object zoom tests layer 
-				 | maybe_class | "setting" ":" ":" ID;
+intersection ::= selector | intersection selector;
+selector     ::= subselector | child;
+child		 ::= subselector "<"link selector
+link		 ::= "[" property binary value "]" | ;
+property 	 ::= "index" | "role" ;
+subselector  ::= object SPACE | object maybePseudoClass zoom layer | object pseudoClass zoom tests layer 
+				 | maybeClass | "setting" ":" ":" ID;
 zoom         ::= "|" "z" range | ;
-layer		 ::= ":" ":" ID;
+layer		 ::= ":" ":" ID | ;
 range        ::= NUMBER | NUMBER "-" NUMBER | NUMBER "-" | "-" NUMBER;
 tests        ::= test | tests test;
 test         ::= "[" condition "]";
@@ -19,8 +23,10 @@ key          ::= ID;
 value        ::= ID | REGEX | NUMBER | QUOTED | function
 binary       ::= "=" | "!=" | "=~" | "<" | ">" | "<=" | ">=";
 unary        ::= "-" | "!" | "?";
-maybe_class  ::= class | "!" class;
+maybeClass   ::= class | "!" class;
 class        ::= "." ID | ":" ID;
+maybePseudoClass ::= pseusoClass | "!" pseusoClass
+pseusoClass  ::= ":" ID | ;
 object       ::= "node" | "way" | "relation" | "area" | "line" | "canvas" | "*" | "meta";
 declarations ::= declaration | declarations declaration;
 declaration  ::= "{" styleset "}" | "{" "}";
