@@ -1,3 +1,5 @@
+use egui::{Id, ViewportCommand};
+use log::{error, info};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -5,8 +7,6 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
-use egui::{Id, ViewportCommand};
-use log::{error, info};
 use tokio::sync::watch::{channel, Receiver, Sender};
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
@@ -115,6 +115,7 @@ impl MyApp {
 
 impl eframe::App for MyApp {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+		// let start = Instant::now();
 		if self.map_data.receiver.borrow_and_update().has_changed() {
 			let map_data = self.map_data.receiver.clone();
 			let render_data_sender = self.render_data.sender.clone();
@@ -194,10 +195,12 @@ impl eframe::App for MyApp {
 			});*/
 		});
 		puffin::GlobalProfiler::lock().new_frame();
-		let diff = self.last_update.elapsed();
 		self.debug_text
 			.borrow_mut()
-			.add(format!("Frame Time: {:.1}ms", diff.as_millis()));
+			.add(format!("Frame Time: {:.1}ms", self.last_update.elapsed().as_millis()));
+		// self.debug_text
+		// 	.borrow_mut()
+		// 	.add(format!("CPU time: {:?} ms", start.elapsed().as_micros() as f32 / 1000.0));
 		self.last_update = Instant::now();
 	}
 }

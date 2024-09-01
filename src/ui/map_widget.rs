@@ -330,7 +330,7 @@ impl Widget for MapWidget<'_> {
 						.input(|i| i.pointer.latest_pos())
 						.map(|pos| Self::get_world_pos(pos, viewport, mem.camera_pos, scale));
 
-					debug_text.add(format!("Pointer Pos: {:?}", pointer_pos));
+					debug_text.add(format!("Pointer Pos: {:?}", pointer_pos.map(|p| p.round().as_ivec2())));
 					let view = View {
 						transform,
 						viewport,
