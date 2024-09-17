@@ -135,8 +135,8 @@ impl Polygon {
 		}
 
 		let mut parts = Vec::new();
-		
-		if self.is_convex(){
+
+		if self.is_convex() {
 			parts.push(self.clone());
 			return Some(parts);
 		}
@@ -149,6 +149,7 @@ impl Polygon {
 
 		let mut iter1_outer = 0;
 		while iter1_outer < triangles.len() {
+			puffin::profile_scope!("main loop");
 			let iter1 = iter1_outer;
 			iter1_outer += 1;
 			let mut iter2 = 0;
@@ -172,7 +173,8 @@ impl Polygon {
 					iter2 = iter_two;
 
 					i21 = 0;
-					while i21 < triangles[iter2].num_points() {
+					while i21 < 3 {
+						debug_assert!(triangles[iter2].num_points() == 3);
 						let p21 = triangles[iter2].points[i21];
 
 						if (d2.x != p21.x) || (d2.y != p21.y) {
@@ -180,7 +182,12 @@ impl Polygon {
 							continue;
 						}
 
-						i22 = (i21 + 1) % triangles[iter2].num_points();
+						if i21 == 2 {
+							debug_assert!(i21 == 2);
+							i22 = 0;
+						} else {
+							i22 = i21 + 1;
+						}
 
 						let p22 = triangles[iter2].points[i22];
 						if (d1.x != p22.x) || (d1.y != p22.y) {
@@ -235,22 +242,25 @@ impl Polygon {
 					continue;
 				}
 
-				let mut new_points =
-					Vec::with_capacity(triangles[iter1].num_points() + triangles[iter2].num_points() - 2);
-				let mut j = i12;
-				while j != i11 {
-					new_points.push(triangles[iter1].points[j]);
-					j = (j + 1) % (triangles[iter1].num_points());
-				}
+				{
+					puffin::profile_scope!("New Polygon");
+					let mut new_points =
+						Vec::with_capacity(triangles[iter1].num_points() + triangles[iter2].num_points() - 2);
+					let mut j = i12;
+					while j != i11 {
+						new_points.push(triangles[iter1].points[j]);
+						j = (j + 1) % (triangles[iter1].num_points())
+					}
 
-				let mut j = i22;
-				while j != i21 {
-					new_points.push(triangles[iter2].points[j]);
-					j = (j + 1) % (triangles[iter2].num_points());
-				}
+					let mut j = i22;
+					while j != i21 {
+						new_points.push(triangles[iter2].points[j]);
+						j = (j + 1) % (triangles[iter2].num_points());
+					}
 
-				triangles[iter1].points = new_points;
-				triangles.remove(iter2);
+					triangles[iter1].points = new_points;
+					triangles.remove(iter2);
+				}
 
 				i11_outer -= 1;
 				continue;
@@ -260,6 +270,7 @@ impl Polygon {
 	}
 
 	pub fn triangulate(&self) -> Option<Vec<Triangle>> {
+		puffin::profile_function!();
 		if !self.is_valid() {
 			return None;
 		}
@@ -504,20 +515,19 @@ impl Polygon {
 
 	fn is_convex(&self) -> bool {
 		for i11 in 0..self.num_points() {
-			// let i12 = if i11 == 0 { self.num_points() - 1 } else { i11 - 1 };
-			let i12 = (i11 + self.num_points() - 1) % self.num_points();
-			let i13 = (i11 + 1) % self.num_points();
+			let i12 = if i11 == 0 { self.num_points() - 1 } else { i11 - 1 };
+			let i13 = if i11 == self.num_points() - 1 { 0 } else { i11 + 1 };
 
 			if is_reflex(self.points[i12], self.points[i11], self.points[i13]) {
 				return false;
 			}
 		}
-		return true;
+		true
 	}
 }
 
 fn in_cone(p1: DVec2, p2: DVec2, p3: DVec2, p: DVec2) -> bool {
-	!is_convex(p1, p2, p3) ||  is_convex(p1, p2, p) || is_convex(p2, p3, p)
+	!is_convex(p1, p2, p3) || is_convex(p1, p2, p) || is_convex(p2, p3, p)
 	// if is_convex(p1, p2, p3) {
 	// 	is_convex(p1, p2, p) && is_convex(p2, p3, p)
 	// } else {
@@ -578,36 +588,24 @@ fn is_reflex(p1: DVec2, p2: DVec2, p3: DVec2) -> bool {
 }
 
 fn update_vertex(v: &PartitionVertex, vertices: &[PartitionVertex]) {
+	puffin::profile_function!();
+
 	let v1 = v.previous.borrow().unwrap();
 	let v3 = v.next.borrow().unwrap();
 
-	v.is_convex.set(is_convex(v1.p, v.p, v3.p));
+	let is_convex = is_convex(v1.p, v.p, v3.p);
+	v.is_convex.set(is_convex);
 
 	let vec1 = (v1.p - v.p).normalize_or_zero();
 	let vec3 = (v3.p - v.p).normalize_or_zero();
-	v.angle.set(vec1.x * vec3.x + vec1.y * vec3.y);
+	v.angle.set(vec1.dot(vec3));
 
-	if v.is_convex.get() {
-		v.is_ear.set(true);
-
-		for vi in vertices.iter() {
-			if (vi.p.x == v.p.x) && (vi.p.y == v.p.y) {
-				continue;
-			}
-			if (vi.p.x == v1.p.x) && (vi.p.y == v1.p.y) {
-				continue;
-			}
-			if (vi.p.x == v3.p.x) && (vi.p.y == v3.p.y) {
-				continue;
-			}
-			if is_inside(v1.p, v.p, v3.p, vi.p) {
-				v.is_ear.set(false);
-				break;
-			}
-		}
-	} else {
-		v.is_ear.set(false);
-	}
+	v.is_ear.set(
+		is_convex
+			&& !vertices
+				.iter()
+				.any(|vi| vi.p != v.p && vi.p != v1.p && vi.p != v3.p && is_inside(v1.p, v.p, v3.p, vi.p)),
+	);
 }
 
 #[cfg(test)]
