@@ -82,7 +82,7 @@ pub enum Orientation {
 }
 
 impl Polygon {
-	pub fn new(points: Vec<DVec2>, is_hole: bool) -> Self {
+	pub const fn new(points: Vec<DVec2>, is_hole: bool) -> Self {
 		Self { points, is_hole }
 	}
 
@@ -97,7 +97,7 @@ impl Polygon {
 		let mut area = 0.0;
 		for (i, _) in self.points.iter().enumerate() {
 			let j = if self.num_points() == i + 1 { 0 } else { i + 1 };
-			area += self.points[i].x * self.points[j].y - self.points[i].y * self.points[j].x;
+			area += self.points[i].x.mul_add(self.points[j].y, -(self.points[i].y * self.points[j].x));
 		}
 
 		if area > 0.0 {
@@ -128,7 +128,8 @@ impl Polygon {
 		self.points.len()
 	}
 
-	pub fn convex_partition(&self) -> Option<Vec<Polygon>> {
+	#[allow(clippy::too_many_lines)]
+	pub fn convex_partition(&self) -> Option<Vec<Self>> {
 		puffin::profile_function!();
 		if !self.is_valid() {
 			return None;
@@ -144,7 +145,7 @@ impl Polygon {
 		let mut triangles = self
 			.triangulate()?
 			.iter()
-			.map(|t| Polygon::new(vec![t.0, t.1, t.2], false))
+			.map(|t| Self::new(vec![t.0, t.1, t.2], false))
 			.collect::<Vec<_>>();
 
 		let mut iter1_outer = 0;
@@ -177,7 +178,7 @@ impl Polygon {
 						debug_assert!(triangles[iter2].num_points() == 3);
 						let p21 = triangles[iter2].points[i21];
 
-						if (d2.x != p21.x) || (d2.y != p21.y) {
+						if d2 != p21 {
 							i21 += 1;
 							continue;
 						}
@@ -190,7 +191,7 @@ impl Polygon {
 						}
 
 						let p22 = triangles[iter2].points[i22];
-						if (d1.x != p22.x) || (d1.y != p22.y) {
+						if d1 != p22 {
 							i21 += 1;
 							continue;
 						}
@@ -249,7 +250,7 @@ impl Polygon {
 					let mut j = i12;
 					while j != i11 {
 						new_points.push(triangles[iter1].points[j]);
-						j = (j + 1) % (triangles[iter1].num_points())
+						j = (j + 1) % (triangles[iter1].num_points());
 					}
 
 					let mut j = i22;
@@ -311,15 +312,13 @@ impl Polygon {
 		let mut triangles = Vec::new();
 
 		for i in 0..num_vertices - 3 {
-			let mut ear = None;
-			for vj in vertices.iter() {
+			let mut ear: Option<&PartitionVertex> = None;
+			for vj in &vertices {
 				if !vj.is_active.get() || !vj.is_ear.get() {
 					continue;
 				}
-				if ear.is_none() {
+				if ear.is_none() || vj.angle > ear.unwrap().angle {
 					ear = Some(vj);
-				} else if vj.angle > ear.unwrap().angle {
-					ear = Some(vj)
 				}
 			}
 
@@ -343,7 +342,7 @@ impl Polygon {
 			update_vertex(ear.next.borrow().unwrap(), vertices.as_slice());
 		}
 
-		for v in vertices.iter() {
+		for v in &vertices {
 			if v.is_active.get() {
 				triangles.push(Triangle(
 					v.previous.borrow().unwrap().p,
@@ -357,26 +356,26 @@ impl Polygon {
 		Some(triangles)
 	}
 
-	pub fn triangulate_multi(in_poly: Multipolygon) -> Option<Vec<Triangle>> {
-		let without_holes = Self::remove_holes(&in_poly)?;
+	pub fn triangulate_multi(in_poly: &Multipolygon) -> Option<Vec<Triangle>> {
+		let without_holes = Self::remove_holes(in_poly)?;
 
 		let mut out_polys = Vec::new();
 
 		for poly in without_holes {
 			let mut result = poly.triangulate()?;
-			out_polys.append(&mut result)
+			out_polys.append(&mut result);
 		}
 
 		Some(out_polys)
 	}
 
-	pub fn convex_partion_multi(in_poly: Multipolygon) -> Option<Vec<Polygon>> {
-		let without_holes = Self::remove_holes(&in_poly)?;
+	pub fn convex_partion_multi(in_poly: &Multipolygon) -> Option<Vec<Self>> {
+		let without_holes = Self::remove_holes(in_poly)?;
 		let mut out_polys = Vec::new();
 
 		for poly in without_holes {
 			let mut result = poly.convex_partition()?;
-			out_polys.append(&mut result)
+			out_polys.append(&mut result);
 		}
 
 		Some(out_polys)
@@ -384,9 +383,10 @@ impl Polygon {
 
 	/// Returns the current polygon with all holes removed
 	/// Returns None if the polygon has no holes
-	pub fn remove_holes(in_poly: &Multipolygon) -> Option<Vec<Polygon>> {
+	#[allow(clippy::too_many_lines)]
+	pub fn remove_holes(in_poly: &Multipolygon) -> Option<Vec<Self>> {
 		let in_polys = &in_poly.0;
-		if in_polys.len() == 0 {
+		if in_polys.is_empty() {
 			return None;
 		}
 
@@ -463,7 +463,7 @@ impl Polygon {
 						}
 					}
 					let mut point_visible = true;
-					for iter2 in polys.iter() {
+					for iter2 in polys {
 						if iter2.is_hole {
 							continue;
 						}
@@ -492,17 +492,17 @@ impl Polygon {
 				return None;
 			}
 
-			let mut new_poly = Polygon::new(Vec::new(), false);
+			let mut new_poly = Self::new(Vec::new(), false);
 			for i in 0..=poly_point_index {
 				new_poly.points.push(poly_iter.points[i]);
 			}
 			for i in 0..=hole_iter.num_points() {
 				new_poly
 					.points
-					.push(hole_iter.points[(i + hole_point_index) % (hole_iter.num_points())])
+					.push(hole_iter.points[(i + hole_point_index) % (hole_iter.num_points())]);
 			}
 			for i in poly_point_index..poly_iter.num_points() {
-				new_poly.points.push(poly_iter.points[i])
+				new_poly.points.push(poly_iter.points[i]);
 			}
 
 			out_polys.remove(hole_iter_index);
@@ -536,7 +536,7 @@ fn in_cone(p1: DVec2, p2: DVec2, p3: DVec2, p: DVec2) -> bool {
 }
 
 fn is_convex(p1: DVec2, p2: DVec2, p3: DVec2) -> bool {
-	(p3.y - p1.y) * (p2.x - p1.x) - (p3.x - p1.x) * (p2.y - p1.y) > 0.0
+	(p3.y - p1.y).mul_add(p2.x - p1.x, -((p3.x - p1.x) * (p2.y - p1.y))) > 0.0
 }
 
 fn is_inside(p1: DVec2, p2: DVec2, p3: DVec2, p: DVec2) -> bool {
@@ -544,18 +544,10 @@ fn is_inside(p1: DVec2, p2: DVec2, p3: DVec2, p: DVec2) -> bool {
 }
 
 fn intersects(line1: (DVec2, DVec2), line2: (DVec2, DVec2)) -> bool {
+	puffin::profile_function!();
 	let (p11, p12) = line1;
 	let (p21, p22) = line2;
-	if (p11.x == p21.x) && (p11.y == p21.y) {
-		return false;
-	}
-	if (p11.x == p22.x) && (p11.y == p22.y) {
-		return false;
-	}
-	if (p12.x == p21.x) && (p12.y == p21.y) {
-		return false;
-	}
-	if (p12.x == p22.x) && (p12.y == p22.y) {
+	if p11 == p21 || p11 == p22 || p12 == p21 || p12 == p22 {
 		return false;
 	}
 
@@ -563,18 +555,18 @@ fn intersects(line1: (DVec2, DVec2), line2: (DVec2, DVec2)) -> bool {
 	let v2ort = DVec2::new(p22.y - p21.y, p21.x - p22.x);
 
 	let v = p21 - p11;
-	let dot21 = v.x * v1ort.x + v.y * v1ort.y;
+	let dot21 = v.x.mul_add(v1ort.x, v.y * v1ort.y);
 	let v = p22 - p11;
-	let dot22 = v.x * v1ort.x + v.y * v1ort.y;
+	let dot22 = v.x.mul_add(v1ort.x, v.y * v1ort.y);
 
 	if dot21 * dot22 > 0.0 {
 		return false;
 	}
 
 	let v = p11 - p21;
-	let dot11 = v.x * v2ort.x + v.y * v2ort.y;
+	let dot11 = v.x.mul_add(v2ort.x, v.y * v2ort.y);
 	let v = p12 - p21;
-	let dot12 = v.x * v2ort.x + v.y * v2ort.y;
+	let dot12 = v.x.mul_add(v2ort.x, v.y * v2ort.y);
 
 	if dot11 * dot12 > 0.0 {
 		return false;
@@ -584,11 +576,11 @@ fn intersects(line1: (DVec2, DVec2), line2: (DVec2, DVec2)) -> bool {
 }
 
 fn is_reflex(p1: DVec2, p2: DVec2, p3: DVec2) -> bool {
-	(p3.y - p1.y) * (p2.x - p1.x) - (p3.x - p1.x) * (p2.y - p1.y) < 0.0
+	(p3.y - p1.y).mul_add(p2.x - p1.x, -((p3.x - p1.x) * (p2.y - p1.y))) < 0.0
 }
 
 fn update_vertex(v: &PartitionVertex, vertices: &[PartitionVertex]) {
-	puffin::profile_function!();
+	// puffin::profile_function!();
 
 	let v1 = v.previous.borrow().unwrap();
 	let v3 = v.next.borrow().unwrap();
