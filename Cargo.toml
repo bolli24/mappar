@@ -19,12 +19,12 @@ glam = { version = "0.29.0", features = ["serde"] }
 
 log = { version = "0.4", features = ["release_max_level_info"] }
 simplelog = "0.12.2"
-serde = { version = "1", features = ["derive"] }
-thiserror = "1.0.63"
+serde = { version = "1.0.210", features = ["derive"] }
+thiserror = "1.0.64"
 
 reqwest = { version = "0.12.5" }
 quick-xml = { version = "0.36.1", default-features = false }
-bytes = "1.6.1"
+bytes = "1.7.2"
 flate2 = "1.0.31"
 
 chrono = { version = "0.4", features = ["wasmbind"] }
@@ -58,7 +58,7 @@ eframe = { version = "0.28.1", default-features = false, features = [
 ] }
 tokio = { version = "1.39.1", default-features = false, features = ["macros", "sync", "rt"] }
 js-sys = "0.3.69"
-web-sys = { version = "0.3.69", features = ["Navigator", "StorageManager", "IdbFactory", "IdbOpenDbRequest"] }
+web-sys = { version = "=0.3.69", features = ["Navigator", "StorageManager", "IdbFactory", "IdbOpenDbRequest"] }
 wasm-bindgen = "0.2.92"
 wasm-bindgen-futures = "0.4.42"
 web-time = "1.1.0"
@@ -71,13 +71,12 @@ test = false
 bench = false
 doc = false
 doctest = false
-plugin = false
 proc-macro = false
 harness = false
 
 [profile.dev]
 opt-level = 1   # this should not be 0 for the performance of the web worker to not suck
-                # but it messed with debugging
+                # but it messes with debugging
 
 [profile.dev.package."*"]
 opt-level = 2
@@ -85,6 +84,7 @@ opt-level = 2
 [profile.release]
 opt-level = 2   # fast and small wasm
 
+# .wasm sizes in MB
 #   level   size
 #    0      8
 #    1      8
