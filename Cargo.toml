@@ -1,6 +1,6 @@
 [package]
 name = "mappar"
-description = "A modern OpenStreetMap editor for Desktop and Browsers built using Rust and egui"
+description = "A modern OpenStreetMap editor for desktop and browsers built using Rust and egui."
 authors = ["bolli24"]
 version = "0.1.0"
 edition = "2021"
