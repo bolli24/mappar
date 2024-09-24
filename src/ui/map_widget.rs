@@ -1,9 +1,3 @@
-use std::cell::RefCell;
-use std::f64::consts::PI;
-use std::ops::RangeInclusive;
-use std::rc::Rc;
-use std::sync::{Arc, Mutex};
-
 use eframe::emath::RectTransform;
 use egui::{
 	pos2, vec2, Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, ScrollArea, Sense, Vec2, Widget,
@@ -12,9 +6,14 @@ use epaint::{PathShape, PathStroke, Rounding, Shape};
 use glam::{dvec2, uvec2, DVec2, UVec2};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use std::f64::consts::PI;
+use std::ops::RangeInclusive;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use crate::imagery::imagery_fetcher::ImageryFetcher;
-use crate::map::map_data::{LatLon, CIRCUMFERENCE_EARTH};
+use crate::map::map_data::{LatLon, MapData, CIRCUMFERENCE_EARTH};
 use crate::map::render::{DetailedElement, RenderElement};
 use crate::ui::debug_text::DebugText;
 use crate::ui::memory::Memory;
@@ -22,14 +21,10 @@ use crate::ui::memory::Memory;
 const ZOOM_SPEED: f64 = 5.0;
 
 pub struct MapWidget<'a> {
-	render_data: MapRenderData<'a>,
+	map_data: &'a MapData,
+	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	id: Id,
 	debug_text: Rc<RefCell<DebugText>>,
-}
-
-pub struct MapRenderData<'a> {
-	pub elements: &'a [DetailedElement],
-	pub imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 }
 
 pub struct DrawList {
@@ -39,7 +34,7 @@ pub struct DrawList {
 }
 
 impl DrawList {
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self {
 			paths: Vec::new(),
 			areas: Vec::new(),
@@ -79,23 +74,27 @@ struct View {
 }
 
 impl<'a> MapWidget<'a> {
-	pub fn new(render_data: MapRenderData<'a>, id: Id, debug_text: Rc<RefCell<DebugText>>) -> Self {
+	pub const fn new(
+		map_data: &'a MapData,
+		imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
+		id: Id,
+		debug_text: Rc<RefCell<DebugText>>,
+	) -> Self {
 		Self {
-			render_data,
+			map_data,
+			imagery_fetcher,
 			id,
 			debug_text,
 		}
 	}
 
 	#[inline]
-	fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View) {
-		puffin::profile_function!(element.id.to_string());
+	fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, hovered: bool) {
 		if !element.bounding_box.intersects(view.world_view_rect) || element.style.color == Color32::TRANSPARENT {
 			return;
 		}
 
-		let highlighted = view.pointer_pos.map_or(false, |pos| element.hovered(pos));
-		let (color, size) = element.style.highlight(highlighted);
+		let (color, size) = element.style.highlight(hovered);
 
 		match &element.element {
 			RenderElement::Node(pos) => shapes.nodes.push(Shape::rect_filled(
@@ -117,9 +116,9 @@ impl<'a> MapWidget<'a> {
 					stroke,
 					fill: Color32::TRANSPARENT,
 					closed: *is_closed,
-				}))
+				}));
 			}
-			RenderElement::Area(polygons) => {
+			RenderElement::Area(_, polygons) => {
 				for polygon in polygons {
 					let nodes: Vec<Pos2> = polygon
 						.iter()
@@ -130,12 +129,12 @@ impl<'a> MapWidget<'a> {
 						color,
 						PathStroke::NONE,
 						//	PathStroke::new(1.0, Color32::LIGHT_BLUE),
-					))
+					));
 				}
 			}
 			RenderElement::Collection(elements) => {
-				for e in elements.iter() {
-					Self::draw_element(e, shapes, view);
+				for e in elements {
+					Self::draw_element(e, shapes, view, hovered);
 				}
 			}
 		};
@@ -279,6 +278,8 @@ impl Widget for MapWidget<'_> {
 		ScrollArea::vertical()
 			.show(ui, |ui| {
 				Frame::canvas(ui.style()).show(ui, |ui| {
+					let mut render_data = Vec::with_capacity(self.map_data.len());
+
 					puffin::profile_function!("Draw Map");
 					let ui_scale = ui.ctx().pixels_per_point();
 					let mut debug_text = self.debug_text.borrow_mut();
@@ -325,10 +326,14 @@ impl Widget for MapWidget<'_> {
 
 					debug_text.add(format!("World View Rect: {:?}", world_view_rect));
 
-					let pointer_pos = response
-						.ctx
-						.input(|i| i.pointer.latest_pos())
-						.map(|pos| Self::get_world_pos(pos, viewport, mem.camera_pos, scale));
+					let pointer_pos = if response.contains_pointer() {
+						response
+							.ctx
+							.input(|i| i.pointer.latest_pos())
+							.map(|pos| Self::get_world_pos(pos, viewport, mem.camera_pos, scale))
+					} else {
+						None
+					};
 
 					debug_text.add(format!("Pointer Pos: {:?}", pointer_pos.map(|p| p.round().as_ivec2())));
 					let view = View {
@@ -342,13 +347,35 @@ impl Widget for MapWidget<'_> {
 						pointer_pos,
 					};
 
-					Self::draw_tiles(&painter, &self.render_data.imagery_fetcher, &view, &mut debug_text);
+					Self::draw_tiles(&painter, &self.imagery_fetcher, &view, &mut debug_text);
 
 					// TODO: Maybe reuse this to avoid reallocation
 					let mut shapes = DrawList::new();
 
-					for element in self.render_data.elements {
-						Self::draw_element(element, &mut shapes, &view);
+					{
+						puffin::profile_scope!("Calculate Render data");
+						for element in self.map_data.iter() {
+							render_data.push(DetailedElement::from_map_element(
+								element,
+								self.map_data,
+								pointer_pos,
+								scale,
+							));
+						}
+					}
+
+					let select_threshold = 5.0 * scale;
+
+					let hover_element = &render_data
+						.iter()
+						.filter(|e| matches!(e.pointer_distance, Some(dist) if dist < select_threshold))
+						.sorted_by(|a, b| a.pointer_distance.partial_cmp(&b.pointer_distance).unwrap())
+						.last();
+
+					for element in &render_data {
+						// let is_hovered = matches!(element.distance, Some(dist) if dist < select_threshold);
+						let hovered = hover_element.is_some_and(|e| e.id == element.id);
+						Self::draw_element(element, &mut shapes, &view, hovered);
 					}
 
 					debug_text.add(format!("Drawn Elements: {}", shapes.count()));
@@ -376,10 +403,18 @@ pub fn dvec2_to_pos_render(dvec: DVec2) -> Pos2 {
 	Pos2::new(dvec.x as f32, -dvec.y as f32)
 }
 
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
+pub enum MapState {
+	Default,
+	BoxSelect(DVec2),
+	Move,
+}
+
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, macros::Memory)]
 pub struct MapMemory {
 	pub zoom_level: f64,
 	pub camera_pos: DVec2,
+	pub state: MapState,
 }
 impl Default for MapMemory {
 	fn default() -> Self {
@@ -392,6 +427,7 @@ impl MapMemory {
 		Self {
 			zoom_level: 1.0,
 			camera_pos: dvec2(0.0, 0.0),
+			state: MapState::Default,
 		}
 	}
 }

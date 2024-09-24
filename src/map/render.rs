@@ -11,9 +11,9 @@ use crate::ui::map_widget::dvec2_to_pos;
 #[derive(Debug)]
 pub struct DetailedElement {
 	pub id: i64,
+	pub pointer_distance: Option<f64>,
 	pub element: RenderElement,
 	pub style: Style,
-	// TODO MAYBE differentiate between bounding box and distance to pointer
 	pub bounding_box: Rect,
 }
 
@@ -22,7 +22,7 @@ pub struct DetailedElement {
 pub enum RenderElement {
 	Node(DVec2),
 	Path(Vec<DVec2>, bool),
-	Area(Vec<RenderPolygon>),
+	Area(Vec<DVec2>, Vec<RenderPolygon>),
 	Collection(Vec<DetailedElement>),
 }
 
@@ -36,20 +36,72 @@ impl RenderElement {
 				assert!(!nodes.is_empty(), "Empty way");
 				bounding_box_from_points(nodes)
 			}
-			Self::Area(path) => path
-				.iter()
-				.map(|p| bounding_box_from_points(p))
-				.fold(Rect::NOTHING, |acc, r| acc.union(r)),
+			Self::Area(perimeter, _) => bounding_box_from_points(perimeter),
 			Self::Collection(elements) => elements
 				.iter()
 				.map(|p| p.bounding_box)
 				.fold(Rect::NOTHING, |acc, r| acc.union(r)),
 		}
 	}
+
+	pub fn distance(&self, pointer_pos: Option<DVec2>, threshold: f64) -> Option<f64> {
+		pointer_pos.map(|pointer_pos| match &self {
+			RenderElement::Node(pos) => (pointer_pos - *pos).length(),
+			RenderElement::Path(nodes, true) => nodes
+				.iter()
+				.circular_tuple_windows()
+				.filter_map(|(a, b)| {
+					let p_dist = distance_point_to_segment(a, b, &pointer_pos);
+					if p_dist < threshold {
+						Some(p_dist)
+					} else {
+						None
+					}
+				})
+				.fold(f64::INFINITY, |a, b| a.min(b)),
+			RenderElement::Path(nodes, false) => nodes
+				.iter()
+				.tuple_windows()
+				.filter_map(|(a, b)| {
+					let p_dist = distance_point_to_segment(a, b, &pointer_pos);
+					if p_dist < threshold {
+						Some(p_dist)
+					} else {
+						None
+					}
+				})
+				.fold(f64::INFINITY, |a, b| a.min(b)),
+			RenderElement::Area(perimeter, _) => perimeter
+				.iter()
+				.circular_tuple_windows()
+				.filter_map(|(a, b)| {
+					let p_dist = distance_point_to_segment(a, b, &pointer_pos);
+					if p_dist < threshold {
+						Some(p_dist)
+					} else {
+						None
+					}
+				})
+				.fold(f64::INFINITY, |a, b| a.min(b)),
+			RenderElement::Collection(elements) => elements
+				.iter()
+				.filter_map(|e| match e.pointer_distance {
+					Some(dist) if dist < threshold => e.pointer_distance,
+					_ => None,
+				})
+				.fold(f64::INFINITY, |a, b| a.min(b)),
+		})
+	}
 }
 
 impl DetailedElement {
-	pub fn from_map_element(map_element: &MapElement, map_data: &MapData) -> Self {
+	pub fn from_map_element(
+		map_element: &MapElement,
+		map_data: &MapData,
+		pointer_pos: Option<DVec2>,
+		select_threshold: f64,
+	) -> Self {
+		puffin::profile_function!(map_element.id.to_string());
 		let element = match &map_element.element {
 			Element::Node { pos } => RenderElement::Node(pos.to_web_mercator()),
 			Element::Way { nodes: node_indices } => {
@@ -84,6 +136,7 @@ impl DetailedElement {
 						DetailedElement {
 							id: map_element.id,
 							bounding_box: path.bounding_box(),
+							pointer_distance: path.distance(pointer_pos, select_threshold),
 							element: path,
 							style: DEFAULT_WAY_STYLE,
 						},
@@ -107,7 +160,7 @@ impl DetailedElement {
 				let members = members
 					.iter()
 					.filter_map(|m| map_data.get_element(m.ref_id))
-					.map(|m| Self::from_map_element(m, map_data))
+					.map(|m| Self::from_map_element(m, map_data, pointer_pos, select_threshold))
 					.collect();
 				RenderElement::Collection(members)
 			}
@@ -125,33 +178,21 @@ impl DetailedElement {
 		Self {
 			id: map_element.id,
 			bounding_box: element.bounding_box(),
+			pointer_distance: element.distance(pointer_pos, select_threshold),
 			element,
 			style,
 		}
 	}
 
-	pub fn hovered(&self, pointer_pos: DVec2) -> bool {
+	pub fn in_box_selection(&self, rect: Rect) -> bool {
 		puffin::profile_function!();
 		match &self.element {
-			RenderElement::Node(pos) => (pointer_pos - *pos).length() < 5.0,
-			RenderElement::Path(nodes, true) => {
-				self.bounding_box.contains(dvec2_to_pos(pointer_pos)) && point_in_polygon(pointer_pos, nodes)
+			RenderElement::Node(pos) => rect.contains(dvec2_to_pos(*pos)),
+			RenderElement::Path(nodes, _) => nodes.iter().all(|n| rect.contains(dvec2_to_pos(*n))),
+			RenderElement::Area(_, _) => {
+				todo!()
 			}
-			RenderElement::Path(_nodes, false) => {
-				false // TODO
-			}
-			RenderElement::Area(polygons) => {
-				self.bounding_box.contains(dvec2_to_pos(pointer_pos))
-					&& polygons.iter().any(|p| point_in_polygon(pointer_pos, p))
-			}
-			RenderElement::Collection(elements) => {
-				for element in elements {
-					if element.hovered(pointer_pos) {
-						return true;
-					}
-				}
-				false
-			}
+			RenderElement::Collection(elements) => elements.iter().all(|e| e.in_box_selection(rect)),
 		}
 	}
 }
@@ -188,4 +229,20 @@ fn bounding_box_from_points(points: &[DVec2]) -> Rect {
 	let min_max_y = points.iter().map(|n| n.y as f32).minmax().into_option().unwrap();
 
 	Rect::from_min_max(Pos2::new(min_max_x.0, min_max_y.0), Pos2::new(min_max_x.1, min_max_y.1))
+}
+
+fn distance_point_to_segment(a: &DVec2, b: &DVec2, p: &DVec2) -> f64 {
+	let ab = b - a;
+	let ap = p - a;
+	let ab_len_squared = ab.length_squared();
+
+	if ab_len_squared == 0.0 {
+		return (p - a).length();
+	}
+
+	let t = ap.dot(ab) / ab_len_squared;
+	let t_clamped = t.clamp(0.0, 1.0);
+
+	let closest_point = a + ab * t_clamped;
+	(p - closest_point).length()
 }

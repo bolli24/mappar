@@ -37,6 +37,10 @@ impl MapData {
 	pub fn iter(&self) -> Values<'_, i64, MapElement> {
 		self.elements.values()
 	}
+
+	pub fn len(&self) -> usize {
+		self.elements.len()
+	}
 }
 
 #[derive(Debug)]
@@ -157,26 +161,18 @@ impl MapElement {
 				if !is_closed(nodes.as_slice()) {
 					return false;
 				}
-				if let Some(tags) = &self.tags {
-					has_area_tag(tags)
-				} else {
-					false
-				}
+				self.tags.as_ref().map_or(false, |tags| has_area_tag(tags))
 			}
 			Element::Relation { .. } => {
 				// TODO: check if members form a closed area
-				if let Some(tags) = &self.tags {
-					has_multipolygon_tag(tags) && has_area_tag(tags)
-				} else {
-					false
-				}
+				self.tags
+					.as_ref()
+					.map_or(false, |tags| has_multipolygon_tag(tags) && has_area_tag(tags))
 			}
 		}
 	}
-
-	
 }
-pub fn is_closed(nodes: &[i64]) -> bool {
+pub const fn is_closed(nodes: &[i64]) -> bool {
 	nodes.len() >= 2 && nodes[0] == nodes[nodes.len() - 1]
 }
 

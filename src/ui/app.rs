@@ -4,8 +4,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 #[cfg(not(target_arch = "wasm32"))]
-use std::thread;
-#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 use tokio::sync::watch::{channel, Receiver, Sender};
 #[cfg(target_arch = "wasm32")]
@@ -17,7 +15,7 @@ use crate::map::api::get_data;
 use crate::map::map_data::{Bounds, LatLon, MapData};
 use crate::map::render::DetailedElement;
 use crate::ui::debug_text::DebugText;
-use crate::ui::map_widget::{MapMemory, MapRenderData, MapWidget};
+use crate::ui::map_widget::{MapMemory, MapState, MapWidget};
 use crate::ui::memory::Memory;
 
 pub struct Channel<T> {
@@ -61,6 +59,7 @@ impl MyApp {
 		let map_mem = MapMemory {
 			camera_pos: glam::dvec2(camera_pos.x, camera_pos.y),
 			zoom_level: 15.0,
+			state: MapState::Default
 		};
 		map_mem.store(&cc.egui_ctx, map_widget_id);
 
@@ -115,30 +114,6 @@ impl MyApp {
 
 impl eframe::App for MyApp {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-		// let start = Instant::now();
-		if self.map_data.receiver.borrow_and_update().has_changed() {
-			let map_data = self.map_data.receiver.clone();
-			let render_data_sender = self.render_data.sender.clone();
-			let closure = move || {
-				let start = Instant::now();
-				let mut render_data = Vec::new();
-				let map_data = map_data.borrow();
-				for element in map_data.iter() {
-					render_data.push(DetailedElement::from_map_element(element, &map_data));
-				}
-				info!("Calculated render data. Took: {:?} ", start.elapsed());
-
-				render_data_sender.send(render_data).unwrap();
-			};
-			#[cfg(not(target_arch = "wasm32"))]
-			let _ = thread::Builder::new()
-				.name("render_data".into())
-				.spawn(closure)
-				.expect("Couldn't launch render data thread.");
-			#[cfg(target_arch = "wasm32")]
-			closure();
-		}
-
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
 			egui::menu::bar(ui, |ui| {
 				ui.menu_button("File", |ui| {
@@ -174,10 +149,8 @@ impl eframe::App for MyApp {
 			}*/
 
 			ui.add(MapWidget::new(
-				MapRenderData {
-					elements: &self.render_data.receiver.borrow(),
-					imagery_fetcher: self.imagery_fetcher.clone(),
-				},
+				&self.map_data.receiver.borrow(),
+				self.imagery_fetcher.clone(),
 				self.map_widget_id,
 				self.debug_text.clone(),
 			));
