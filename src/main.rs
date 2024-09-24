@@ -3,8 +3,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use log::{error, info};
-use std::io;
-
 use mappar::MyApp;
 
 // When compiling natively:
@@ -140,7 +138,7 @@ fn init_logger() {
 // This is a workaround of file system tunneling on Windows
 // Essentially Windows doesn't update the file's creation time when it's overwritten or deleted and quickly recreated
 // https://devblogs.microsoft.com/oldnewthing/20050715-14/?p=34923
-fn update_log_time(file: &std::fs::File) -> io::Result<()> {
+fn update_log_time(file: &std::fs::File) -> std::io::Result<()> {
 	{
 		use std::os::windows::fs::FileTimesExt;
 		file.set_times(
