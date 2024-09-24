@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use log::{error, info};
+use std::io;
 
 use mappar::MyApp;
 
@@ -104,17 +105,24 @@ fn init_logger() {
 				File::create(&log_gz).expect("Failed to create log archive"),
 				flate2::Compression::best(),
 			);
-			tar::Builder::new(&mut e)
+			let mut builder = tar::Builder::new(&mut e);
+			builder
 				.append_file(
 					new_path.file_name().unwrap(),
 					&mut File::open(&new_path).expect("Failed to open log file"),
 				)
 				.expect("Failed to append file to tar");
+			builder.finish().expect("Failed to finish tar archive");
+			std::fs::remove_file(&new_path).expect("Failed to remove temporary log file");
 		} else {
 			eprintln!("Failed to get creation time of latest.log");
 			std::fs::remove_file(&latest).expect("Failed to remove old log file");
 		}
 	}
+	let latest_file = File::create(&latest).expect("Failed to create log file");
+
+	#[cfg(target_os = "windows")]
+	update_log_time(&latest_file).expect("Failed to update log file time");
 
 	CombinedLogger::init(vec![
 		TermLogger::new(
@@ -123,11 +131,23 @@ fn init_logger() {
 			TerminalMode::Mixed,
 			ColorChoice::Auto,
 		),
-		WriteLogger::new(
-			LevelFilter::Info,
-			Config::default(),
-			File::create(&latest).expect("Failed to create log file"),
-		),
+		WriteLogger::new(LevelFilter::Info, Config::default(), latest_file),
 	])
 	.expect("Error initializing logger");
+}
+
+#[cfg(target_os = "windows")]
+// This is a workaround of file system tunneling on Windows
+// Essentially Windows doesn't update the file's creation time when it's overwritten or deleted and quickly recreated
+// https://devblogs.microsoft.com/oldnewthing/20050715-14/?p=34923
+fn update_log_time(file: &std::fs::File) -> io::Result<()> {
+	{
+		use std::os::windows::fs::FileTimesExt;
+		file.set_times(
+			std::fs::FileTimes::new()
+				.set_modified(file.metadata().map(|m| m.modified())??)
+				.set_accessed(file.metadata().map(|m| m.modified())??)
+				.set_created(std::time::SystemTime::now()),
+		)
+	}
 }
