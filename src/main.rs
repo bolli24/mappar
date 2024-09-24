@@ -84,7 +84,7 @@ fn main() {
 fn init_logger() {
 	use chrono::{DateTime, Utc};
 	use flate2::write::GzEncoder;
-	use simplelog::*;
+	use simplelog::{ColorChoice, CombinedLogger, Config, LevelFilter, TermLogger, TerminalMode, WriteLogger};
 	use std::fs::File;
 
 	let storage_path = eframe::storage_dir(MyApp::APP_NAME).expect("Failed to get storage dir");
