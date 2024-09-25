@@ -7,13 +7,14 @@ use glam::{dvec2, uvec2, DVec2, UVec2};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::f64::consts::PI;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use crate::imagery::imagery_fetcher::ImageryFetcher;
-use crate::map::map_data::{LatLon, MapData, CIRCUMFERENCE_EARTH};
+use crate::map::map_data::{Element, LatLon, MapData, CIRCUMFERENCE_EARTH};
 use crate::map::render::{DetailedElement, RenderElement};
 use crate::ui::debug_text::DebugText;
 use crate::ui::memory::Memory;
@@ -274,6 +275,7 @@ impl<'a> MapWidget<'a> {
 }
 
 impl Widget for MapWidget<'_> {
+	#[allow(clippy::too_many_lines)]
 	fn ui(self, ui: &mut egui::Ui) -> egui::Response {
 		ScrollArea::vertical()
 			.show(ui, |ui| {
@@ -351,29 +353,32 @@ impl Widget for MapWidget<'_> {
 
 					// TODO: Maybe reuse this to avoid reallocation
 					let mut shapes = DrawList::new();
+					let select_threshold = 5.0 * scale;
 
 					{
 						puffin::profile_scope!("Calculate Render data");
-						for element in self.map_data.iter() {
-							render_data.push(DetailedElement::from_map_element(
-								element,
-								self.map_data,
-								pointer_pos,
-								scale,
-							));
+						// TODO: Relations
+						for element in self
+							.map_data
+							.iter()
+							.filter(|e| !matches!(e.element, Element::Relation { .. }))
+						{
+							render_data.push(DetailedElement::from_map_element(element, self.map_data, pointer_pos));
 						}
 					}
 
-					let select_threshold = 5.0 * scale;
+					let hover_element = {
+						puffin::profile_scope!("Get hover element");
+						match pointer_pos {
+							Some(_) => closest_element(&render_data, &scale),
+							None => None,
+						}
+					};
 
-					let hover_element = &render_data
-						.iter()
-						.filter(|e| matches!(e.pointer_distance, Some(dist) if dist < select_threshold))
-						.sorted_by(|a, b| a.pointer_distance.partial_cmp(&b.pointer_distance).unwrap())
-						.last();
+					debug_text.add(format!("Closest element: {hover_element:?}"));
+					debug_text.add(format!("Select threshold: {select_threshold:.3}"));
 
 					for element in &render_data {
-						// let is_hovered = matches!(element.distance, Some(dist) if dist < select_threshold);
 						let hovered = hover_element.is_some_and(|e| e.id == element.id);
 						Self::draw_element(element, &mut shapes, &view, hovered);
 					}
@@ -391,6 +396,42 @@ impl Widget for MapWidget<'_> {
 	}
 }
 
+fn closest_element<'a>(render_data: &'a Vec<DetailedElement>, scale: &f64) -> Option<&'a DetailedElement> {
+	render_data
+		.iter()
+		.filter(|e| matches!(e.pointer_distance, Some(dist) if dist < e.pointer_threshold * scale))
+		.sorted_by(|a, b| match (a, b) {
+			(
+				DetailedElement {
+					pointer_distance: Some(_),
+					element: RenderElement::Node(_),
+					..
+				},
+				DetailedElement {
+					pointer_distance: Some(_),
+					element: RenderElement::Node(_),
+					..
+				},
+			) => a.pointer_distance.partial_cmp(&b.pointer_distance).expect("NaN"),
+			(
+				DetailedElement {
+					pointer_distance: Some(_),
+					element: RenderElement::Node(_),
+					..
+				},
+				_,
+			) => Ordering::Less,
+			(
+				_,
+				DetailedElement {
+					pointer_distance: Some(_),
+					element: RenderElement::Node(_),
+					..
+				},
+			) => Ordering::Greater,
+			_ => a.pointer_distance.partial_cmp(&b.pointer_distance).expect("NaN"),
+		}).next()
+}
 pub const fn pos_to_dvec2(pos: Pos2) -> DVec2 {
 	dvec2(pos.x as f64, pos.y as f64)
 }

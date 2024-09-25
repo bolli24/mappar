@@ -12,6 +12,7 @@ use crate::ui::map_widget::dvec2_to_pos;
 pub struct DetailedElement {
 	pub id: i64,
 	pub pointer_distance: Option<f64>,
+	pub pointer_threshold: f64,
 	pub element: RenderElement,
 	pub style: Style,
 	pub bounding_box: Rect,
@@ -37,70 +38,39 @@ impl RenderElement {
 				bounding_box_from_points(nodes)
 			}
 			Self::Area(perimeter, _) => bounding_box_from_points(perimeter),
-			Self::Collection(elements) => elements
-				.iter()
-				.map(|p| p.bounding_box)
-				.fold(Rect::NOTHING, |acc, r| acc.union(r)),
+			Self::Collection(elements) => elements.iter().map(|p| p.bounding_box).fold(Rect::NOTHING, Rect::union),
 		}
 	}
 
-	pub fn distance(&self, pointer_pos: Option<DVec2>, threshold: f64) -> Option<f64> {
+	pub fn distance(&self, pointer_pos: Option<DVec2>) -> Option<f64> {
+		puffin::profile_function!();
 		pointer_pos.map(|pointer_pos| match &self {
-			RenderElement::Node(pos) => (pointer_pos - *pos).length(),
-			RenderElement::Path(nodes, true) => nodes
-				.iter()
-				.circular_tuple_windows()
-				.filter_map(|(a, b)| {
-					let p_dist = distance_point_to_segment(a, b, &pointer_pos);
-					if p_dist < threshold {
-						Some(p_dist)
-					} else {
-						None
-					}
-				})
-				.fold(f64::INFINITY, |a, b| a.min(b)),
-			RenderElement::Path(nodes, false) => nodes
+			Self::Node(pos) => (pointer_pos - *pos).length(),
+			Self::Path(nodes, false) => nodes
 				.iter()
 				.tuple_windows()
-				.filter_map(|(a, b)| {
-					let p_dist = distance_point_to_segment(a, b, &pointer_pos);
-					if p_dist < threshold {
-						Some(p_dist)
-					} else {
-						None
-					}
-				})
-				.fold(f64::INFINITY, |a, b| a.min(b)),
-			RenderElement::Area(perimeter, _) => perimeter
-				.iter()
-				.circular_tuple_windows()
-				.filter_map(|(a, b)| {
-					let p_dist = distance_point_to_segment(a, b, &pointer_pos);
-					if p_dist < threshold {
-						Some(p_dist)
-					} else {
-						None
-					}
-				})
-				.fold(f64::INFINITY, |a, b| a.min(b)),
-			RenderElement::Collection(elements) => elements
-				.iter()
-				.filter_map(|e| match e.pointer_distance {
-					Some(dist) if dist < threshold => e.pointer_distance,
-					_ => None,
-				})
-				.fold(f64::INFINITY, |a, b| a.min(b)),
+				.map(|(a, b)| distance_point_to_segment(a, b, &pointer_pos))
+				.fold(f64::INFINITY, f64::min),
+			Self::Path(nodes, true) => Self::distance_to_loop(&pointer_pos, nodes),
+			Self::Area(_perimeter, _) => todo!(), // Self::distance_to_loop(&pointer_pos, perimeter),
+			Self::Collection(elements) =>
+			 elements.iter().fold(f64::INFINITY, |a, b| {
+			 	a.min(b.pointer_distance.expect("No pointer distance"))
+			}),
 		})
+	}
+
+	fn distance_to_loop(pointer_pos: &DVec2, points: &[DVec2]) -> f64 {
+		points
+			.iter()
+			.circular_tuple_windows()
+			.map(|(a, b)| distance_point_to_segment(a, b, pointer_pos))
+			.fold(f64::INFINITY, f64::min)
 	}
 }
 
 impl DetailedElement {
-	pub fn from_map_element(
-		map_element: &MapElement,
-		map_data: &MapData,
-		pointer_pos: Option<DVec2>,
-		select_threshold: f64,
-	) -> Self {
+	pub fn from_map_element(map_element: &MapElement, map_data: &MapData, pointer_pos: Option<DVec2>) -> Self {
 		puffin::profile_function!(map_element.id.to_string());
 		let element = match &map_element.element {
 			Element::Node { pos } => RenderElement::Node(pos.to_web_mercator()),
@@ -133,10 +103,11 @@ impl DetailedElement {
 					// let area = RenderElement::Area(partitions.into_iter().map(|p| p.points).collect());
 
 					RenderElement::Collection(vec![
-						DetailedElement {
+						Self {
 							id: map_element.id,
 							bounding_box: path.bounding_box(),
-							pointer_distance: path.distance(pointer_pos, select_threshold),
+							pointer_distance: path.distance(pointer_pos),
+							pointer_threshold: f64::from(DEFAULT_WAY_STYLE.size),
 							element: path,
 							style: DEFAULT_WAY_STYLE,
 						},
@@ -157,12 +128,13 @@ impl DetailedElement {
 				}
 			}
 			Element::Relation { members } => {
-				let members = members
-					.iter()
-					.filter_map(|m| map_data.get_element(m.ref_id))
-					.map(|m| Self::from_map_element(m, map_data, pointer_pos, select_threshold))
-					.collect();
-				RenderElement::Collection(members)
+				todo!()
+				// let members = members
+				// 	.iter()
+				// 	.filter_map(|m| map_data.get_element(m.ref_id))
+				// 	.map(|m| Self::from_map_element(m, map_data, pointer_pos))
+				// 	.collect();
+				// RenderElement::Collection(members)
 			}
 		};
 
@@ -178,7 +150,8 @@ impl DetailedElement {
 		Self {
 			id: map_element.id,
 			bounding_box: element.bounding_box(),
-			pointer_distance: element.distance(pointer_pos, select_threshold),
+			pointer_distance: element.distance(pointer_pos),
+			pointer_threshold: f64::from(style.size),
 			element,
 			style,
 		}
