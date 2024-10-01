@@ -92,7 +92,9 @@ impl DetailedElement {
 
 				let convex = if is_area {
 					polygon.set_orientation(Orientation::CCW);
-					polygon.convex_partition()
+					// polygon.convex_partition()
+					// TODO
+					Some(())
 				} else {
 					None
 				};
