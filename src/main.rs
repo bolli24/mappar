@@ -5,7 +5,6 @@
 use log::{error, info};
 use mappar::MyApp;
 use simplelog::ConfigBuilder;
-use wasm_bindgen::JsCast;
 
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
@@ -50,6 +49,7 @@ async fn main() -> eframe::Result<()> {
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
+	use wasm_bindgen::JsCast;
 	eframe::WebLogger::init(log::LevelFilter::Info).ok();
 	let web_options = eframe::WebOptions::default();
 
