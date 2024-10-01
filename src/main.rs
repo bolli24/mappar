@@ -4,6 +4,8 @@
 
 use log::{error, info};
 use mappar::MyApp;
+use simplelog::ConfigBuilder;
+use wasm_bindgen::JsCast;
 
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
@@ -52,17 +54,21 @@ fn main() {
 	let web_options = eframe::WebOptions::default();
 
 	wasm_bindgen_futures::spawn_local(async {
+		let document = web_sys::window()
+			.expect("No window")
+			.document()
+			.expect("No document");
+		
+		let canvas =document.get_element_by_id("the_canvas_id") // hardcoded canvas id
+			.expect("No canvas found")
+			.dyn_into::<web_sys::HtmlCanvasElement>()
+			.expect("the_canvas_id is not a canvas element");
+
 		let result = eframe::WebRunner::new()
-			.start(
-				"the_canvas_id", // hardcode it
-				web_options,
-				Box::new(|cc| Ok(Box::new(MyApp::new(cc)))),
-			)
+			.start(canvas, web_options, Box::new(|cc| Ok(Box::new(MyApp::new(cc)))))
 			.await;
 
-		let loading_text = web_sys::window()
-			.and_then(|w| w.document())
-			.and_then(|d| d.get_element_by_id("loading_text"));
+		let loading_text = document.get_element_by_id("loading_text");
 
 		if let Some(loading_text) = loading_text {
 			match result {
@@ -83,7 +89,7 @@ fn main() {
 fn init_logger() {
 	use chrono::{DateTime, Utc};
 	use flate2::write::GzEncoder;
-	use simplelog::{ColorChoice, CombinedLogger, Config, LevelFilter, TermLogger, TerminalMode, WriteLogger};
+	use simplelog::{ColorChoice, CombinedLogger, LevelFilter, TermLogger, TerminalMode, WriteLogger};
 	use std::fs::File;
 
 	let storage_path = eframe::storage_dir(MyApp::APP_NAME).expect("Failed to get storage dir");
@@ -122,14 +128,17 @@ fn init_logger() {
 	#[cfg(target_os = "windows")]
 	update_log_time(&latest_file).expect("Failed to update log file time");
 
+	// Remove annoying messages of wgpu 22.1.0
+	let config = ConfigBuilder::new().add_filter_ignore_str("wgpu_core::device").build();
+
 	CombinedLogger::init(vec![
 		TermLogger::new(
 			LevelFilter::Info,
-			Config::default(),
+			config.clone(),
 			TerminalMode::Mixed,
 			ColorChoice::Auto,
 		),
-		WriteLogger::new(LevelFilter::Info, Config::default(), latest_file),
+		WriteLogger::new(LevelFilter::Info, config, latest_file),
 	])
 	.expect("Error initializing logger");
 }

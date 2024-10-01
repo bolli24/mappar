@@ -123,7 +123,7 @@ impl eframe::App for MyApp {
 					}
 				});
 				ui.add_space(16.0);
-				egui::widgets::global_dark_light_mode_buttons(ui);
+				egui::widgets::global_theme_preference_switch(ui);
 			});
 		});
 
