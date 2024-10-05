@@ -209,7 +209,7 @@ where
 
 	let tests = test.repeated().collect::<Vec<_>>();
 
-	let layer = just(Token::Colon)
+	let maybe_layer = just(Token::Colon)
 		.ignore_then(just(Token::Colon))
 		.ignore_then(identifier)
 		.map(|layer| {
@@ -256,13 +256,13 @@ where
 	// subselector  ::= object SPACE | object pseudoClass zoom layer | object pseudoClass zoom tests layer
 	// 					| maybe_class | "setting" ":" ":" ID;
 	let sub_selector = choice((
-		group((object, pseudo_class, tests.clone(), layer.clone())) // object pseudoClass tests? layer?
-			.map(|(object, p_class, tests, layer)| SubSelector::Object(object, tests, layer, Some(p_class))),
-		group((object, tests, maybe_pseudo_class, layer)) // object tests? pseudoClass? layer?
-			.map(|(object, tests, p_class, layer)| SubSelector::Object(object, tests, layer, p_class)),
+		group((object, pseudo_class, tests.clone())) // object pseudoClass tests?
+			.map(|(object, p_class, tests)| SubSelector::Object(object, tests, Some(p_class))),
+		group((object, tests, maybe_pseudo_class)) // object tests? pseudoClass?
+			.map(|(object, tests, p_class)| SubSelector::Object(object, tests, p_class)),
 		object
 			.then_ignore(req_space.clone())
-			.map(|object| SubSelector::Object(object, Vec::new(), None, None)),
+			.map(|object| SubSelector::Object(object, Vec::new(), None)),
 		maybe_class,
 		setting,
 	))
@@ -314,7 +314,8 @@ where
 	.separated_by(opt_spaces.clone())
 	.at_least(1)
 	.collect::<Vec<_>>()
-	.map(Intersection)
+	.then(maybe_layer)
+	.map(|(selectors, maybe_layer)| Intersection(selectors, maybe_layer))
 	.labelled("selector");
 
 	// uSelectors   ::= selector | uSelectors "," selector;
@@ -406,9 +407,11 @@ pub type Selectors = Union;
 pub struct Union(Vec<Intersection>);
 
 /// Applies to all instances with all the subselectors
-/// .class1 .class2
+/// .class1.class2 or .class1 .class2
+/// With and optional layer
+/// .class1.class2::layer
 #[derive(Debug)]
-pub struct Intersection(Vec<Selector>);
+pub struct Intersection(Vec<Selector>, Option<Layer>);
 
 #[derive(Debug)]
 pub enum Selector {
@@ -436,12 +439,7 @@ const LINK_OPERATIONS: [BinaryOp; 3] = [BinaryOp::Eq, BinaryOp::NotEq, BinaryOp:
 
 #[derive(Debug)]
 pub enum SubSelector {
-	Object(
-		Object,
-		/* Option<Zoom>,*/ Vec<Condition>,
-		Option<Layer>,
-		Option<PseudoClass>,
-	),
+	Object(Object, /* Option<Zoom>,*/ Vec<Condition>, Option<PseudoClass>),
 	Class(String),
 	PseudoClass(String),
 	NotClass(String),
@@ -531,7 +529,7 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn parse() {
+	fn parse_josm_default() {
 		let file_name = "josm.mapcss";
 		let src = include_str!("test/josm.mapcss");
 		let token_iter = Token::lexer(src).spanned().filter_map(|(tok, span)| match tok {
@@ -544,7 +542,7 @@ mod tests {
 		let result = expr_parser().parse(token_stream).into_result();
 		match result {
 			Ok(out) => {
-				println!("{:?}", out);
+				println!("Styleset: {:?}", out);
 			}
 			Err(errs) => {
 				let src = Source::from(&src);

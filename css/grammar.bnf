@@ -5,12 +5,12 @@ rule         ::= selectors declarations | import;
 import       ::= AT "import" "url" "(" QUOTED ")" ID ";";
 selectors    ::= uSelectors | uSelectors ",";
 uSelectors   ::= selector | uSelectors "," selector;
-intersection ::= selector | intersection selector;
+intersection ::= selector layer | intersection selector layer;
 selector     ::= subselector | child;
 child		 ::= subselector "<"link selector
 link		 ::= "[" property binary value "]" | ;
 property 	 ::= "index" | "role" ;
-subselector  ::= object SPACE | object maybePseudoClass zoom layer | object maybePseudoClass zoom tests layer 
+subselector  ::= object SPACE | object maybePseudoClass zoom | object maybePseudoClass zoom tests 
 				 | maybeClass | "setting" ":" ":" ID;
 zoom         ::= "|" "z" range | ;
 layer		 ::= ":" ":" ID | ;
