@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 use crate::lexer::Token;
+use chumsky::container::Seq;
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 use ecolor::Color32;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 pub mod lexer;
 
@@ -40,25 +41,6 @@ where
 	let key = identifier.labelled("key");
 	let tag = colon_tag.or(quoted).labelled("tag");
 
-	let mut value = Recursive::<_>::declare();
-
-	let function = identifier
-		.then(
-			value
-				.clone()
-				.separated_by(just(Token::Comma).padded_by(opt_spaces.clone()))
-				.collect::<Vec<_>>()
-				.padded_by(opt_spaces.clone())
-				.delimited_by(just(Token::ParenOpen), just(Token::ParenClose)),
-		)
-		.map(|(name, args)| Function(name.to_string(), args));
-
-	value.define(function.clone().map(Value::Function).clone().or(select! {
-		Token::Number(num) => Value::Number(num),
-		Token::Identifier(ident) => Value::Identifier(ident.to_string()),
-		Token::Quoted(s) => Value::String(s)
-	}));
-
 	let binary = select! {
 		Token::Op("=") => BinaryOp::Eq,
 		Token::Op("!=") => BinaryOp::NotEq,
@@ -73,6 +55,97 @@ where
 		Token::Op("-") => BinaryOp::Sub,
 		Token::Op("/") => BinaryOp::Div,
 	};
+
+	let unary = select! {
+		Token::Op("-") => UnaryOp::Neg,
+		Token::Op("!") => UnaryOp::Not
+	};
+
+	let mut expression = Recursive::<_>::declare();
+
+	let function = identifier
+		.then(
+			expression
+				.clone()
+				.separated_by(just(Token::Comma).padded_by(opt_spaces.clone()))
+				.collect::<Vec<_>>()
+				.padded_by(opt_spaces.clone())
+				.delimited_by(just(Token::ParenOpen), just(Token::ParenClose)),
+		)
+		.map(|(name, args)| Function(name.to_string(), args));
+
+	/*
+	let unary = op('-')
+	.repeated()
+	.then(atom)
+	.foldr(|_op, rhs| Expr::Neg(Box::new(rhs)));
+
+	let product = unary.clone()
+		.then(op('*').to(Expr::Mul as fn(_, _) -> _)
+			.or(op('/').to(Expr::Div as fn(_, _) -> _))
+			.then(unary)
+			.repeated())
+		.foldl(|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)));
+
+	let sum = product.clone()
+		.then(op('+').to(Expr::Add as fn(_, _) -> _)
+			.or(op('-').to(Expr::Sub as fn(_, _) -> _))
+			.then(product)
+			.repeated())
+		.foldl(|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)));
+	 */
+
+	// TODO: add error for not supported binary operators
+
+	let atom = choice((
+		function.clone().map(Expression::Function),
+		select! {
+			Token::Number(num) => Expression::Number(num),
+			Token::Identifier(ident) => Expression::Identifier(ident.to_string()),
+			Token::Quoted(s) => Expression::String(s)
+		},
+		expression.clone().delimited_by(
+			just(Token::ParenOpen).padded_by(opt_spaces.clone()),
+			just(Token::ParenClose).padded_by(opt_spaces.clone()),
+		),
+	));
+
+	let unary_expression = unary
+		.repeated()
+		.foldr(atom.clone(), |op, expr| Expression::Unary(Box::new(expr), op));
+
+	let factor = unary_expression.clone().then_ignore(opt_spaces.clone()).foldl(
+		binary
+			.filter(|op| matches!(op, BinaryOp::Mul | BinaryOp::Div))
+			.then_ignore(opt_spaces.clone())
+			.then(unary_expression.clone())
+			.repeated(),
+		|a, (op, b)| Expression::Binary(Box::new(a), op, Box::new(b)),
+	);
+
+	let term = factor.clone().then_ignore(opt_spaces.clone()).foldl(
+		binary
+			.filter(|op| matches!(op, BinaryOp::Add | BinaryOp::Sub))
+			.then_ignore(opt_spaces.clone())
+			.then(factor.clone())
+			.repeated(),
+		|a, (op, b)| Expression::Binary(Box::new(a), op, Box::new(b)),
+	);
+
+	/*
+	   let atom = int
+	   .or(expr.delimited_by(just('('), just(')')))
+	   .or(call)
+	   .or(ident.map(Expr::Var));
+	*/
+
+	expression.define(
+		term.map(|e| {
+			println!("Expression parsed: {e:?}");
+			e
+		})
+		.labelled("expression"),
+	);
 
 	let repeated_u8 = number
 		.map(|f: f64| f.round().clamp(0.0, 255.0) as u8)
@@ -110,21 +183,15 @@ where
 	let sizes = size
 		.separated_by(just(Token::Comma).padded_by(opt_spaces.clone()))
 		.at_least(1)
-		.collect::<Vec<Size>>();
+		.collect::<Vec<Size>>()
+		.filter(|sizes| sizes.len() > 1 || sizes[0].unit.is_some()); // A single size without a unit is a number
 
 	let specifier = choice((
 		labelled_color.map(|(label, color)| Specifier::Color(color, label)),
-		sizes.map(|sizes| {
-			// This map is needed to allow parsing of single number and sizes without units
-			if sizes.len() == 1 && sizes[0].unit.is_none() {
-				Specifier::Value(Value::Number(sizes[0].number))
-			} else {
-				Specifier::Sizes(sizes)
-			}
-		}),
-		value.clone().map(|value| match value {
-			Value::Identifier(name) => Specifier::Named(name),
-			_ => Specifier::Value(value),
+		sizes.map(Specifier::Sizes),
+		expression.clone().map(|expression| match expression {
+			Expression::Identifier(name) => Specifier::Named(name),
+			_ => Specifier::Expression(expression),
 		}),
 	))
 	// .map(|spec| {
@@ -173,7 +240,7 @@ where
 		.then_ignore(opt_spaces.clone())
 		.then(binary)
 		.then_ignore(opt_spaces.clone())
-		.then(value.clone());
+		.then(expression.clone());
 
 	// TODO: at not falsy and not truthy: !building?!  !building?
 	let condition = recursive(|condition| {
@@ -281,7 +348,7 @@ where
 		.then_ignore(opt_spaces.clone())
 		.then(binary)
 		.then_ignore(opt_spaces.clone())
-		.then(value)
+		.then(expression)
 		.padded_by(opt_spaces.clone())
 		.delimited_by(just(Token::BracketOpen), just(Token::BracketClose))
 		.try_map(|((a, op), b), span| {
@@ -347,11 +414,15 @@ pub enum BinaryOp {
 	Ge,
 	Lt,
 	Gt,
-	Mul,
 	Add,
 	Sub,
+	Mul,
 	Div,
 }
+
+/// Operations permitted in expressions
+const EXPRESSION_BINARY_OPS: [BinaryOp; 4] = [BinaryOp::Mul, BinaryOp::Add, BinaryOp::Mul, BinaryOp::Div];
+const EXPRESSION_UNARY_OPS: [UnaryOp; 1] = [UnaryOp::Neg];
 
 impl Display for BinaryOp {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -376,6 +447,15 @@ impl Display for BinaryOp {
 pub enum UnaryOp {
 	Not,
 	Neg,
+}
+
+impl Display for UnaryOp {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			UnaryOp::Not => write!(f, "!"),
+			UnaryOp::Neg => write!(f, "-"),
+		}
+	}
 }
 
 #[derive(Debug)]
@@ -426,7 +506,7 @@ pub struct ChildRelation(Box<SubSelector>, Box<SubSelector>, Option<Link>);
 // Use box to reduce size of Selector 96 vs 240 bytes
 
 #[derive(Debug)]
-pub struct Link(Property, BinaryOp, Value);
+pub struct Link(Property, BinaryOp, Expression);
 
 #[derive(Debug)]
 pub enum Property {
@@ -434,7 +514,7 @@ pub enum Property {
 	Role,
 }
 
-/// Opeation permitted in link specifier
+/// Operations permitted in link specifier
 const LINK_OPERATIONS: [BinaryOp; 3] = [BinaryOp::Eq, BinaryOp::NotEq, BinaryOp::ListMembership];
 
 #[derive(Debug)]
@@ -468,7 +548,7 @@ pub enum Specifier {
 	Sizes(Vec<Size>),
 	Color(Color32, Option<String>),
 	Url(String),
-	Value(Value),
+	Expression(Expression),
 	Function(Function),
 }
 
@@ -496,17 +576,37 @@ impl From<&str> for Unit {
 	}
 }
 
-#[derive(Debug)]
-pub enum Value {
+pub enum Expression {
 	Number(f64),
 	Identifier(String),
 	String(String),
 	Function(Function),
+	Binary(Box<Expression>, BinaryOp, Box<Expression>),
+	Unary(Box<Expression>, UnaryOp),
+}
+
+impl Display for Expression {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Number(n) => write!(f, "{n}"),
+			Self::Identifier(name) => write!(f, "{name}"),
+			Self::String(string) => write!(f, "\"{string}\""),
+			Self::Function(function) => write!(f, "{function}"),
+			Self::Binary(a, op, b) => write!(f, "({a} {op} {b})"),
+			Self::Unary(expr, op) => write!(f, "{op}{expr}"),
+		}
+	}
+}
+
+impl Debug for Expression {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{self}")
+	}
 }
 
 #[derive(Debug)]
 pub enum Condition {
-	Binary(String, BinaryOp, Value),
+	Binary(String, BinaryOp, Expression),
 	Not(Box<Condition>),
 	Truthy(String),
 	Falsy(String),
@@ -515,8 +615,20 @@ pub enum Condition {
 }
 
 #[derive(Debug)]
-// TODO: nested function calls: pub struct Function(String, Vec<Value>);
-pub struct Function(String, Vec<Value>);
+pub struct Function(String, Vec<Expression>);
+
+impl Display for Function {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}(", self.0)?;
+		for (i, arg) in self.1.iter().enumerate() {
+			if i > 0 {
+				write!(f, ", ")?;
+			}
+			write!(f, "{}", arg)?;
+		}
+		write!(f, ")")
+	}
+}
 
 #[cfg(test)]
 mod tests {

@@ -1,4 +1,3 @@
-way[oneway?][cycleway=lane]:righthandtraffic::core_cycleway {
-    set laneRight;
-    set righthandtr;
+way.shared_laneRight::core_cycleway {
+    offset: 0 - (prop("width", "default") / 2) - 2;
 }
