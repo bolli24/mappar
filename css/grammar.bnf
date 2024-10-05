@@ -1,4 +1,4 @@
-function// Source: https://wiki.openstreetmap.org/wiki/MapCSS/0.2/BNF
+# Source: https://wiki.openstreetmap.org/wiki/MapCSS/0.2/BNF
 
 ruleset      ::= rule | ruleset rule;
 rule         ::= selectors declarations | import;
@@ -10,7 +10,7 @@ selector     ::= subselector | child;
 child		 ::= subselector "<"link selector
 link		 ::= "[" property binary value "]" | ;
 property 	 ::= "index" | "role" ;
-subselector  ::= object SPACE | object maybePseudoClass zoom layer | object pseudoClass zoom tests layer 
+subselector  ::= object SPACE | object maybePseudoClass zoom layer | object maybePseudoClass zoom tests layer 
 				 | maybeClass | "setting" ":" ":" ID;
 zoom         ::= "|" "z" range | ;
 layer		 ::= ":" ":" ID | ;

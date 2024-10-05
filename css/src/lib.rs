@@ -212,7 +212,10 @@ where
 	let layer = just(Token::Colon)
 		.ignore_then(just(Token::Colon))
 		.ignore_then(identifier)
-		.map(|layer| layer.to_string())
+		.map(|layer| {
+			println!("Layer: {layer}");
+			layer.to_string()
+		})
 		.or_not();
 
 	// object       ::= "node" | "way" | "relation" | "area" | "line" | "canvas" | "*" | ;
@@ -238,11 +241,9 @@ where
 			}),
 	));
 
-	let maybe_pseudo_class = just(Token::Colon)
-		.ignore_then(identifier)
-		.labelled("classname")
-		.map(Some)
-		.or(empty().map(|_| None));
+	let pseudo_class = just(Token::Colon).ignore_then(identifier).labelled("classname");
+
+	let maybe_pseudo_class = pseudo_class.clone().or_not();
 
 	let setting = just(Token::Identifier("setting"))
 		.ignore_then(just(Token::Colon))
@@ -255,11 +256,13 @@ where
 	// subselector  ::= object SPACE | object pseudoClass zoom layer | object pseudoClass zoom tests layer
 	// 					| maybe_class | "setting" ":" ":" ID;
 	let sub_selector = choice((
+		group((object, pseudo_class, tests.clone(), layer.clone())) // object pseudoClass tests? layer?
+			.map(|(object, p_class, tests, layer)| SubSelector::Object(object, tests, layer, Some(p_class))),
+		group((object, tests, maybe_pseudo_class, layer)) // object tests? pseudoClass? layer?
+			.map(|(object, tests, p_class, layer)| SubSelector::Object(object, tests, layer, p_class)),
 		object
 			.then_ignore(req_space.clone())
 			.map(|object| SubSelector::Object(object, Vec::new(), None, None)),
-		group((object, maybe_pseudo_class, tests, layer))
-			.map(|(object, p_class, tests, layer)| SubSelector::Object(object, tests, layer, p_class)),
 		maybe_class,
 		setting,
 	))

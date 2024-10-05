@@ -1,4 +1,4 @@
-way[highway=footway][bicycle=yes], way[highway=path][bicycle=yes][foot=designated], way[highway=path][bicycle=yes][foot=official]
-{
-    icon: test;
+way[oneway?][cycleway=lane]:righthandtraffic::core_cycleway {
+    set laneRight;
+    set righthandtr;
 }
