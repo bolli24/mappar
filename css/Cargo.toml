@@ -1,12 +1,12 @@
 [package]
 name = "mappar_css"
 authors = ["bolli24"]
-description = "A MapCSS parser."
+description = "A MapCSS parser with powerful error reporting."
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 chumsky = { version = "1.0.0-alpha.7", features = ["label"] }
 logos = "0.14.1"
-ecolor = "0.28.1"
+ecolor = "0.29.1"
 ariadne = "0.4.1"
