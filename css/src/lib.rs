@@ -255,10 +255,12 @@ where
 	));
 
 	let regex = just(Token::Op("/"))
-		.ignore_then(regex_chars.repeated().collect::<Vec<&str>>().map(|strings| {
-			println!("{}", strings.join(""));
-			strings.join("")
-		}))
+		.ignore_then(
+			regex_chars
+				.repeated()
+				.collect::<Vec<&str>>()
+				.map(|strings| strings.join("")),
+		)
 		.then_ignore(just(Token::Op("/")));
 
 	let binary_condition = tag
@@ -419,7 +421,10 @@ where
 		.then(declaration)
 		.map(|(selectors, styles)| Styleset { selectors, styles });
 
-	let rule_set = rule.separated_by(opt_spaces.clone()).collect();
+	let rule_set = rule
+		.separated_by(opt_spaces.clone())
+		.collect()
+		.padded_by(opt_spaces.clone());
 	rule_set
 }
 
@@ -689,40 +694,47 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn parse_josm_default() {
-		let file_name = "josm.mapcss";
-		let src = include_str!("test/josm.mapcss");
-		let token_iter = Token::lexer(src).spanned().filter_map(|(tok, span)| match tok {
-			Ok(tok) => Some((tok, span.into())),
-			_ => None,
-		});
+	fn parse() {
+		let test_files = [
+			(include_str!("test/simple.mapcss"), "simple.css"),
+			(include_str!("test/josm.mapcss"), "josm.css"),
+			(include_str!("test/apple.mapcss"), "apple.css"),
+		];
+		for (src, file_name) in test_files {
+			println!("Parsing {file_name:?}");
 
-		let start = std::time::Instant::now();
-		let _tokens = token_iter.clone().collect::<Vec<_>>();
-		println!("Lexed in {:?}", start.elapsed());
+			let token_iter = Token::lexer(src).spanned().filter_map(|(tok, span)| match tok {
+				Ok(tok) => Some((tok, span.into())),
+				_ => None,
+			});
 
-		let token_stream = Stream::from_iter(token_iter).spanned(SimpleSpan::from(src.len()..src.len()));
+			let start = std::time::Instant::now();
+			let _tokens = token_iter.clone().collect::<Vec<_>>();
+			println!("Lexed in {:?}", start.elapsed());
 
-		let start = std::time::Instant::now();
-		let result = expr_parser().parse(token_stream).into_result();
-		println!("Parsed in {:?}", start.elapsed());
-		match result {
-			Ok(out) => {
-				println!("Styleset: {:?}", out);
-			}
-			Err(errs) => {
-				let src = Source::from(&src);
-				for err in errs {
-					Report::build(ReportKind::Error, file_name, err.span().start)
-						.with_message(err.to_string())
-						.with_label(
-							Label::new((file_name, err.span().into_range()))
-								.with_message(err.reason())
-								.with_color(Color::Red),
-						)
-						.finish()
-						.eprint((file_name, src.clone()))
-						.unwrap();
+			let token_stream = Stream::from_iter(token_iter).spanned(SimpleSpan::from(src.len()..src.len()));
+
+			let start = std::time::Instant::now();
+			let result = expr_parser().parse(token_stream).into_result();
+			println!("Parsed in {:?}", start.elapsed());
+			match result {
+				Ok(_) => {
+					println!("Parsed sucessfully");
+				}
+				Err(errs) => {
+					let src = Source::from(&src);
+					for err in errs {
+						Report::build(ReportKind::Error, &file_name, err.span().start)
+							.with_message(err.to_string())
+							.with_label(
+								Label::new((&file_name, err.span().into_range()))
+									.with_message(err.reason())
+									.with_color(Color::Red),
+							)
+							.finish()
+							.eprint((&file_name, src.clone()))
+							.unwrap();
+					}
 				}
 			}
 		}

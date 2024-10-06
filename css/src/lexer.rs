@@ -48,7 +48,7 @@ pub enum Token<'a> {
 	Zoom(&'a str),
 
 	// #[token("/", |lex| lex.slice(), priority = 2)]
-	#[regex(r"~=|=|!=|=~|<=|>=|<|>|\*|\+|-|\^|/|\\", |lex| lex.slice(), priority = 3)]
+	#[regex(r"~=|=|!=|=~|!~|<=|>=|<|>|\*|\+|-|\^|/|\\", |lex| lex.slice(), priority = 3)]
 	Op(&'a str),
 
 	#[regex(r"#(?:[0-9a-fA-F]{3}){1,2}(?:[0-9a-fA-F]{1,2})?", color)]
@@ -57,7 +57,7 @@ pub enum Token<'a> {
 	// TODO: maybe add support for rgba, rgb directly here
 	#[regex(r"px|pt|%", |lex| lex.slice(), priority = 2)]
 	Unit(&'a str),
-
+	
 	#[regex(r"[[^[:ascii:]][[:alpha:]]_][[^[:ascii:]][[:alnum:]]_-]*", |lex| lex.slice(), priority = 1)]
 	Identifier(&'a str),
 
@@ -75,7 +75,7 @@ pub enum Token<'a> {
 	#[regex(r"/\*", multiline_comment)]
 	Comment,
 
-	#[regex(r"\r\n|\r|\n")]
+	#[regex(r"\r\n|\r|\n", |lex| lex.extras.0 += 1)]
 	Newline,
 }
 
@@ -235,12 +235,13 @@ mod tests {
 
 	#[test]
 	fn test_binary_op() {
-		let mut lex = Token::lexer("~==!==~<=>=<>*/+-^\\");
+		let mut lex = Token::lexer("~==!==~!~<=>=<>*/+-^\\");
 
 		assert_eq!(lex.next(), Some(Ok(Token::Op("~="))));
 		assert_eq!(lex.next(), Some(Ok(Token::Op("="))));
 		assert_eq!(lex.next(), Some(Ok(Token::Op("!="))));
 		assert_eq!(lex.next(), Some(Ok(Token::Op("=~"))));
+		assert_eq!(lex.next(), Some(Ok(Token::Op("!~"))));
 		assert_eq!(lex.next(), Some(Ok(Token::Op("<="))));
 		assert_eq!(lex.next(), Some(Ok(Token::Op(">="))));
 		assert_eq!(lex.next(), Some(Ok(Token::Op("<"))));
@@ -309,7 +310,7 @@ mod tests {
 
 	#[test]
 	fn josm() {
-		let mut lex = Token::lexer(include_str!("test/josm.mapcss"));
+		let mut lex = Token::lexer(include_str!("test/apple.mapcss"));
 		let file = File::create("test_output.txt").unwrap();
 		let mut writer = std::io::BufWriter::new(file);
 		let mut errored = false;
@@ -320,6 +321,7 @@ mod tests {
 				}
 				Err(error) => {
 					errored = true;
+					// eprintln!("Error at line {}: {:?}", lex.extras.0 + 1, error);
 					writer
 						.write_all(format!("Error at line {}: {:?}\n", lex.extras.0 + 1, error).as_bytes())
 						.unwrap();
