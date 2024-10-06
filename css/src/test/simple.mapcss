@@ -1,3 +1,4 @@
-way.shared_laneRight::core_cycleway {
-    offset: 0 - (prop("width", "default") / 2) - 2;
+node[man_made=pump][substance=~/(^|_)?water$/] {
+    icon-image: "presets/landmark/pump_water.svg";
+    set icon_z17;
 }

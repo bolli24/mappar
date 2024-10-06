@@ -61,9 +61,9 @@ pub enum Token<'a> {
 	#[regex(r"[[^[:ascii:]][[:alpha:]]_][[^[:ascii:]][[:alnum:]]_-]*", |lex| lex.slice(), priority = 1)]
 	Identifier(&'a str),
 
-	#[regex(r"[-+]?(?:0|[1-9]\d*)?(?:\.\d+)?(?:[eE][+-]?\d+)?", |lex| lex.slice().parse::<f64>().map(|f| f.into()), priority = 2)]
+	#[regex(r"[-+]?(?:0|[1-9]\d*)?(?:\.\d+)?(?:[eE][+-]?\d+)?", |lex| lex.slice(), priority = 2)]
 	// Number(F64),
-	Number(f64),
+	Number(&'a str),
 
 	#[regex(r#"[\"']"#, string)]
 	Quoted(String),
@@ -290,9 +290,11 @@ mod tests {
 	#[test]
 	fn numbers() {
 		let mut lex = Token::lexer("4.01\n-456.8\n0.0\n+0.0\n-0.0\n.60\n10e3\n-3.4e-2\n12\n-1");
-		let numbers = [4.01, -456.8, 0.0, 0.0, -0.0, 0.6, 10e3, -3.4e-2, 12.0, -1.0];
-		for number in numbers.iter() {
-			assert_eq!(lex.next(), Some(Ok(Token::Number(*number))));
+		let numbers = [
+			"4.01", "-456.8", "0.0", "+0.0", "-0.0", ".60", "10e3", "-3.4e-2", "12", "-1",
+		];
+		for number in numbers {
+			assert_eq!(lex.next(), Some(Ok(Token::Number(number))));
 			lex.next();
 		}
 		assert_eq!(lex.next(), None);

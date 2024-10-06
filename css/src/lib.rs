@@ -1,10 +1,12 @@
 #![allow(dead_code)]
 use crate::lexer::Token;
-use chumsky::container::Seq;
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 use ecolor::Color32;
-use std::fmt::{Debug, Display};
+use std::{
+	fmt::{Debug, Display},
+	u8,
+};
 
 pub mod lexer;
 
@@ -24,7 +26,8 @@ where
 	let opt_spaces = just(Token::Space).or(just(Token::Newline)).repeated().ignored();
 
 	// key          ::= ID;
-	let number = select! {Token::Number(n) => n};
+	let number = select! {Token::Number(n) => n}
+		.try_map(|n, span| n.parse::<f64>().map_err(|_| Rich::custom(span, "Invalid number.")));
 
 	let hex_color = select! {Token::Color(c) => c};
 
@@ -100,10 +103,10 @@ where
 	let atom = choice((
 		function.clone().map(Expression::Function),
 		select! {
-			Token::Number(num) => Expression::Number(num),
 			Token::Identifier(ident) => Expression::Identifier(ident.to_string()),
 			Token::Quoted(s) => Expression::String(s)
 		},
+		number.map(Expression::Number),
 		expression.clone().delimited_by(
 			just(Token::ParenOpen).padded_by(opt_spaces.clone()),
 			just(Token::ParenClose).padded_by(opt_spaces.clone()),
@@ -139,13 +142,7 @@ where
 	   .or(ident.map(Expr::Var));
 	*/
 
-	expression.define(
-		term.map(|e| {
-			println!("Expression parsed: {e:?}");
-			e
-		})
-		.labelled("expression"),
-	);
+	expression.define(term.labelled("expression"));
 
 	let repeated_u8 = number
 		.map(|f: f64| f.round().clamp(0.0, 255.0) as u8)
@@ -176,9 +173,7 @@ where
 		Token::Unit(unit) => Unit::from(unit),
 	};
 
-	let size = select! { Token::Number(number) => number}
-		.then(unit.or_not())
-		.map(|(number, unit)| Size { number, unit });
+	let size = number.then(unit.or_not()).map(|(number, unit)| Size { number, unit });
 
 	let sizes = size
 		.separated_by(just(Token::Comma).padded_by(opt_spaces.clone()))
@@ -194,10 +189,6 @@ where
 			_ => Specifier::Expression(expression),
 		}),
 	))
-	// .map(|spec| {
-	// 	println!("Parsed specifier {spec:?}");
-	// 	spec
-	// })
 	.labelled("specifier");
 
 	let key_specifier = key
@@ -235,6 +226,41 @@ where
 		)))
 		.labelled("declaration");
 
+	let escaped_slash = just(Token::Op("\\"))
+		.then_ignore(just(Token::Op("\\")))
+		.map(|_| "\\\\")
+		.or(just(Token::Op("\\")).then_ignore(just(Token::Op("/"))).map(|_| "\\/"));
+
+	let regex_chars = escaped_slash.or(select!(
+		Token::Identifier(name) => name,
+		Token::Op(op) if op != "/" => op,
+		Token::Number(number) => number,
+		Token::Unit(unit) => unit,
+		Token::Space => " ",
+		Token::Dot => ".",
+		Token::Colon => ":",
+		Token::Comma => ",",
+		Token::Semicolon => ";",
+		Token::Pipe => "|",
+		Token::At => "@",
+		Token::Exclamation => "!",
+		Token::Question => "?",
+		Token::Dollar => "$",
+		Token::ParenOpen => "(",
+		Token::ParenClose => ")",
+		Token::BracketOpen => "[",
+		Token::BracketClose => "]",
+		Token::BraceOpen => "{",
+		Token::BraceClose => "}",
+	));
+
+	let regex = just(Token::Op("/"))
+		.ignore_then(regex_chars.repeated().collect::<Vec<&str>>().map(|strings| {
+			println!("{}", strings.join(""));
+			strings.join("")
+		}))
+		.then_ignore(just(Token::Op("/")));
+
 	let binary_condition = tag
 		.clone()
 		.then_ignore(opt_spaces.clone())
@@ -242,9 +268,17 @@ where
 		.then_ignore(opt_spaces.clone())
 		.then(expression.clone());
 
+	let regex_condition = tag
+		.clone()
+		.then_ignore(opt_spaces.clone())
+		.then_ignore(just(Token::Op("=~")))
+		.then_ignore(opt_spaces.clone())
+		.then(regex.clone());
+
 	// TODO: at not falsy and not truthy: !building?!  !building?
 	let condition = recursive(|condition| {
 		choice((
+			regex_condition.map(|(name, regex)| Condition::Regex(name, regex)),
 			function.clone().map(Condition::Function), // function
 			binary_condition
 				.clone() // tag binary tag
@@ -264,10 +298,6 @@ where
 				}),
 		))
 	})
-	.map(|condition| {
-		println!("Parsed condition {condition:?}");
-		condition
-	})
 	.labelled("condition");
 
 	let test = condition
@@ -279,10 +309,6 @@ where
 	let maybe_layer = just(Token::Colon)
 		.ignore_then(just(Token::Colon))
 		.ignore_then(identifier)
-		.map(|layer| {
-			println!("Layer: {layer}");
-			layer.to_string()
-		})
 		.or_not();
 
 	// object       ::= "node" | "way" | "relation" | "area" | "line" | "canvas" | "*" | ;
@@ -292,25 +318,24 @@ where
 		.labelled("object (node, way, relation, area, line, canvas, *, meta)");
 
 	let class_name = just(Token::Dot).ignore_then(identifier).labelled("classname");
+	let pseudo_class = just(Token::Colon).ignore_then(identifier).labelled("pseudoclassname");
 
 	let maybe_class = choice((
 		just(Token::Exclamation)
 			.ignore_then(class_name.clone())
 			.map(SubSelector::NotClass),
 		class_name.map(SubSelector::Class),
-		just(Token::Colon)
-			.ignore_then(identifier)
-			.labelled("classname")
-			.map(SubSelector::PseudoClass)
-			.map(|s| {
-				println!("Pseudo_class: {s:?}");
-				s
-			}),
+		just(Token::Exclamation)
+			.ignore_then(pseudo_class.clone())
+			.map(SubSelector::NotClass),
+		pseudo_class.clone().map(SubSelector::PseudoClass),
 	));
 
-	let pseudo_class = just(Token::Colon).ignore_then(identifier).labelled("classname");
-
 	let maybe_pseudo_class = pseudo_class.clone().or_not();
+
+	let zoom = select!(Token::Zoom(string) => Zoom::try_from(string))
+		.try_map(|zoom, span| zoom.map_err(|_| Rich::custom(span, "Invalid zoom specifier: {s}")))
+		.or_not();
 
 	let setting = just(Token::Identifier("setting"))
 		.ignore_then(just(Token::Colon))
@@ -320,16 +345,14 @@ where
 		})
 		.map(|s| SubSelector::Setting(s.to_string()));
 
-	// subselector  ::= object SPACE | object pseudoClass zoom layer | object pseudoClass zoom tests layer
-	// 					| maybe_class | "setting" ":" ":" ID;
 	let sub_selector = choice((
-		group((object, pseudo_class, tests.clone())) // object pseudoClass tests?
-			.map(|(object, p_class, tests)| SubSelector::Object(object, tests, Some(p_class))),
-		group((object, tests, maybe_pseudo_class)) // object tests? pseudoClass?
-			.map(|(object, tests, p_class)| SubSelector::Object(object, tests, p_class)),
+		group((object, zoom, pseudo_class, tests.clone())) // object zoom? pseudoClass tests?
+			.map(|(object, zoom, p_class, tests)| SubSelector::Object(object, zoom, tests, Some(p_class))),
+		group((object, zoom, tests, maybe_pseudo_class)) // object zoom? tests? pseudoClass?
+			.map(|(object, zoom, tests, p_class)| SubSelector::Object(object, zoom, tests, p_class)),
 		object
 			.then_ignore(req_space.clone())
-			.map(|object| SubSelector::Object(object, Vec::new(), None)),
+			.map(|object| SubSelector::Object(object, None, Vec::new(), None)),
 		maybe_class,
 		setting,
 	))
@@ -358,11 +381,7 @@ where
 				Err(Rich::custom(span, format!("Invalid operator {op}")))
 			}
 		})
-		.map(|s| {
-			println!("Link {s:?}");
-			Some(s)
-		})
-		.or(empty().map(|_| None));
+		.or_not();
 
 	let child_relation = sub_selector
 		.clone()
@@ -473,6 +492,33 @@ pub enum Object {
 #[derive(Debug)]
 pub struct Zoom(u8, u8);
 
+impl TryFrom<&str> for Zoom {
+	type Error = ();
+
+	fn try_from(value: &str) -> Result<Self, Self::Error> {
+		match value.split("-").collect::<Vec<_>>().as_slice() {
+			[z] => {
+				let z = z.parse::<u8>().map_err(|_| ())?;
+				Ok(Zoom(z, z))
+			}
+			[z1, ""] => {
+				let z1 = z1.parse::<u8>().map_err(|_| ())?;
+				Ok(Zoom(z1, u8::MAX))
+			}
+			["", z2] => {
+				let z2 = z2.parse::<u8>().map_err(|_| ())?;
+				Ok(Zoom(0, z2))
+			}
+			[z1, z2] => {
+				let z1 = z1.parse::<u8>().map_err(|_| ())?;
+				let z2 = z2.parse::<u8>().map_err(|_| ())?;
+				Ok(Zoom(z1, z2))
+			}
+			_ => Err(()),
+		}
+	}
+}
+
 #[derive(Debug)]
 pub struct Styleset {
 	pub selectors: Selectors,
@@ -519,10 +565,11 @@ const LINK_OPERATIONS: [BinaryOp; 3] = [BinaryOp::Eq, BinaryOp::NotEq, BinaryOp:
 
 #[derive(Debug)]
 pub enum SubSelector {
-	Object(Object, /* Option<Zoom>,*/ Vec<Condition>, Option<PseudoClass>),
+	Object(Object, Option<Zoom>, Vec<Condition>, Option<PseudoClass>),
 	Class(String),
 	PseudoClass(String),
 	NotClass(String),
+	NotPseudoClass(String),
 	Setting(String),
 }
 
@@ -612,6 +659,7 @@ pub enum Condition {
 	Falsy(String),
 	Tag(String),
 	Function(Function),
+	Regex(String, String),
 }
 
 #[derive(Debug)]
@@ -649,9 +697,15 @@ mod tests {
 			_ => None,
 		});
 
+		let start = std::time::Instant::now();
+		let _tokens = token_iter.clone().collect::<Vec<_>>();
+		println!("Lexed in {:?}", start.elapsed());
+
 		let token_stream = Stream::from_iter(token_iter).spanned(SimpleSpan::from(src.len()..src.len()));
 
+		let start = std::time::Instant::now();
 		let result = expr_parser().parse(token_stream).into_result();
+		println!("Parsed in {:?}", start.elapsed());
 		match result {
 			Ok(out) => {
 				println!("Styleset: {:?}", out);
