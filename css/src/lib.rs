@@ -1,8 +1,11 @@
 #![allow(dead_code)]
 use crate::lexer::Token;
+use ariadne::{Color, Label, Report, ReportKind, Source};
+use chumsky::input::Stream;
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 use ecolor::Color32;
+use logos::Logos;
 use std::{
 	fmt::{Debug, Display},
 	u8,
@@ -10,7 +13,36 @@ use std::{
 
 pub mod lexer;
 
-// TODO: other operators, proper regex, parent relation
+// TODO: better regex
+
+pub fn parse_str(src: &str, file_name: &str) -> Option<Vec<Styleset>> {
+	let token_iter = Token::lexer(src).spanned().filter_map(|(tok, span)| match tok {
+		Ok(tok) => Some((tok, span.into())),
+		_ => None,
+	});
+
+	let token_stream = Stream::from_iter(token_iter).spanned(SimpleSpan::from(src.len()..src.len()));
+
+	return match expr_parser().parse(token_stream).into_result() {
+		Ok(result) => Some(result),
+		Err(errs) => {
+			let src = Source::from(&src);
+			for err in errs {
+				Report::build(ReportKind::Error, file_name, err.span().start)
+					.with_message(err.to_string())
+					.with_label(
+						Label::new((file_name, err.span().into_range()))
+							.with_message(err.reason())
+							.with_color(Color::Red),
+					)
+					.finish()
+					.eprint((file_name, src.clone()))
+					.unwrap();
+			}
+			None
+		}
+	};
+}
 
 fn expr_parser<'a, I>() -> impl Parser<'a, I, Vec<Styleset>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 where
@@ -360,16 +392,16 @@ where
 	))
 	.labelled("subselector");
 
-	let property = identifier.try_map(|name, span| match name.as_str() {
-		"index" => Ok(Property::Index),
-		"role" => Ok(Property::Role),
+	let link_property = identifier.try_map(|name, span| match name.as_str() {
+		"index" => Ok(LinkProperty::Index),
+		"role" => Ok(LinkProperty::Role),
 		_ => Err(Rich::custom(
 			span,
 			format!("Invalid property {name} in link condition. Must be either 'index' or 'role'."),
 		)),
 	});
 
-	let link = property
+	let link = link_property
 		.then_ignore(opt_spaces.clone())
 		.then(binary)
 		.then_ignore(opt_spaces.clone())
@@ -417,9 +449,10 @@ where
 
 	let selectors = union_selector.labelled("selectors");
 
-	let rule = selectors
-		.then(declaration)
-		.map(|(selectors, styles)| Styleset { selectors, styles });
+	let rule = selectors.then(declaration).map(|(selectors, styles)| Styleset {
+		selectors,
+		rules: styles,
+	});
 
 	let rule_set = rule
 		.separated_by(opt_spaces.clone())
@@ -527,7 +560,7 @@ impl TryFrom<&str> for Zoom {
 #[derive(Debug)]
 pub struct Styleset {
 	pub selectors: Selectors,
-	pub styles: Vec<Rule>,
+	pub rules: Vec<Rule>,
 }
 
 pub type Selectors = Union;
@@ -557,10 +590,10 @@ pub struct ChildRelation(Box<SubSelector>, Box<SubSelector>, Option<Link>);
 // Use box to reduce size of Selector 96 vs 240 bytes
 
 #[derive(Debug)]
-pub struct Link(Property, BinaryOp, Expression);
+pub struct Link(LinkProperty, BinaryOp, Expression);
 
 #[derive(Debug)]
-pub enum Property {
+pub enum LinkProperty {
 	Index,
 	Role,
 }
