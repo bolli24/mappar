@@ -12,6 +12,7 @@ use std::{
 };
 
 pub mod lexer;
+pub mod color;
 
 // TODO: better regex
 
