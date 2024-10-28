@@ -1,0 +1,8 @@
+node {
+    color: darkgrey
+}
+
+way {
+    color: #404052;
+    size: 2.0;
+}

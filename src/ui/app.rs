@@ -1,3 +1,12 @@
+use crate::css::{get_default_styles, Styles};
+use crate::imagery::esri_imagery;
+use crate::imagery::imagery_fetcher::ImageryFetcher;
+use crate::map::api::get_data;
+use crate::map::map_data::{Bounds, LatLon, MapData};
+use crate::map::render::DetailedElement;
+use crate::ui::debug_text::DebugText;
+use crate::ui::map_widget::{MapMemory, MapState, MapWidget};
+use crate::ui::memory::Memory;
 use egui::{Id, ViewportCommand};
 use log::{error, info};
 use std::cell::RefCell;
@@ -8,15 +17,6 @@ use std::time::Instant;
 use tokio::sync::watch::{channel, Receiver, Sender};
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
-
-use crate::imagery::esri_imagery;
-use crate::imagery::imagery_fetcher::ImageryFetcher;
-use crate::map::api::get_data;
-use crate::map::map_data::{Bounds, LatLon, MapData};
-use crate::map::render::DetailedElement;
-use crate::ui::debug_text::DebugText;
-use crate::ui::map_widget::{MapMemory, MapState, MapWidget};
-use crate::ui::memory::Memory;
 
 pub struct Channel<T> {
 	sender: Sender<T>,
@@ -31,6 +31,7 @@ impl<T> From<(Sender<T>, Receiver<T>)> for Channel<T> {
 
 pub struct MyApp {
 	map_data: Channel<MapData>,
+	styles: Styles,
 	render_data: Channel<Vec<DetailedElement>>,
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
@@ -59,7 +60,7 @@ impl MyApp {
 		let map_mem = MapMemory {
 			camera_pos: glam::dvec2(camera_pos.x, camera_pos.y),
 			zoom_level: 15.0,
-			state: MapState::Default
+			state: MapState::Default,
 		};
 		map_mem.store(&cc.egui_ctx, map_widget_id);
 
@@ -82,6 +83,10 @@ impl MyApp {
 
 		let app = Self {
 			map_data: channel(MapData::new()).into(),
+			styles: get_default_styles().unwrap_or_else(|| {
+				error!("Unable to load default styles.");
+				Default::default()
+			}),
 			render_data: channel(Vec::new()).into(),
 			imagery_fetcher,
 			map_widget_id,
@@ -150,6 +155,7 @@ impl eframe::App for MyApp {
 
 			ui.add(MapWidget::new(
 				&self.map_data.receiver.borrow(),
+				&mut self.styles,
 				self.imagery_fetcher.clone(),
 				self.map_widget_id,
 				self.debug_text.clone(),

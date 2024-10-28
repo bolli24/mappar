@@ -11,6 +11,7 @@ members = ["src/macros", "css"]
 
 [dependencies]
 macros = { path = "src/macros" }
+mappar_css = { path = "css"}
 
 egui = { version = "0.29.1" }
 epaint = { version = "0.29.1" }

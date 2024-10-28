@@ -90,7 +90,6 @@ impl Token<'_> {
 			Token::Identifier("way") => Some(Object::Way),
 			Token::Identifier("relation") => Some(Object::Relation),
 			Token::Identifier("area") => Some(Object::Area),
-			Token::Identifier("line") => Some(Object::Line),
 			Token::Identifier("canvas") => Some(Object::Canvas),
 			Token::Op("*") => Some(Object::All),
 			Token::Identifier("meta") => Some(Object::Meta),

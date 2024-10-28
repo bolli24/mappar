@@ -1,16 +1,19 @@
-use egui::{Color32, Pos2, Rect, Vec2};
+use egui::{Pos2, Rect, Vec2};
 use glam::DVec2;
 use itertools::Itertools;
 
+use crate::css::Styles;
 use crate::map::map_data;
 use crate::map::map_data::{Element, MapData, MapElement};
 use crate::map::polygon::{Orientation, Polygon};
-use crate::map::style::{Style, DEFAULT_NODE_STYLE, DEFAULT_WAY_STYLE};
+use crate::map::style::Style;
 use crate::ui::map_widget::dvec2_to_pos;
+
+pub type ElementId = i64;
 
 #[derive(Debug)]
 pub struct DetailedElement {
-	pub id: i64,
+	pub id: ElementId,
 	pub pointer_distance: Option<f64>,
 	pub pointer_threshold: f64,
 	pub element: RenderElement,
@@ -18,7 +21,7 @@ pub struct DetailedElement {
 	pub bounding_box: Rect,
 }
 
-// TODO: use SmallVec
+// TODO: maybe use SmallVec
 #[derive(Debug)]
 pub enum RenderElement {
 	Node(DVec2),
@@ -53,9 +56,8 @@ impl RenderElement {
 				.fold(f64::INFINITY, f64::min),
 			Self::Path(nodes, true) => Self::distance_to_loop(&pointer_pos, nodes),
 			Self::Area(_perimeter, _) => todo!(), // Self::distance_to_loop(&pointer_pos, perimeter),
-			Self::Collection(elements) =>
-			 elements.iter().fold(f64::INFINITY, |a, b| {
-			 	a.min(b.pointer_distance.expect("No pointer distance"))
+			Self::Collection(elements) => elements.iter().fold(f64::INFINITY, |a, b| {
+				a.min(b.pointer_distance.expect("No pointer distance"))
 			}),
 		})
 	}
@@ -70,8 +72,16 @@ impl RenderElement {
 }
 
 impl DetailedElement {
-	pub fn from_map_element(map_element: &MapElement, map_data: &MapData, pointer_pos: Option<DVec2>) -> Self {
+	pub fn from_map_element(
+		map_element: &MapElement,
+		map_data: &MapData,
+		styles: &mut Styles,
+		pointer_pos: Option<DVec2>,
+	) -> Self {
 		puffin::profile_function!(map_element.id.to_string());
+
+		let style = *styles.get_style(map_element, map_data);
+
 		let element = match &map_element.element {
 			Element::Node { pos } => RenderElement::Node(pos.to_web_mercator()),
 			Element::Way { nodes: node_indices } => {
@@ -109,9 +119,9 @@ impl DetailedElement {
 							id: map_element.id,
 							bounding_box: path.bounding_box(),
 							pointer_distance: path.distance(pointer_pos),
-							pointer_threshold: f64::from(DEFAULT_WAY_STYLE.size),
+							pointer_threshold: f64::from(style.size),
 							element: path,
-							style: DEFAULT_WAY_STYLE,
+							style,
 						},
 						// DetailedElement {
 						// 	id: map_element.id,
@@ -129,7 +139,7 @@ impl DetailedElement {
 					RenderElement::Path(nodes, is_closed)
 				}
 			}
-			Element::Relation { members } => {
+			Element::Relation { .. } => {
 				todo!()
 				// let members = members
 				// 	.iter()
@@ -138,15 +148,6 @@ impl DetailedElement {
 				// 	.collect();
 				// RenderElement::Collection(members)
 			}
-		};
-
-		let style = match &map_element.element {
-			Element::Node { .. } => DEFAULT_NODE_STYLE,
-			Element::Way { .. } => DEFAULT_WAY_STYLE,
-			Element::Relation { .. } => Style {
-				color: Color32::TRANSPARENT,
-				..DEFAULT_WAY_STYLE
-			},
 		};
 
 		Self {

@@ -6,17 +6,20 @@ use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 use ecolor::Color32;
 use logos::Logos;
+use std::hash::Hash;
 use std::{
 	fmt::{Debug, Display},
 	u8,
 };
 
-pub mod lexer;
 pub mod color;
+pub mod lexer;
 
 // TODO: better regex
 
-pub fn parse_str(src: &str, file_name: &str) -> Option<Vec<Styleset>> {
+pub struct CSS(pub Vec<Styleset>);
+
+pub fn parse_str(src: &str, file_name: &str) -> Option<CSS> {
 	let token_iter = Token::lexer(src).spanned().filter_map(|(tok, span)| match tok {
 		Ok(tok) => Some((tok, span.into())),
 		_ => None,
@@ -42,7 +45,8 @@ pub fn parse_str(src: &str, file_name: &str) -> Option<Vec<Styleset>> {
 			}
 			None
 		}
-	};
+	}
+	.map(CSS);
 }
 
 fn expr_parser<'a, I>() -> impl Parser<'a, I, Vec<Styleset>, extra::Err<Rich<'a, Token<'a>>>> + Clone
@@ -227,7 +231,7 @@ where
 	let key_specifier = key
 		.then_ignore(just(Token::Colon).padded_by(opt_spaces.clone()))
 		.then(specifier)
-		.map(|(key, specifier)| Rule::Style(Style { key, specifier }));
+		.map(|(key, specifier)| Rule::Style(CssStyle { key, specifier }));
 
 	let class_assign = just(Token::Identifier("set"))
 		.ignore_then(req_space.clone())
@@ -346,11 +350,11 @@ where
 		.ignore_then(identifier)
 		.or_not();
 
-	// object       ::= "node" | "way" | "relation" | "area" | "line" | "canvas" | "*" | ;
+	// object       ::= "node" | "way" | "relation" | "area" | "canvas" | "*" | ;
 	let object = any()
 		.filter(|t: &Token| t.try_into_object().is_some())
 		.map(|t| t.try_into_object().unwrap())
-		.labelled("object (node, way, relation, area, line, canvas, *, meta)");
+		.labelled("object (node, way, relation, area, canvas, *, meta)");
 
 	let class_name = just(Token::Dot).ignore_then(identifier).labelled("classname");
 	let pseudo_class = just(Token::Colon).ignore_then(identifier).labelled("pseudoclassname");
@@ -462,7 +466,7 @@ where
 	rule_set
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOp {
 	Eq,
 	NotEq,
@@ -501,7 +505,7 @@ impl Display for BinaryOp {
 	}
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum UnaryOp {
 	Not,
 	Neg,
@@ -516,19 +520,18 @@ impl Display for UnaryOp {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Object {
 	Node,
 	Way,
 	Relation,
 	Area,
-	Line,
 	Canvas,
 	All,
 	Meta,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Zoom(u8, u8);
 
 impl TryFrom<&str> for Zoom {
@@ -568,17 +571,35 @@ pub type Selectors = Union;
 
 /// Applies to all instances with any of the subselectors
 /// .class1, .class2
-#[derive(Debug)]
-pub struct Union(Vec<Intersection>);
+#[derive(Debug, Clone)]
+pub struct Union(pub Vec<Intersection>);
+
+impl Hash for Union {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		format!("{self:?}").hash(state);
+	}
+}
+
+impl PartialEq for Union {
+	fn eq(&self, other: &Self) -> bool {
+		format!("{self:?}") == format!("{other:?}")
+	}
+
+	fn ne(&self, other: &Self) -> bool {
+		format!("{self:?}") != format!("{other:?}")
+	}
+}
+
+impl Eq for Union {}
 
 /// Applies to all instances with all the subselectors
 /// .class1.class2 or .class1 .class2
 /// With and optional layer
 /// .class1.class2::layer
-#[derive(Debug)]
-pub struct Intersection(Vec<Selector>, Option<Layer>);
+#[derive(Debug, Clone)]
+pub struct Intersection(pub Vec<Selector>, pub Option<Layer>);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Selector {
 	SubSelector(SubSelector),
 	ChildRelation(ChildRelation),
@@ -586,14 +607,14 @@ pub enum Selector {
 
 /// A >[link] B
 /// Only matches if B is child of A with optional link condition
-#[derive(Debug)]
-pub struct ChildRelation(Box<SubSelector>, Box<SubSelector>, Option<Link>);
-// Use box to reduce size of Selector 96 vs 240 bytes
+#[derive(Debug, Clone)]
+pub struct ChildRelation(pub Box<SubSelector>, pub Box<SubSelector>, pub Option<Link>);
+// Uses box to reduce size of Selector (72 vs 168 bytes)
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Link(LinkProperty, BinaryOp, Expression);
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum LinkProperty {
 	Index,
 	Role,
@@ -602,7 +623,7 @@ pub enum LinkProperty {
 /// Operations permitted in link specifier
 const LINK_OPERATIONS: [BinaryOp; 3] = [BinaryOp::Eq, BinaryOp::NotEq, BinaryOp::ListMembership];
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SubSelector {
 	Object(Object, Option<Zoom>, Vec<Condition>, Option<PseudoClass>),
 	Class(String),
@@ -616,19 +637,19 @@ type Layer = String;
 
 type PseudoClass = String;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Rule {
-	Style(Style),
+	Style(CssStyle),
 	ClassAssign(String),
 }
 
-#[derive(Debug)]
-pub struct Style {
+#[derive(Debug, Clone)]
+pub struct CssStyle {
 	pub key: String,
 	pub specifier: Specifier,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Specifier {
 	Named(String),
 	Sizes(Vec<Size>),
@@ -638,13 +659,13 @@ pub enum Specifier {
 	Function(Function),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Size {
 	number: f64,
 	unit: Option<Unit>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Unit {
 	Px,
 	Pt,
@@ -662,6 +683,7 @@ impl From<&str> for Unit {
 	}
 }
 
+#[derive(Clone)]
 pub enum Expression {
 	Number(f64),
 	Identifier(String),
@@ -690,7 +712,7 @@ impl Debug for Expression {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Condition {
 	Binary(String, BinaryOp, Expression),
 	Not(Box<Condition>),
@@ -701,8 +723,8 @@ pub enum Condition {
 	Regex(String, String),
 }
 
-#[derive(Debug)]
-pub struct Function(String, Vec<Expression>);
+#[derive(Debug, Clone)]
+pub struct Function(pub String, pub Vec<Expression>);
 
 impl Display for Function {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

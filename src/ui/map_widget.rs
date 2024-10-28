@@ -13,6 +13,7 @@ use std::ops::RangeInclusive;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
+use crate::css::Styles;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::map::map_data::{Element, LatLon, MapData, CIRCUMFERENCE_EARTH};
 use crate::map::render::{DetailedElement, RenderElement};
@@ -23,6 +24,7 @@ const ZOOM_SPEED: f64 = 5.0;
 
 pub struct MapWidget<'a> {
 	map_data: &'a MapData,
+	styles: &'a mut Styles,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	id: Id,
 	debug_text: Rc<RefCell<DebugText>>,
@@ -75,14 +77,16 @@ struct View {
 }
 
 impl<'a> MapWidget<'a> {
-	pub const fn new(
+	pub fn new(
 		map_data: &'a MapData,
+		styles: &'a mut Styles,
 		imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 		id: Id,
 		debug_text: Rc<RefCell<DebugText>>,
 	) -> Self {
 		Self {
 			map_data,
+			styles,
 			imagery_fetcher,
 			id,
 			debug_text,
@@ -307,9 +311,9 @@ impl Widget for MapWidget<'_> {
 							&& response.dragged_by(PointerButton::Primary))
 					{
 						#[cfg(not(target_arch = "wasm32"))]
-						let delta = response.drag_motion() / ui_scale;
+						let delta = response.drag_delta();
 						#[cfg(target_arch = "wasm32")]
-						let delta = response.drag_motion();
+						let delta = response.drag_delta();
 						let delta = delta * scale as f32;
 						let delta = dvec2(f64::from(delta.x), -f64::from(delta.y));
 						mem.camera_pos -= delta;
@@ -363,7 +367,12 @@ impl Widget for MapWidget<'_> {
 							.iter()
 							.filter(|e| !matches!(e.element, Element::Relation { .. }))
 						{
-							render_data.push(DetailedElement::from_map_element(element, self.map_data, pointer_pos));
+							render_data.push(DetailedElement::from_map_element(
+								element,
+								self.map_data,
+								self.styles,
+								pointer_pos,
+							));
 						}
 					}
 
@@ -430,7 +439,8 @@ fn closest_element<'a>(render_data: &'a Vec<DetailedElement>, scale: &f64) -> Op
 				},
 			) => Ordering::Greater,
 			_ => a.pointer_distance.partial_cmp(&b.pointer_distance).expect("NaN"),
-		}).next()
+		})
+		.next()
 }
 pub const fn pos_to_dvec2(pos: Pos2) -> DVec2 {
 	dvec2(pos.x as f64, pos.y as f64)
