@@ -137,8 +137,17 @@
     <script>
         // We disable caching during development so that we always view the latest version.
         if ('serviceWorker' in navigator && window.location.hash !== "#dev") {
+            let links = document.querySelectorAll("link");
+            const pattern = /mappar-[\w\d]+\.js$|mappar-[\w\d]+_bg\.wasm$/;
+            let files = Array.from(links.values()).map(link => "./" + link.href.split("/").slice(-1)).filter(link => pattern.test(link))
+            files.push("./snippets/mappar-5d5e66c528d8079d/module.js")
+            console.log(files)
+
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('sw.js');
+                navigator.serviceWorker.ready.then((registration) => {
+                    registration.active.postMessage(files)
+                })
             });
         }
     </script>

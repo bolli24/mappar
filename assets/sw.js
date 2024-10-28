@@ -1,19 +1,16 @@
-var cacheName = 'mappar-pwa';
-var filesToCache = [
+const cacheName = 'mappar-pwa';
+const filesToCache = [
   './',
   './index.html',
-  './mappar.js',
-  './mappar.wasm',
+    "./dummy_worker.js",
+    "./dummy_worker_bg.wasm"
 ];
 
-/* Start the service worker and cache all of the app's content */
-self.addEventListener('install', function (e) {
-  e.waitUntil(
-    caches.open(cacheName).then(function (cache) {
-      return cache.addAll(filesToCache);
-    })
-  );
-});
+self.addEventListener("message", e => {
+  caches.open(cacheName).then(function (cache) {
+    return cache.addAll(e.data + filesToCache);
+  })
+})
 
 /* Serve cached content when offline */
 self.addEventListener('fetch', function (e) {
