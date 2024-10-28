@@ -15,23 +15,23 @@ mappar_css = { path = "css"}
 
 egui = { version = "0.29.1" }
 epaint = { version = "0.29.1" }
-image = { version = "0.25.2", default-features = false, features = ["jpeg", "png"] }
+image = { version = "0.25.4", default-features = false, features = ["jpeg", "png"] }
 glam = { version = "0.29.0", features = ["serde"] }
 
 log = { version = "0.4", features = ["release_max_level_info"] }
 simplelog = "0.12.2"
-serde = { version = "1.0.210", features = ["derive"] }
-thiserror = "1.0.64"
+serde = { version = "1.0.23", features = ["derive"] }
+thiserror = "1.0.65"
 
 reqwest = { version = "0.12.8" }
-quick-xml = { version = "0.36.1", default-features = false }
-bytes = "1.7.2"
+quick-xml = { version = "0.37", default-features = false }
+bytes = "1.8.0"
 
 chrono = { version = "0.4", features = ["wasmbind"] }
 
-lru = "0.12.3"
+lru = "0.12.5"
 itertools = "0.13.0"
-regex = "1.11.0"
+regex = "1.11.1"
 
 puffin = "0.19.0"
 puffin_http = "0.16.0"
@@ -45,7 +45,7 @@ eframe = { version = "0.29.1", default-features = false, features = [
     "wayland",
     "persistence",
 ] }
-tokio = { version = "1.39.1", features = ["macros", "sync", "rt-multi-thread", "fs"] }
+tokio = { version = "1.41.0", features = ["macros", "sync", "rt-multi-thread", "fs"] }
 flate2 = "1.0.34"
 tar = "0.4.41"
 directories = "5.0.1"
@@ -58,10 +58,10 @@ eframe = { version = "0.29.1", default-features = false, features = [
     "persistence",
 ] }
 tokio = { version = "1.39.1", default-features = false, features = ["macros", "sync", "rt"] }
-js-sys = "0.3.69"
-web-sys = { version = "0.3.70", features = ["Navigator", "StorageManager", "IdbFactory", "IdbOpenDbRequest"] }
-wasm-bindgen = "0.2.92"
-wasm-bindgen-futures = "0.4.42"
+js-sys = "0.3.72"
+web-sys = { version = "0.3.72", features = ["Navigator", "StorageManager", "IdbFactory", "IdbOpenDbRequest"] }
+wasm-bindgen = "0.2.95"
+wasm-bindgen-futures = "0.4.45"
 web-time = "1.1.0"
 gloo-worker = "0.5.0"
 
