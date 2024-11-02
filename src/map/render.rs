@@ -87,7 +87,7 @@ impl DetailedElement {
 			Element::Way { nodes: node_indices } => {
 				// TODO: order nodes clockwise for filled rendering
 				// but keep order counterclockwise for convex partitioning
-				let nodes: Vec<DVec2> = node_indices[0..node_indices.len() - 1]
+				let nodes: Vec<DVec2> = node_indices
 					.iter()
 					.map(|n| {
 						map_data
