@@ -80,7 +80,7 @@ impl DetailedElement {
 	) -> Self {
 		puffin::profile_function!(map_element.id.to_string());
 
-		let style = *styles.get_style(map_element, map_data);
+		let style = styles.get_style(map_element, map_data);
 
 		let element = match &map_element.element {
 			Element::Node { pos } => RenderElement::Node(pos.to_web_mercator()),

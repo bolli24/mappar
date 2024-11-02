@@ -2,7 +2,27 @@ node {
     color: darkgrey
 }
 
+node:highlighted way:hightlighted {
+    color: red
+}
+
 way {
     color: #404052;
-    size: 2.0;
+    size: 1.0;
 }
+
+way[highway=trunk] way[highway=trunk_link] {
+    color: #f9b29c;
+    width: 1.5;
+}
+
+way[highway=primary] {
+    color: #fcd6a4;
+    width: 1.5;
+}
+
+way[highway=secondary] {
+    color: #f7fabf;
+    width: 1.5;
+}
+

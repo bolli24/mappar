@@ -161,13 +161,11 @@ impl MapElement {
 				if !is_closed(nodes.as_slice()) {
 					return false;
 				}
-				self.tags.as_ref().map_or(false, |tags| has_area_tag(tags))
+				has_area_tag(&self.tags)
 			}
 			Element::Relation { .. } => {
 				// TODO: check if members form a closed area
-				self.tags
-					.as_ref()
-					.map_or(false, |tags| has_multipolygon_tag(tags) && has_area_tag(tags))
+				has_multipolygon_tag(&self.tags) && has_area_tag(&self.tags)
 			}
 		}
 	}
@@ -207,7 +205,7 @@ pub struct MapElement {
 	pub id: i64,
 	pub info: ElementInfo,
 	pub element: Element,
-	pub tags: Option<Vec<Tag>>,
+	pub tags: Vec<Tag>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

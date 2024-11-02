@@ -119,12 +119,24 @@ impl MyApp {
 
 impl eframe::App for MyApp {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+		#[cfg(not(target_arch = "wasm32"))]
+		ctx.input(|input| {
+			if input.key_pressed(egui::Key::F5) {
+				self.styles.reload_from_file();
+			}
+		});
+
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
 			egui::menu::bar(ui, |ui| {
 				ui.menu_button("File", |ui| {
 					#[cfg(not(target_arch = "wasm32"))]
-					if ui.button("Quit").clicked() {
-						ctx.send_viewport_cmd(ViewportCommand::Close);
+					{
+						if ui.button("Quit").clicked() {
+							ctx.send_viewport_cmd(ViewportCommand::Close);
+						}
+						if ui.button("Reload Styles").clicked() {
+							self.styles.reload_from_file();
+						}
 					}
 				});
 				ui.add_space(16.0);

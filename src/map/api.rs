@@ -78,7 +78,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					}
 					let attributes = e.attributes();
 
-					let mut tags: Option<Vec<Tag>> = None;
+					let mut tags: Vec<Tag> = Vec::new();
 					let mut nodes = Vec::new();
 					let mut members = Vec::new();
 					loop {
@@ -140,7 +140,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					data.add(MapElement {
 						info,
 						element: Element::Node { pos: lat_lon? },
-						tags: None,
+						tags: Vec::new(),
 						id,
 					});
 				}
@@ -183,7 +183,7 @@ fn parse_member(e: &BytesStart) -> (i64, String, ElementType) {
 	(ref_id, role, member_type)
 }
 
-fn parse_tag(tags: &mut Option<Vec<Tag>>, e: &BytesStart) {
+fn parse_tag(tags: &mut Vec<Tag>, e: &BytesStart) {
 	let mut key = String::new();
 	let mut value = String::new();
 
@@ -200,7 +200,7 @@ fn parse_tag(tags: &mut Option<Vec<Tag>>, e: &BytesStart) {
 		}
 	}
 	if !key.is_empty() && !value.is_empty() {
-		tags.get_or_insert(Vec::new()).push(Tag { key, value });
+		tags.push(Tag { key, value });
 	}
 }
 
