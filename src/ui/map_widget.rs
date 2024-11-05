@@ -94,12 +94,13 @@ impl<'a> MapWidget<'a> {
 	}
 
 	#[inline]
-	fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, hovered: bool) {
+	fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View) {
 		if !element.bounding_box.intersects(view.world_view_rect) || element.style.color == Color32::TRANSPARENT {
 			return;
 		}
 
-		let (color, size) = element.style.highlight(hovered);
+		let color = element.style.color;
+		let size = element.style.size;
 
 		match &element.element {
 			RenderElement::Node(pos) => shapes.nodes.push(Shape::rect_filled(
@@ -139,7 +140,7 @@ impl<'a> MapWidget<'a> {
 			}
 			RenderElement::Collection(elements) => {
 				for e in elements {
-					Self::draw_element(e, shapes, view, hovered);
+					Self::draw_element(e, shapes, view);
 				}
 			}
 		};
@@ -367,12 +368,13 @@ impl Widget for MapWidget<'_> {
 							.iter()
 							.filter(|e| !matches!(e.element, Element::Relation { .. }))
 						{
-							render_data.push(DetailedElement::from_map_element(
+							DetailedElement::add_elements(
+								&mut render_data,
 								element,
 								self.map_data,
 								self.styles,
 								pointer_pos,
-							));
+							);
 						}
 					}
 
@@ -389,7 +391,10 @@ impl Widget for MapWidget<'_> {
 
 					for element in &render_data {
 						let hovered = hover_element.is_some_and(|e| e.id == element.id);
-						Self::draw_element(element, &mut shapes, &view, hovered);
+						if hovered {
+							Self::draw_element(&element.hovered(), &mut shapes, &view);
+						}
+						Self::draw_element(element, &mut shapes, &view);
 					}
 
 					debug_text.add(format!("Drawn Elements: {}", shapes.count()));

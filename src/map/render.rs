@@ -1,4 +1,4 @@
-use egui::{Pos2, Rect, Vec2};
+use egui::{Color32, Pos2, Rect, Vec2};
 use glam::DVec2;
 use itertools::Itertools;
 
@@ -11,7 +11,7 @@ use crate::ui::map_widget::dvec2_to_pos;
 
 pub type ElementId = i64;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DetailedElement {
 	pub id: ElementId,
 	pub pointer_distance: Option<f64>,
@@ -22,7 +22,7 @@ pub struct DetailedElement {
 }
 
 // TODO: maybe use SmallVec
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RenderElement {
 	Node(DVec2),
 	Path(Vec<DVec2>, bool),
@@ -72,12 +72,13 @@ impl RenderElement {
 }
 
 impl DetailedElement {
-	pub fn from_map_element(
+	pub fn add_elements(
+		render_data: &mut Vec<Self>,
 		map_element: &MapElement,
 		map_data: &MapData,
 		styles: &mut Styles,
 		pointer_pos: Option<DVec2>,
-	) -> Self {
+	) {
 		puffin::profile_function!(map_element.id.to_string());
 
 		let style = styles.get_style(map_element, map_data);
@@ -149,15 +150,14 @@ impl DetailedElement {
 				// RenderElement::Collection(members)
 			}
 		};
-
-		Self {
+		render_data.push(Self {
 			id: map_element.id,
 			bounding_box: element.bounding_box(),
 			pointer_distance: element.distance(pointer_pos),
 			pointer_threshold: f64::from(style.size),
 			element,
 			style,
-		}
+		});
 	}
 
 	pub fn in_box_selection(&self, rect: Rect) -> bool {
@@ -170,6 +170,13 @@ impl DetailedElement {
 			}
 			RenderElement::Collection(elements) => elements.iter().all(|e| e.in_box_selection(rect)),
 		}
+	}
+
+	pub fn hovered(&self) -> Self {
+		let mut element = self.clone();
+		element.style.color = Color32::RED;
+		element.style.size += 1.0;
+		element
 	}
 }
 

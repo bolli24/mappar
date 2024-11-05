@@ -1,9 +1,5 @@
 node {
-    color: darkgrey
-}
-
-node:highlighted way:hightlighted {
-    color: red
+    color: lightgrey
 }
 
 way {
