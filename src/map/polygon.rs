@@ -97,7 +97,9 @@ impl Polygon {
 		let mut area = 0.0;
 		for (i, _) in self.points.iter().enumerate() {
 			let j = if self.num_points() == i + 1 { 0 } else { i + 1 };
-			area += self.points[i].x.mul_add(self.points[j].y, -(self.points[i].y * self.points[j].x));
+			area += self.points[i]
+				.x
+				.mul_add(self.points[j].y, -(self.points[i].y * self.points[j].x));
 		}
 
 		if area > 0.0 {

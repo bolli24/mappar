@@ -1,6 +1,6 @@
 use js_sys::Promise;
-use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 
 #[wasm_bindgen(module = "/module.js")]

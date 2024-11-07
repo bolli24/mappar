@@ -1,9 +1,9 @@
+use crate::imagery::imagery_fetcher::Tile;
+use bytes::Bytes;
 use gloo_worker::{HandlerId, Worker, WorkerScope};
 use image::ImageError;
 use log::{error, info};
-use std::io::{Cursor};
-use bytes::Bytes;
-use crate::imagery::imagery_fetcher::Tile;
+use std::io::Cursor;
 
 #[derive(Debug)]
 pub struct Message(pub u32);

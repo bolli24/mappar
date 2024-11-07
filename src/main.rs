@@ -57,12 +57,10 @@ fn main() {
 	let web_options = eframe::WebOptions::default();
 
 	wasm_bindgen_futures::spawn_local(async {
-		let document = web_sys::window()
-			.expect("No window")
-			.document()
-			.expect("No document");
-		
-		let canvas =document.get_element_by_id("the_canvas_id") // hardcoded canvas id
+		let document = web_sys::window().expect("No window").document().expect("No document");
+
+		let canvas = document
+			.get_element_by_id("the_canvas_id") // hardcoded canvas id
 			.expect("No canvas found")
 			.dyn_into::<web_sys::HtmlCanvasElement>()
 			.expect("the_canvas_id is not a canvas element");

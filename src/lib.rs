@@ -15,7 +15,7 @@ static INIT: std::sync::Once = std::sync::Once::new();
 pub fn init_test_logger() {
 	use log::LevelFilter;
 	use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
-	
+
 	INIT.call_once(|| {
 		TermLogger::init(
 			LevelFilter::Info,
