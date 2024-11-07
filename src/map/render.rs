@@ -176,10 +176,16 @@ impl DetailedElement {
 		element.style.color = Color32::RED.gamma_multiply(0.75);
 		element.style.size += 2.0;
 
-		if let RenderElement::Collection(elements) = &mut element.element {
-			for sub_element in elements {
-				*sub_element = sub_element.hovered();
+		match &mut element.element {
+			RenderElement::Node(_) => {
+				element.style.icon = None;
 			}
+			RenderElement::Collection(elements) => {
+				for sub_element in elements {
+					*sub_element = sub_element.hovered();
+				}
+			}
+			_ => (),
 		}
 
 		element
