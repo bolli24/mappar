@@ -164,9 +164,8 @@ impl DetailedElement {
 		puffin::profile_function!();
 		match &self.element {
 			RenderElement::Node(pos) => rect.contains(dvec2_to_pos(*pos)),
-			RenderElement::Path(nodes, _) => nodes.iter().all(|n| rect.contains(dvec2_to_pos(*n))),
-			RenderElement::Area(_, _) => {
-				todo!()
+			RenderElement::Path(nodes, _) | RenderElement::Area(nodes, _) => {
+				nodes.iter().all(|n| rect.contains(dvec2_to_pos(*n)))
 			}
 			RenderElement::Collection(elements) => elements.iter().all(|e| e.in_box_selection(rect)),
 		}

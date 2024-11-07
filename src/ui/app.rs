@@ -7,7 +7,7 @@ use crate::map::render::DetailedElement;
 use crate::ui::debug_text::DebugText;
 use crate::ui::map_widget::{MapMemory, MapState, MapWidget};
 use crate::ui::memory::Memory;
-use egui::{Id, ViewportCommand};
+use egui::{Id, ViewportCommand, Window};
 use log::{error, info};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -37,6 +37,7 @@ pub struct MyApp {
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	debug_text: Rc<RefCell<DebugText>>,
 	last_update: Instant,
+	inspection: bool,
 }
 
 impl MyApp {
@@ -83,7 +84,7 @@ impl MyApp {
 
 		let app = Self {
 			map_data: channel(MapData::new()).into(),
-			styles: get_default_styles().unwrap_or_else(|| {
+			styles: get_default_styles(cc.egui_ctx.tex_manager().clone()).unwrap_or_else(|| {
 				error!("Unable to load default styles.");
 				Default::default()
 			}),
@@ -92,6 +93,7 @@ impl MyApp {
 			map_widget_id,
 			debug_text: Rc::new(RefCell::new(DebugText::new())),
 			last_update: Instant::now(),
+			inspection: false,
 		};
 
 		let map_data_sender = app.map_data.sender.clone();
@@ -138,6 +140,7 @@ impl eframe::App for MyApp {
 							self.styles.reload_from_file();
 						}
 					}
+					ui.checkbox(&mut self.inspection, "Inspector");
 				});
 				ui.add_space(16.0);
 				egui::widgets::global_theme_preference_switch(ui);
@@ -185,6 +188,12 @@ impl eframe::App for MyApp {
 				egui::warn_if_debug_build(ui);
 			});*/
 		});
+
+		Window::new("Inpector")
+			.open(&mut self.inspection)
+			.vscroll(true)
+			.show(ctx, |ui| ctx.inspection_ui(ui));
+
 		puffin::GlobalProfiler::lock().new_frame();
 		self.debug_text
 			.borrow_mut()

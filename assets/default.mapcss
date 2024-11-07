@@ -22,3 +22,8 @@ way[highway=secondary] {
     width: 1.5;
 }
 
+node[natural=tree] {
+    color: transparent;
+    size: 10;
+    icon-image: "icons/tree.png";
+}

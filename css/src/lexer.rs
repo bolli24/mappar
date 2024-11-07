@@ -57,7 +57,7 @@ pub enum Token<'a> {
 	// TODO: maybe add support for rgba, rgb directly here
 	#[regex(r"px|pt|%", |lex| lex.slice(), priority = 2)]
 	Unit(&'a str),
-	
+
 	#[regex(r"[[^[:ascii:]][[:alpha:]]_][[^[:ascii:]][[:alnum:]]_-]*", |lex| lex.slice(), priority = 1)]
 	Identifier(&'a str),
 

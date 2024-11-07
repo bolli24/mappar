@@ -42,6 +42,11 @@ pub struct ImageryFetcher {
 }
 
 pub type Tile = (u32, u32, u32);
+
+fn tile_to_string(tile: &Tile) -> String {
+	format!("tile_{}_{}_{}", tile.0, tile.1, tile.2)
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
 	#[error("Reqwest error: {0}")]
@@ -250,7 +255,7 @@ impl ImageryFetcher {
 	) -> Result<TextureId, Error> {
 		let file_format = imagery.lock().unwrap().file_format();
 		if let Some(image_data) = persistent_cache.lock().await.get_image(tile, file_format).await {
-			return Self::create_texture(texture_manager, tile, &image_data);
+			return Self::create_texture(texture_manager, tile_to_string(&tile), &image_data);
 		}
 
 		let url = imagery.lock().unwrap().tile_url(tile.0, tile.1, tile.2);
@@ -266,7 +271,7 @@ impl ImageryFetcher {
 					.save_image(tile, &bytes, file_format)
 					.await; // TODO: Maybe do this on a separate thread
 
-				Self::create_texture(texture_manager, tile, &bytes)
+				Self::create_texture(texture_manager, tile_to_string(&tile), &bytes)
 			}
 		}
 	}
@@ -305,9 +310,9 @@ impl ImageryFetcher {
 		}
 	}
 
-	fn create_texture(
+	pub fn create_texture(
 		texture_manager: &Arc<RwLock<TextureManager>>,
-		tile: Tile,
+		tile: String,
 		bytes: &Bytes,
 	) -> Result<TextureId, Error> {
 		use std::io::Cursor;
@@ -322,18 +327,16 @@ impl ImageryFetcher {
 
 	fn create_texture_from_decoded(
 		texture_manager: &Arc<RwLock<TextureManager>>,
-		tile: Tile,
+		name: String,
 		image: &RgbaImage,
 	) -> TextureId {
 		let color_image = Arc::new(ColorImage::from_rgba_unmultiplied(
 			[image.width() as usize, image.height() as usize],
 			image.as_bytes(),
 		));
-		texture_manager.write().alloc(
-			format!("tile_{}_{}_{}", tile.0, tile.1, tile.2),
-			ImageData::Color(color_image),
-			TextureOptions::LINEAR,
-		)
+		texture_manager
+			.write()
+			.alloc(name, ImageData::Color(color_image), TextureOptions::LINEAR)
 	}
 
 	pub fn get_tile(&self, x: u32, y: u32, zoom: u32, fetch: bool) -> Option<TextureId> {

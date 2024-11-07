@@ -34,6 +34,7 @@ pub struct DrawList {
 	paths: Vec<Shape>,
 	areas: Vec<Shape>,
 	nodes: Vec<Shape>,
+	images: Vec<Shape>,
 }
 
 impl DrawList {
@@ -42,6 +43,7 @@ impl DrawList {
 			paths: Vec::new(),
 			areas: Vec::new(),
 			nodes: Vec::new(),
+			images: Vec::new(),
 		}
 	}
 
@@ -50,10 +52,11 @@ impl DrawList {
 		painter.extend(self.areas);
 		painter.extend(self.paths);
 		painter.extend(self.nodes);
+		painter.extend(self.images);
 	}
 
 	pub fn count(&self) -> usize {
-		self.paths.len() + self.areas.len() + self.nodes.len()
+		self.paths.len() + self.areas.len() + self.nodes.len() + self.images.len()
 	}
 }
 
@@ -76,6 +79,8 @@ struct View {
 	pointer_pos: Option<DVec2>,
 }
 
+const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+
 impl<'a> MapWidget<'a> {
 	pub fn new(
 		map_data: &'a MapData,
@@ -95,7 +100,7 @@ impl<'a> MapWidget<'a> {
 
 	#[inline]
 	fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View) {
-		if !element.bounding_box.intersects(view.world_view_rect) || element.style.color == Color32::TRANSPARENT {
+		if !element.bounding_box.intersects(view.world_view_rect) {
 			return;
 		}
 
@@ -103,14 +108,16 @@ impl<'a> MapWidget<'a> {
 		let size = element.style.size;
 
 		match &element.element {
-			RenderElement::Node(pos) => shapes.nodes.push(Shape::rect_filled(
-				Rect::from_center_size(
+			RenderElement::Node(pos) => {
+				let rect = Rect::from_center_size(
 					render_pos(pos, &view.camera_pos, &view.transform),
 					Vec2::splat(size * view.ui_scale),
-				),
-				Rounding::ZERO,
-				color,
-			)),
+				);
+				shapes.nodes.push(Shape::rect_filled(rect, Rounding::ZERO, color));
+				if let Some(icon) = element.style.icon {
+					shapes.images.push(Shape::image(icon.0, rect, UV, Color32::WHITE))
+				}
+			}
 			RenderElement::Path(nodes, is_closed) => {
 				let nodes: Vec<Pos2> = nodes
 					.iter()
@@ -203,7 +210,6 @@ impl<'a> MapWidget<'a> {
 			// TODO don't fetch new tiles when moving fast
 			let tile = imagery_fetcher.get_tile(x, y, tile_zoom_level, true);
 			if let Some(image) = tile {
-				const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 				let coords = Self::get_tile_pos(x, y, tile_zoom_level);
 				let coords = dvec2_to_pos(coords - (view.camera_pos * dvec2(1.0, -1.0)));
 				let rect = Rect::from_min_size(coords, vec2(tile_size as f32, tile_size as f32)) / view.scale as f32;
@@ -297,9 +303,10 @@ impl Widget for MapWidget<'_> {
 					let viewport = response.interact_rect;
 
 					let mut mem = MapMemory::load_or_default(&response.ctx, self.id);
+					// response.rect.contains(i)
 
 					let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y as f64;
-					if zoom != 0.0 {
+					if zoom != 0.0 && response.ctx.input(|i| i.pointer.has_pointer()) {
 						// TODO: fix zoom speed on chrome
 						mem.zoom_level += zoom / 1000.0 * ZOOM_SPEED;
 						mem.zoom_level = mem.zoom_level.clamp(1.0, 25.0);
