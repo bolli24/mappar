@@ -1,10 +1,11 @@
 node {
-    color: lightgrey
+    size: 4;
+    color: lightgrey;
 }
 
 way {
     color: #404052;
-    size: 1.0;
+    size: 2.0;
 }
 
 way[highway=trunk] way[highway=trunk_link] {
@@ -23,7 +24,6 @@ way[highway=secondary] {
 }
 
 node[natural=tree] {
-    color: transparent;
     size: 10;
     icon-image: "icons/tree.png";
 }

@@ -173,8 +173,15 @@ impl DetailedElement {
 
 	pub fn hovered(&self) -> Self {
 		let mut element = self.clone();
-		element.style.color = Color32::RED;
-		element.style.size += 1.0;
+		element.style.color = Color32::RED.gamma_multiply(0.75);
+		element.style.size += 2.0;
+
+		if let RenderElement::Collection(elements) = &mut element.element {
+			for sub_element in elements {
+				*sub_element = sub_element.hovered();
+			}
+		}
+
 		element
 	}
 }

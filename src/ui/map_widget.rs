@@ -113,9 +113,10 @@ impl<'a> MapWidget<'a> {
 					render_pos(pos, &view.camera_pos, &view.transform),
 					Vec2::splat(size * view.ui_scale),
 				);
-				shapes.nodes.push(Shape::rect_filled(rect, Rounding::ZERO, color));
 				if let Some(icon) = element.style.icon {
 					shapes.images.push(Shape::image(icon.0, rect, UV, Color32::WHITE))
+				} else {
+					shapes.nodes.push(Shape::rect_filled(rect, Rounding::ZERO, color));
 				}
 			}
 			RenderElement::Path(nodes, is_closed) => {

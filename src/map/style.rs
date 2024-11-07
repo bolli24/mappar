@@ -11,11 +11,11 @@ pub struct Style {
 }
 
 impl Style {
-	pub fn highlight(&self, highlight: bool) -> (Color32, f32) {
-		if highlight {
-			(self.highlight_color.unwrap_or(self.color), self.size)
-		} else {
-			(self.color, self.size)
+	pub fn hovered(&self) -> Self {
+		Self {
+			size: self.size + 2.0,
+			color: Color32::RED.gamma_multiply(0.75),
+			..*self
 		}
 	}
 }
