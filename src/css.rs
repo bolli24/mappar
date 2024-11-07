@@ -22,6 +22,7 @@ pub struct Styles {
 	class_assignments: HashMap<Selectors, Vec<String>>,
 	icons: HashMap<String, Icon>,
 	texture_manager: Arc<RwLock<TextureManager>>,
+	fall_back_texture: TextureId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +32,9 @@ impl Drop for Styles {
 	fn drop(&mut self) {
 		let mut texture_manager = self.texture_manager.borrow_mut().write();
 		for (name, icon) in self.icons.drain() {
+			if icon.0 == self.fall_back_texture {
+				continue;
+			}
 			info!("Freeing icon texture: {name}");
 			texture_manager.free(icon.0);
 		}
@@ -45,6 +49,7 @@ impl Default for Styles {
 			class_assignments: Default::default(),
 			icons: Default::default(),
 			texture_manager: Default::default(),
+			fall_back_texture: TextureId::Managed(0),
 		}
 	}
 }
@@ -67,6 +72,7 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 
 	let mut class_assignments: HashMap<Selectors, Vec<String>> = HashMap::new();
 	let mut icons = HashMap::new();
+	let fall_back_texture = TextureId::Managed(0);
 
 	for styleset in &css.0 {
 		let mut class_names = Vec::new();
@@ -78,7 +84,7 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 				Rule::Style(style_rule) => {
 					if style_rule.key == "icon-image" {
 						if let Specifier::Expression(Expression::String(file_name)) = &style_rule.specifier {
-							let texture_id = load_icon(file_name, &texture_manager, TextureId::Managed(0));
+							let texture_id = load_icon(file_name, &texture_manager, fall_back_texture);
 							icons.insert(file_name.clone(), Icon(texture_id));
 						} else {
 							warn!("Illegal specifier for 'icon-image': {:?}", style_rule.specifier);
@@ -98,6 +104,7 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 		class_assignments,
 		icons,
 		texture_manager,
+		fall_back_texture,
 	})
 }
 
