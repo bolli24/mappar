@@ -35,6 +35,11 @@ async fn main() -> eframe::Result<()> {
 					.expect("Failed to load icon"),
 			)
 			.with_app_id(MyApp::APP_NAME),
+		wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+			// desired_maximum_frame_latency: Some(1),
+			present_mode: eframe::wgpu::PresentMode::AutoNoVsync,
+			..Default::default()
+		},
 		..Default::default()
 	};
 
