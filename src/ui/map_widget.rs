@@ -176,10 +176,10 @@ impl<'a> MapWidget<'a> {
 		const ZOOM_ADJUST: f64 = -0.5;
 
 		puffin::profile_function!();
-		let imagery_fetcher = imagery_fetcher.lock().unwrap();
+		let mut imagery_fetcher = imagery_fetcher.lock().unwrap();
 		debug_text.add(format!(
 			"Local cached tiles: {}",
-			imagery_fetcher.persistent_cached_count().map_or(-1, |c| c as i32)
+			imagery_fetcher.persistent_cached_count()
 		));
 		debug_text.add(format!(
 			"Memory cached tiles: {} (≈{}MiB)",
@@ -307,7 +307,13 @@ impl Widget for MapWidget<'_> {
 					// response.rect.contains(i)
 
 					let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y as f64;
-					if zoom != 0.0 && response.ctx.input(|i| i.pointer.has_pointer()) {
+					if zoom != 0.0
+						&& response.ctx.input(|i| {
+							i.pointer
+								.latest_pos()
+								.map(|p| response.rect.contains(p))
+								.unwrap_or(false)
+						}) {
 						// TODO: fix zoom speed on chrome
 						mem.zoom_level += zoom / 1000.0 * ZOOM_SPEED;
 						mem.zoom_level = mem.zoom_level.clamp(1.0, 25.0);

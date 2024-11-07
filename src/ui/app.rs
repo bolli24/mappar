@@ -195,9 +195,10 @@ impl eframe::App for MyApp {
 			.show(ctx, |ui| ctx.inspection_ui(ui));
 
 		puffin::GlobalProfiler::lock().new_frame();
-		self.debug_text
-			.borrow_mut()
-			.add(format!("Frame Time: {:.1}ms", self.last_update.elapsed().as_millis()));
+		self.debug_text.borrow_mut().add(format!(
+			"Frame Time: {:.1}ms",
+			self.last_update.elapsed().as_micros() as f32 / 1000.0
+		));
 		// self.debug_text
 		// 	.borrow_mut()
 		// 	.add(format!("CPU time: {:?} ms", start.elapsed().as_micros() as f32 / 1000.0));

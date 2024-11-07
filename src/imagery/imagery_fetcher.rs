@@ -37,6 +37,7 @@ pub struct ImageryFetcher {
 	persistent_cache: Arc<tokio::sync::Mutex<local_cache::LocalCache>>,
 	#[cfg(target_arch = "wasm32")]
 	persistent_cache: Arc<tokio::sync::Mutex<web_cache::WebCache>>,
+	last_persistant_cache_count: usize,
 	#[cfg(target_arch = "wasm32")]
 	worker_bridge: Arc<Mutex<WorkerBridge<ImageWorker>>>,
 }
@@ -78,6 +79,7 @@ impl ImageryFetcher {
 			persistent_cache: Arc::new(tokio::sync::Mutex::new(local_cache::LocalCache::new(cache_directory))),
 			#[cfg(target_arch = "wasm32")]
 			persistent_cache: Arc::new(tokio::sync::Mutex::new(web_cache::WebCache::new())),
+			last_persistant_cache_count: 0,
 			#[cfg(target_arch = "wasm32")]
 			worker_bridge: Self::get_worker_bridge(texture_manager.clone(), memory_cache.clone()),
 			memory_cache,
@@ -369,11 +371,17 @@ impl ImageryFetcher {
 		self.memory_cached_count() * tile_size * 4 / 1024 / 1024
 	}
 
-	pub fn persistent_cached_count(&self) -> Option<usize> {
-		self.persistent_cache
+	pub fn persistent_cached_count(&mut self) -> usize {
+		let count = self
+			.persistent_cache
 			.try_lock()
 			.ok()
-			.map(|persistent_cache| persistent_cache.cached_count())
+			.map(|persistent_cache| persistent_cache.cached_count());
+
+		count.map_or(self.last_persistant_cache_count, |count| {
+			self.last_persistant_cache_count = count;
+			count
+		})
 	}
 
 	pub fn get_closest_tile(&self, tile: Tile) -> Option<Tile> {
