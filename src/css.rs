@@ -4,6 +4,7 @@ use crate::map::render::ElementId;
 use crate::map::style::Style as MapStyle;
 use bytes::Bytes;
 use egui::mutex::RwLock;
+use egui::{Color32, TextureOptions};
 use epaint::{TextureId, TextureManager};
 use log::{error, info, warn};
 use mappar_css::color::get_named_color;
@@ -22,6 +23,7 @@ pub struct Styles {
 	class_assignments: HashMap<Selectors, Vec<String>>,
 	icons: HashMap<String, Icon>,
 	texture_manager: Arc<RwLock<TextureManager>>,
+	fallback_texture: TextureId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +36,9 @@ impl Drop for Styles {
 			info!("Freeing icon texture: {name}");
 			texture_manager.free(icon.0);
 		}
+		if self.fallback_texture != TextureId::Managed(0) {
+			texture_manager.free(self.fallback_texture);
+		}
 	}
 }
 
@@ -45,6 +50,7 @@ impl Default for Styles {
 			class_assignments: Default::default(),
 			icons: Default::default(),
 			texture_manager: Default::default(),
+			fallback_texture: TextureId::Managed(0),
 		}
 	}
 }
@@ -67,6 +73,7 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 
 	let mut class_assignments: HashMap<Selectors, Vec<String>> = HashMap::new();
 	let mut icons = HashMap::new();
+	let fallback_texture = get_fallback_texture(&texture_manager);
 
 	for styleset in &css.0 {
 		let mut class_names = Vec::new();
@@ -78,7 +85,7 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 				Rule::Style(style_rule) => {
 					if style_rule.key == "icon-image" {
 						if let Specifier::Expression(Expression::String(file_name)) = &style_rule.specifier {
-							let texture_id = load_icon(file_name, &texture_manager, TextureId::Managed(0));
+							let texture_id = load_icon(file_name, &texture_manager, fallback_texture);
 							icons.insert(file_name.clone(), Icon(texture_id));
 						} else {
 							warn!("Illegal specifier for 'icon-image': {:?}", style_rule.specifier);
@@ -98,17 +105,32 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 		class_assignments,
 		icons,
 		texture_manager,
+		fallback_texture,
 	})
 }
 
-fn load_icon(
-	file_name: &str,
-	texture_manager: &Arc<RwLock<TextureManager>>,
-	fall_back_texture: TextureId,
-) -> TextureId {
+fn get_fallback_texture(texture_manager: &Arc<RwLock<TextureManager>>) -> TextureId {
+	let fallback_image = egui::ColorImage {
+		size: [2, 2],
+		pixels: vec![
+			Color32::from_rgb(255, 0, 255),
+			Color32::BLACK,
+			Color32::BLACK,
+			Color32::from_rgb(255, 0, 255),
+		],
+	};
+
+	texture_manager.write().alloc(
+		"fallback_texture".to_string(),
+		egui::ImageData::Color(Arc::new(fallback_image)),
+		TextureOptions::NEAREST,
+	)
+}
+
+fn load_icon(file_name: &str, texture_manager: &Arc<RwLock<TextureManager>>, fallback_texture: TextureId) -> TextureId {
 	try_get_icon_texture(file_name, texture_manager).unwrap_or_else(|err| {
 		error!("Could not load icon '{file_name}': {err}");
-		fall_back_texture
+		fallback_texture
 	})
 }
 
