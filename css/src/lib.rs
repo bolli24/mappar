@@ -45,11 +45,10 @@ pub fn parse_str(src: &str, file_name: &str) -> Option<CSS> {
 			}
 			None
 		}
-	}
-	.map(CSS);
+	};
 }
 
-fn expr_parser<'a, I>() -> impl Parser<'a, I, Vec<Styleset>, extra::Err<Rich<'a, Token<'a>>>> + Clone
+fn expr_parser<'a, I>() -> impl Parser<'a, I, CSS, extra::Err<Rich<'a, Token<'a>>>> + Clone
 where
 	I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
@@ -235,6 +234,7 @@ where
 
 	let class_assign = just(Token::Identifier("set"))
 		.ignore_then(req_space.clone())
+		.ignore_then(just(Token::Dot).ignored().or(empty().ignored()))
 		.ignore_then(identifier)
 		.map(|name| Rule::ClassAssign(name.to_string()));
 
@@ -384,6 +384,14 @@ where
 		})
 		.map(|s| SubSelector::Setting(s.to_string()));
 
+	let setting_group = just(Token::Identifier("settings"))
+		.ignore_then(just(Token::Colon))
+		.ignore_then(just(Token::Colon))
+		.ignore_then(select! {
+			Token::Identifier(s) => s
+		})
+		.map(|s| SubSelector::SettingGroup(s.to_string()));
+
 	let sub_selector = choice((
 		group((object, zoom, pseudo_class, tests.clone())) // object zoom? pseudoClass tests?
 			.map(|(object, zoom, p_class, tests)| SubSelector::Object(object, zoom, tests, Some(p_class))),
@@ -394,6 +402,7 @@ where
 			.map(|object| SubSelector::Object(object, None, Vec::new(), None)),
 		maybe_class,
 		setting,
+		setting_group,
 	))
 	.labelled("subselector");
 
@@ -463,7 +472,8 @@ where
 		.separated_by(opt_spaces.clone())
 		.collect()
 		.padded_by(opt_spaces.clone());
-	rule_set
+
+	rule_set.map(|r| CSS(r))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -584,10 +594,6 @@ impl PartialEq for Union {
 	fn eq(&self, other: &Self) -> bool {
 		format!("{self:?}") == format!("{other:?}")
 	}
-
-	fn ne(&self, other: &Self) -> bool {
-		format!("{self:?}") != format!("{other:?}")
-	}
 }
 
 impl Eq for Union {}
@@ -631,6 +637,7 @@ pub enum SubSelector {
 	NotClass(String),
 	NotPseudoClass(String),
 	Setting(String),
+	SettingGroup(String),
 }
 
 type Layer = String;
@@ -756,6 +763,7 @@ mod tests {
 			(include_str!("test/josm.mapcss"), "josm.css"),
 			(include_str!("test/apple.mapcss"), "apple.css"),
 		];
+		let mut erorred = false;
 		for (src, file_name) in test_files {
 			println!("Parsing {file_name:?}");
 
@@ -764,9 +772,15 @@ mod tests {
 				_ => None,
 			});
 
-			let start = std::time::Instant::now();
-			let _tokens = token_iter.clone().collect::<Vec<_>>();
-			println!("Lexed in {:?}", start.elapsed());
+			/* let tokens = token_iter.clone();
+			std::fs::write(
+				"test_output.txt",
+				tokens
+					.map(|(t, _)| format!("{t:?}"))
+					.collect::<Vec<String>>()
+					.join("\n"),
+			)
+			.unwrap(); */
 
 			let token_stream = Stream::from_iter(token_iter).spanned(SimpleSpan::from(src.len()..src.len()));
 
@@ -778,6 +792,7 @@ mod tests {
 					println!("Parsed sucessfully");
 				}
 				Err(errs) => {
+					erorred = true;
 					let src = Source::from(&src);
 					for err in errs {
 						Report::build(ReportKind::Error, &file_name, err.span().start)
@@ -793,6 +808,7 @@ mod tests {
 					}
 				}
 			}
+			assert!(!erorred)
 		}
 	}
 }
