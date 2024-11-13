@@ -86,7 +86,7 @@ impl MyApp {
 			map_data: channel(MapData::new()).into(),
 			styles: get_default_styles(cc.egui_ctx.tex_manager().clone()).unwrap_or_else(|| {
 				error!("Unable to load default styles.");
-				Default::default()
+				panic!();
 			}),
 			render_data: channel(Vec::new()).into(),
 			imagery_fetcher,

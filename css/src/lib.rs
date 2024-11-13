@@ -6,14 +6,13 @@ use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 use ecolor::Color32;
 use logos::Logos;
+use std::fmt::{Debug, Display};
 use std::hash::Hash;
-use std::{
-	fmt::{Debug, Display},
-	u8,
-};
 
 pub mod color;
 pub mod lexer;
+
+pub use chumsky::span::SimpleSpan;
 
 // TODO: better regex
 
@@ -32,15 +31,15 @@ pub fn parse_str(src: &str, file_name: &str) -> Option<CSS> {
 		Err(errs) => {
 			let src = Source::from(&src);
 			for err in errs {
-				Report::build(ReportKind::Error, file_name, err.span().start)
+				Report::build(ReportKind::Error, (&file_name, err.span().into_range()))
 					.with_message(err.to_string())
 					.with_label(
-						Label::new((file_name, err.span().into_range()))
+						Label::new((&file_name, err.span().into_range()))
 							.with_message(err.reason())
 							.with_color(Color::Red),
 					)
 					.finish()
-					.eprint((file_name, src.clone()))
+					.eprint((&file_name, src.clone()))
 					.unwrap();
 			}
 			None
@@ -225,12 +224,18 @@ where
 			_ => Specifier::Expression(expression),
 		}),
 	))
+	.map_with(|specifier, extras| (specifier, extras.span()))
 	.labelled("specifier");
 
 	let key_specifier = key
 		.then_ignore(just(Token::Colon).padded_by(opt_spaces.clone()))
 		.then(specifier)
-		.map(|(key, specifier)| Rule::Style(CssStyle { key, specifier }));
+		.map(|(key, specifier)| {
+			Rule::Style(CssStyle {
+				key,
+				specifier: specifier.into(),
+			})
+		});
 
 	let class_assign = just(Token::Identifier("set"))
 		.ignore_then(req_space.clone())
@@ -473,7 +478,16 @@ where
 		.collect()
 		.padded_by(opt_spaces.clone());
 
-	rule_set.map(|r| CSS(r))
+	rule_set.map(CSS)
+}
+
+#[derive(Debug, Clone)]
+pub struct Spanned<T: Debug + Clone>(pub T, pub SimpleSpan);
+
+impl<T: Debug + Clone> From<(T, SimpleSpan)> for Spanned<T> {
+	fn from(value: (T, SimpleSpan)) -> Self {
+		Self(value.0, value.1)
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -653,7 +667,7 @@ pub enum Rule {
 #[derive(Debug, Clone)]
 pub struct CssStyle {
 	pub key: String,
-	pub specifier: Specifier,
+	pub specifier: Spanned<Specifier>,
 }
 
 #[derive(Debug, Clone)]
@@ -664,6 +678,49 @@ pub enum Specifier {
 	Url(String),
 	Expression(Expression),
 	Function(Function),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Type {
+	Named,
+	Sizes,
+	Color,
+	Url,
+	Expression(ExpressionType),
+	Function(ExpressionType),
+}
+
+impl Specifier {
+	pub fn get_type(&self) -> Type {
+		match self {
+			Self::Named(_) => Type::Named,
+			Self::Sizes(_) => Type::Sizes,
+			Self::Color(_, _) => Type::Color,
+			Self::Url(_) => Type::Url,
+			Self::Expression(expression) => Type::Expression(expression.get_type()),
+			Self::Function(function) => Type::Expression(function.get_return_type()),
+		}
+	}
+}
+
+impl Display for Type {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let type_str = match self {
+			Type::Named => "named",
+			Type::Sizes => "sizes",
+			Type::Color => "color",
+			Type::Url => "URL",
+			Type::Expression(expression_type) | Type::Function(expression_type) => match expression_type {
+				ExpressionType::Number => "number",
+				ExpressionType::String => "string",
+				ExpressionType::Bool => "boolean",
+				ExpressionType::Regex => "regular expression",
+				ExpressionType::Unknown => "unknown",
+			},
+		};
+
+		write!(f, "{type_str}")
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -700,6 +757,72 @@ pub enum Expression {
 	Unary(Box<Expression>, UnaryOp),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExpressionType {
+	Number,
+	String,
+	Bool,
+	Regex,
+	Unknown,
+}
+
+impl Expression {
+	pub fn get_type(&self) -> ExpressionType {
+		match self {
+			Self::Number(_) => ExpressionType::Number,
+			Self::Identifier(_) => ExpressionType::Unknown,
+			Self::String(_) => ExpressionType::String,
+			Self::Function(function) => function.get_return_type(),
+			Self::Binary(a, op, b) => {
+				let a_type = a.get_type();
+				let b_type = b.get_type();
+				if a_type == ExpressionType::Unknown || b_type == ExpressionType::Unknown {
+					return ExpressionType::Unknown;
+				}
+				match op {
+					BinaryOp::Eq | BinaryOp::NotEq => {
+						if a_type == b_type {
+							ExpressionType::Bool
+						} else {
+							ExpressionType::Unknown
+						}
+					}
+					BinaryOp::ListMembership => todo!(),
+					BinaryOp::RegexMatch => {
+						if a_type == ExpressionType::String && b_type == ExpressionType::Regex {
+							ExpressionType::Bool
+						} else {
+							ExpressionType::Unknown
+						}
+					}
+					BinaryOp::Le | BinaryOp::Ge | BinaryOp::Lt | BinaryOp::Gt => {
+						if a_type == ExpressionType::Number && b_type == ExpressionType::Number {
+							ExpressionType::Bool
+						} else {
+							ExpressionType::Unknown
+						}
+					}
+					BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div => {
+						if a_type == ExpressionType::Number && b_type == ExpressionType::Number {
+							ExpressionType::Number
+						} else {
+							ExpressionType::Unknown
+						}
+					}
+				}
+			}
+			Self::Unary(value, op) => {
+				let value_type = value.get_type();
+				match op {
+					UnaryOp::Not if value_type == ExpressionType::Bool => ExpressionType::Bool,
+					UnaryOp::Neg if value_type == ExpressionType::Number => ExpressionType::Number,
+					_ => ExpressionType::Unknown,
+				}
+			}
+		}
+	}
+}
+
 impl Display for Expression {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
@@ -733,6 +856,12 @@ pub enum Condition {
 #[derive(Debug, Clone)]
 pub struct Function(pub String, pub Vec<Expression>);
 
+impl Function {
+	pub fn get_return_type(&self) -> ExpressionType {
+		ExpressionType::Unknown
+	}
+}
+
 impl Display for Function {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}(", self.0)?;
@@ -748,12 +877,6 @@ impl Display for Function {
 
 #[cfg(test)]
 mod tests {
-	use crate::lexer::Token;
-	use ariadne::{Color, Label, Report, ReportKind, Source};
-	use chumsky::input::Stream;
-	use chumsky::prelude::*;
-	use logos::Logos;
-
 	use super::*;
 
 	#[test]
@@ -767,47 +890,12 @@ mod tests {
 		for (src, file_name) in test_files {
 			println!("Parsing {file_name:?}");
 
-			let token_iter = Token::lexer(src).spanned().filter_map(|(tok, span)| match tok {
-				Ok(tok) => Some((tok, span.into())),
-				_ => None,
-			});
-
-			/* let tokens = token_iter.clone();
-			std::fs::write(
-				"test_output.txt",
-				tokens
-					.map(|(t, _)| format!("{t:?}"))
-					.collect::<Vec<String>>()
-					.join("\n"),
-			)
-			.unwrap(); */
-
-			let token_stream = Stream::from_iter(token_iter).spanned(SimpleSpan::from(src.len()..src.len()));
-
 			let start = std::time::Instant::now();
-			let result = expr_parser().parse(token_stream).into_result();
-			println!("Parsed in {:?}", start.elapsed());
-			match result {
-				Ok(_) => {
-					println!("Parsed sucessfully");
-				}
-				Err(errs) => {
-					erorred = true;
-					let src = Source::from(&src);
-					for err in errs {
-						Report::build(ReportKind::Error, &file_name, err.span().start)
-							.with_message(err.to_string())
-							.with_label(
-								Label::new((&file_name, err.span().into_range()))
-									.with_message(err.reason())
-									.with_color(Color::Red),
-							)
-							.finish()
-							.eprint((&file_name, src.clone()))
-							.unwrap();
-					}
-				}
+			if parse_str(src, file_name).is_none() {
+				erorred = false;
 			}
+			println!("Parsed in {:?}", start.elapsed());
+
 			assert!(!erorred)
 		}
 	}
