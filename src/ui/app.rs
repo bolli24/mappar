@@ -131,16 +131,16 @@ impl eframe::App for MyApp {
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
 			egui::menu::bar(ui, |ui| {
 				ui.menu_button("File", |ui| {
+					ui.checkbox(&mut self.inspection, "Inspector");
 					#[cfg(not(target_arch = "wasm32"))]
 					{
-						if ui.button("Quit").clicked() {
-							ctx.send_viewport_cmd(ViewportCommand::Close);
-						}
 						if ui.button("Reload Styles").clicked() {
 							self.styles.reload_from_file();
 						}
+						if ui.button("Quit").clicked() {
+							ctx.send_viewport_cmd(ViewportCommand::Close);
+						}
 					}
-					ui.checkbox(&mut self.inspection, "Inspector");
 				});
 				ui.add_space(16.0);
 				egui::widgets::global_theme_preference_switch(ui);
