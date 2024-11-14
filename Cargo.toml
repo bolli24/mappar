@@ -25,6 +25,7 @@ log = { version = "0.4", features = ["release_max_level_info"] }
 simplelog = "0.12.2"
 serde = { version = "1.0.214", features = ["derive"] }
 thiserror = "2"
+ariadne = "0.5"
 
 reqwest = { version = "0.12.9" }
 quick-xml = { version = "0.37", default-features = false }

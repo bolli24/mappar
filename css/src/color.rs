@@ -15,7 +15,7 @@ pub fn get_named_color(name: &str) -> Option<Color32> {
 }
 
 static COLORS: phf::Map<&'static str, Color32> = phf_map! {
-	"aliceblue" =>hex_color!("#f0f8ff"),
+	"aliceblue" => hex_color!("#f0f8ff"),
 	"antiquewhite" => hex_color!("#faebd7"),
 	"aqua" => hex_color!("#00ffff"),
 	"aquamarine" => hex_color!("#7fffd4"),

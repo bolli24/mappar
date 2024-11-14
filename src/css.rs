@@ -2,14 +2,18 @@ use crate::imagery::imagery_fetcher;
 use crate::map::map_data::{Element, MapData, MapElement};
 use crate::map::render::ElementId;
 use crate::map::style::Style as MapStyle;
+use ariadne::{Color, Label, Report, ReportKind, Source};
 use bytes::Bytes;
 use egui::mutex::RwLock;
+use egui::{Color32, TextureOptions};
 use epaint::{TextureId, TextureManager};
 use log::{error, info, warn};
 use mappar_css::color::get_named_color;
 use mappar_css::*;
 use std::borrow::BorrowMut;
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -22,7 +26,8 @@ pub struct Styles {
 	class_assignments: HashMap<Selectors, Vec<String>>,
 	icons: HashMap<String, Icon>,
 	texture_manager: Arc<RwLock<TextureManager>>,
-	fall_back_texture: TextureId,
+	fallback_texture: TextureId,
+	reporting: RefCell<Reporting>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,18 +43,8 @@ impl Drop for Styles {
 			info!("Freeing icon texture: {name}");
 			texture_manager.free(icon.0);
 		}
-	}
-}
-
-impl Default for Styles {
-	fn default() -> Self {
-		Self {
-			css: CSS(Vec::new()),
-			styles: Default::default(),
-			class_assignments: Default::default(),
-			icons: Default::default(),
-			texture_manager: Default::default(),
-			fall_back_texture: TextureId::Managed(0),
+		if self.fallback_texture != TextureId::Managed(0) {
+			texture_manager.free(self.fallback_texture);
 		}
 	}
 }
@@ -66,13 +61,15 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 		})
 		.ok()?;
 	#[cfg(target_arch = "wasm32")]
-	let css_string = include_str!("../assets/default.mapcss");
+	let css_string = include_str!("../assets/default.mapcss").to_string();
 
 	let css = parse_str(&css_string, PATH)?;
 
 	let mut class_assignments: HashMap<Selectors, Vec<String>> = HashMap::new();
 	let mut icons = HashMap::new();
-	let fall_back_texture = TextureId::Managed(0);
+	let fallback_texture = get_fallback_texture(&texture_manager);
+
+	let reporting = RefCell::new(Reporting::new(PATH.to_string(), css_string));
 
 	for styleset in &css.0 {
 		let mut class_names = Vec::new();
@@ -83,11 +80,15 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 				}
 				Rule::Style(style_rule) => {
 					if style_rule.key == "icon-image" {
-						if let Specifier::Expression(Expression::String(file_name)) = &style_rule.specifier {
-							let texture_id = load_icon(file_name, &texture_manager, fall_back_texture);
+						let Spanned(specifier, span) = &style_rule.specifier;
+						if let Specifier::Expression(Expression::String(file_name)) = specifier {
+							let texture_id = load_icon(file_name, &texture_manager, fallback_texture);
 							icons.insert(file_name.clone(), Icon(texture_id));
 						} else {
-							warn!("Illegal specifier for 'icon-image': {:?}", style_rule.specifier);
+							reporting.borrow_mut().report(
+								Error::IllegalSpecifier("icon-image".to_string(), specifier.clone()),
+								*span,
+							);
 						};
 					}
 				}
@@ -104,18 +105,33 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 		class_assignments,
 		icons,
 		texture_manager,
-		fall_back_texture,
+		fallback_texture,
+		reporting,
 	})
 }
 
-fn load_icon(
-	file_name: &str,
-	texture_manager: &Arc<RwLock<TextureManager>>,
-	fall_back_texture: TextureId,
-) -> TextureId {
+fn get_fallback_texture(texture_manager: &Arc<RwLock<TextureManager>>) -> TextureId {
+	let fallback_image = egui::ColorImage {
+		size: [2, 2],
+		pixels: vec![
+			Color32::from_rgb(255, 0, 255),
+			Color32::BLACK,
+			Color32::BLACK,
+			Color32::from_rgb(255, 0, 255),
+		],
+	};
+
+	texture_manager.write().alloc(
+		"fallback_texture".to_string(),
+		egui::ImageData::Color(Arc::new(fallback_image)),
+		TextureOptions::NEAREST,
+	)
+}
+
+fn load_icon(file_name: &str, texture_manager: &Arc<RwLock<TextureManager>>, fallback_texture: TextureId) -> TextureId {
 	try_get_icon_texture(file_name, texture_manager).unwrap_or_else(|err| {
 		error!("Could not load icon '{file_name}': {err}");
-		fall_back_texture
+		fallback_texture
 	})
 }
 
@@ -142,6 +158,8 @@ impl Styles {
 		info!("Reloading MapCSS styles.");
 		if let Some(styles) = get_default_styles(self.texture_manager.clone()) {
 			*self = styles
+		} else {
+			error!("Unable to reload styles.")
 		}
 	}
 
@@ -155,7 +173,7 @@ impl Styles {
 		self.create_style(element, map_data)
 	}
 
-	fn create_style(&self, element: &MapElement, map_data: &MapData) -> MapStyle {
+	fn create_style(&mut self, element: &MapElement, map_data: &MapData) -> MapStyle {
 		let mut style = MapStyle::default();
 
 		let stylesets = matching_rules(&self.css, map_data.get_element(element.id).unwrap());
@@ -179,8 +197,10 @@ impl Styles {
 	}
 
 	fn apply_style_rule(&self, style: &mut MapStyle, style_rule: &CssStyle) {
+		let specifier = &style_rule.specifier.0;
+		let span = &style_rule.specifier.1;
 		match style_rule.key.as_str() {
-			"color" | "colour" => match &style_rule.specifier {
+			"color" | "colour" => match &style_rule.specifier.0 {
 				Specifier::Color(color, _name) => {
 					style.color = *color;
 				}
@@ -189,22 +209,80 @@ impl Styles {
 						style.color = color
 					}
 				}
-				specifier => warn!("Illegal specifier for color: {specifier:?}"),
+				specifier => self.error(
+					Error::IllegalSpecifier(style_rule.key.clone(), specifier.clone()),
+					*span,
+				),
 			},
-			"width" | "size" => match &style_rule.specifier {
+			"width" | "size" => match &style_rule.specifier.0 {
 				Specifier::Expression(Expression::Number(number)) => style.size = *number as f32,
-				specifier => warn!("Illegal specifier for {}: {:?}", style_rule.key, specifier),
+				specifier => self.error(
+					Error::IllegalSpecifier(style_rule.key.clone(), specifier.clone()),
+					*span,
+				),
 			},
 			"icon-image" => {
-				if let Specifier::Expression(Expression::String(icon_file)) = &style_rule.specifier {
+				if let Specifier::Expression(Expression::String(icon_file)) = &style_rule.specifier.0 {
 					style.icon = self.icons.get(icon_file).copied();
 				} else {
-					warn!("Illegal specifier for icon-image: {:?}", &style_rule.specifier)
+					self.error(
+						Error::IllegalSpecifier(style_rule.key.clone(), specifier.clone()),
+						*span,
+					);
 				}
 			}
 
 			_ => {}
 		}
+	}
+
+	fn error(&self, error: Error, span: SimpleSpan) {
+		self.reporting.borrow_mut().report(error, span)
+	}
+}
+
+#[derive(thiserror::Error, Debug)]
+enum Error {
+	#[error("Illegal specifier of type {} for {}.", .1.get_type(), .0)]
+	IllegalSpecifier(String, Specifier),
+}
+
+struct Reporting {
+	file_name: String,
+	source: Source,
+	messages: HashSet<SimpleSpan>,
+}
+
+impl Reporting {
+	pub fn new(file_name: String, file_source: String) -> Self {
+		Self {
+			file_name,
+			source: Source::from(file_source),
+			messages: HashSet::new(),
+		}
+	}
+
+	pub fn report(&mut self, message: impl Display, span: SimpleSpan) {
+		if !self.messages.insert(span) {
+			return;
+		}
+
+		let message = format!("{message}");
+		let report = Report::build(ReportKind::Error, (&self.file_name, span.into_range()))
+			// .with_message()
+			.with_label(
+				Label::new((&self.file_name, span.into_range()))
+					.with_message(message)
+					.with_color(Color::Red),
+			)
+			.finish();
+
+		let mut output = Vec::<u8>::new();
+		report
+			.write_for_stdout((&self.file_name, self.source.clone()), &mut output)
+			.unwrap();
+		let output_string = String::from_utf8_lossy(&output).into_owned();
+		warn!("{output_string}");
 	}
 }
 
