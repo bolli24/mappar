@@ -23,7 +23,7 @@ glam = { version = "0.29", features = ["serde"] }
 
 log = { version = "0.4", features = ["release_max_level_info"] }
 simplelog = "0.12.2"
-serde = { version = "1.0.214", features = ["derive"] }
+serde = { version = "1.0.215", features = ["derive"] }
 thiserror = "2"
 ariadne = "0.5"
 
@@ -56,9 +56,9 @@ tokio = { version = "1.41.1", features = [
     "rt-multi-thread",
     "fs",
 ] }
-flate2 = "1.0.34"
-tar = "0.4.43"
-directories = "5.0.1"
+flate2 = "1.0"
+tar = "0.4"
+directories = "5.0"
 
 # web:
 [target.'cfg(target_family = "wasm")'.dependencies]
