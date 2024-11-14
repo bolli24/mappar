@@ -37,9 +37,6 @@ impl Drop for Styles {
 	fn drop(&mut self) {
 		let mut texture_manager = self.texture_manager.borrow_mut().write();
 		for (name, icon) in self.icons.drain() {
-			if icon.0 == self.fall_back_texture {
-				continue;
-			}
 			info!("Freeing icon texture: {name}");
 			texture_manager.free(icon.0);
 		}
@@ -253,39 +250,6 @@ struct Reporting {
 	messages: HashSet<SimpleSpan>,
 }
 
-impl Reporting {
-	pub fn new(file_name: String, file_source: String) -> Self {
-		Self {
-			file_name,
-			source: Source::from(file_source),
-			messages: HashSet::new(),
-		}
-	}
-
-	pub fn report(&mut self, message: impl Display, span: SimpleSpan) {
-		if !self.messages.insert(span) {
-			return;
-		}
-
-		let message = format!("{message}");
-		let report = Report::build(ReportKind::Error, (&self.file_name, span.into_range()))
-			// .with_message()
-			.with_label(
-				Label::new((&self.file_name, span.into_range()))
-					.with_message(message)
-					.with_color(Color::Red),
-			)
-			.finish();
-
-		let mut output = Vec::<u8>::new();
-		report
-			.write_for_stdout((&self.file_name, self.source.clone()), &mut output)
-			.unwrap();
-		let output_string = String::from_utf8_lossy(&output).into_owned();
-		warn!("{output_string}");
-	}
-}
-
 fn matching_rules<'a>(css: &'a CSS, element: &'a MapElement) -> impl Iterator<Item = &'a Styleset> {
 	return css.0.iter().filter(|styleset| matches_rule(styleset, element));
 }
@@ -334,4 +298,37 @@ fn matches_conditions(conditions: &[Condition], element: &MapElement) -> bool {
 			.any(|tag| tag_key == &tag.key && tag_value == &tag.value),
 		_ => false,
 	})
+}
+
+impl Reporting {
+	pub fn new(file_name: String, file_source: String) -> Self {
+		Self {
+			file_name,
+			source: Source::from(file_source),
+			messages: HashSet::new(),
+		}
+	}
+
+	pub fn report(&mut self, message: impl Display, span: SimpleSpan) {
+		if !self.messages.insert(span) {
+			return;
+		}
+
+		let message = format!("{message}");
+		let report = Report::build(ReportKind::Error, (&self.file_name, span.into_range()))
+			// .with_message()
+			.with_label(
+				Label::new((&self.file_name, span.into_range()))
+					.with_message(message)
+					.with_color(Color::Red),
+			)
+			.finish();
+
+		let mut output = Vec::<u8>::new();
+		report
+			.write_for_stdout((&self.file_name, self.source.clone()), &mut output)
+			.unwrap();
+		let output_string = String::from_utf8_lossy(&output).into_owned();
+		warn!("{output_string}");
+	}
 }
