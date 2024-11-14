@@ -230,11 +230,14 @@ where
 	let key_specifier = key
 		.then_ignore(just(Token::Colon).padded_by(opt_spaces.clone()))
 		.then(specifier)
-		.map(|(key, specifier)| {
-			Rule::Style(CssStyle {
-				key,
-				specifier: specifier.into(),
-			})
+		.map_with(|(key, specifier), extras| {
+			Rule::Style(Spanned(
+				CssStyle {
+					key,
+					specifier: specifier.into(),
+				},
+				extras.span(),
+			))
 		});
 
 	let class_assign = just(Token::Identifier("set"))
@@ -660,7 +663,7 @@ type PseudoClass = String;
 
 #[derive(Debug, Clone)]
 pub enum Rule {
-	Style(CssStyle),
+	Style(Spanned<CssStyle>),
 	ClassAssign(String),
 }
 

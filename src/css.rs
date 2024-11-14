@@ -46,7 +46,6 @@ impl Drop for Styles {
 	}
 }
 
-// FIXME: Implement proper fallback texture
 pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Option<Styles> {
 	info!("Getting default MapCSS styles.");
 
@@ -76,8 +75,8 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 					class_names.push(class_name.clone());
 				}
 				Rule::Style(style_rule) => {
-					if style_rule.key == "icon-image" {
-						let Spanned(specifier, span) = &style_rule.specifier;
+					if style_rule.0.key == "icon-image" {
+						let Spanned(specifier, span) = &style_rule.0.specifier;
 						if let Specifier::Expression(Expression::String(file_name)) = specifier {
 							let texture_id = load_icon(file_name, &texture_manager, fallback_texture);
 							icons.insert(file_name.clone(), Icon(texture_id));
@@ -193,12 +192,12 @@ impl Styles {
 		}
 	}
 
-	fn apply_style_rule(&self, style: &mut MapStyle, style_rule: &CssStyle) {
+	fn apply_style_rule(&self, style: &mut MapStyle, style_rule: &Spanned<CssStyle>) {
 		puffin::profile_function!();
-		let specifier = &style_rule.specifier.0;
-		let span = &style_rule.specifier.1;
-		match style_rule.key.as_str() {
-			"color" | "colour" => match &style_rule.specifier.0 {
+		let specifier = &style_rule.0.specifier.0;
+		let span = style_rule.0.specifier.1;
+		match style_rule.0.key.as_str() {
+			"color" | "colour" => match &style_rule.0.specifier.0 {
 				Specifier::Color(color, _name) => {
 					style.color = *color;
 				}
@@ -208,29 +207,28 @@ impl Styles {
 					}
 				}
 				specifier => self.error(
-					Error::IllegalSpecifier(style_rule.key.clone(), specifier.clone()),
-					*span,
+					Error::IllegalSpecifier(style_rule.0.key.clone(), specifier.clone()),
+					span,
 				),
 			},
-			"width" | "size" => match &style_rule.specifier.0 {
+			"width" | "size" => match &style_rule.0.specifier.0 {
 				Specifier::Expression(Expression::Number(number)) => style.size = *number as f32,
 				specifier => self.error(
-					Error::IllegalSpecifier(style_rule.key.clone(), specifier.clone()),
-					*span,
+					Error::IllegalSpecifier(style_rule.0.key.clone(), specifier.clone()),
+					span,
 				),
 			},
 			"icon-image" => {
-				if let Specifier::Expression(Expression::String(icon_file)) = &style_rule.specifier.0 {
+				if let Specifier::Expression(Expression::String(icon_file)) = &style_rule.0.specifier.0 {
 					style.icon = self.icons.get(icon_file).copied();
 				} else {
 					self.error(
-						Error::IllegalSpecifier(style_rule.key.clone(), specifier.clone()),
-						*span,
+						Error::IllegalSpecifier(style_rule.0.key.clone(), specifier.clone()),
+						span,
 					);
 				}
 			}
-
-			_ => {}
+			name => self.error(Error::UnknownProperty(name.to_string()), style_rule.1),
 		}
 	}
 
@@ -243,6 +241,9 @@ impl Styles {
 enum Error {
 	#[error("Illegal specifier of type {} for {}.", .1.get_type(), .0)]
 	IllegalSpecifier(String, Specifier),
+
+	#[error("Unknown property: {0}")]
+	UnknownProperty(String),
 }
 
 struct Reporting {
@@ -316,12 +317,11 @@ impl Reporting {
 			return;
 		}
 
-		let message = format!("{message}");
 		let report = Report::build(ReportKind::Error, (&self.file_name, span.into_range()))
 			// .with_message()
 			.with_label(
 				Label::new((&self.file_name, span.into_range()))
-					.with_message(message)
+					.with_message(message.to_string())
 					.with_color(Color::Red),
 			)
 			.finish();
