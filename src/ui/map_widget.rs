@@ -68,15 +68,15 @@ fn render_pos(pos: &DVec2, camera_offset: &DVec2, transform: &RectTransform) -> 
 }
 
 #[derive(Debug, Copy, Clone)]
-struct View {
-	transform: RectTransform,
-	viewport: Rect,
-	camera_pos: DVec2,
-	world_view_rect: Rect,
-	zoom_level: f64,
-	scale: f64,
-	ui_scale: f32,
-	pointer_pos: Option<DVec2>,
+pub struct View {
+	pub transform: RectTransform,
+	pub viewport: Rect,
+	pub camera_pos: DVec2,
+	pub world_view_rect: Rect,
+	pub zoom_level: f64,
+	pub scale: f64,
+	pub ui_scale: f32,
+	pub pointer_pos: Option<DVec2>,
 }
 
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
@@ -100,10 +100,6 @@ impl<'a> MapWidget<'a> {
 
 	#[inline]
 	fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View) {
-		if !element.bounding_box.intersects(view.world_view_rect) {
-			return;
-		}
-
 		let color = element.style.color;
 		let size = element.style.size;
 
@@ -382,13 +378,7 @@ impl Widget for MapWidget<'_> {
 							.iter()
 							.filter(|e| !matches!(e.element, Element::Relation { .. }))
 						{
-							DetailedElement::add_elements(
-								&mut render_data,
-								element,
-								self.map_data,
-								self.styles,
-								pointer_pos,
-							);
+							DetailedElement::add_elements(&mut render_data, element, self.map_data, self.styles, &view);
 						}
 					}
 
@@ -400,7 +390,7 @@ impl Widget for MapWidget<'_> {
 						}
 					};
 
-					debug_text.add(format!("Closest element: {hover_element:?}"));
+					debug_text.add(format!("Closest element: {:?}", hover_element.map(|e| e.id)));
 					debug_text.add(format!("Select threshold: {select_threshold:.3}"));
 
 					for element in &render_data {
@@ -424,7 +414,7 @@ impl Widget for MapWidget<'_> {
 	}
 }
 
-fn closest_element<'a>(render_data: &'a Vec<DetailedElement>, scale: &f64) -> Option<&'a DetailedElement> {
+fn closest_element<'a>(render_data: &'a [DetailedElement], scale: &f64) -> Option<&'a DetailedElement> {
 	render_data
 		.iter()
 		.filter(|e| matches!(e.pointer_distance, Some(dist) if dist < e.pointer_threshold * scale))

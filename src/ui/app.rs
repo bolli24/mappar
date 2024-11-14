@@ -9,9 +9,11 @@ use crate::ui::map_widget::{MapMemory, MapState, MapWidget};
 use crate::ui::memory::Memory;
 use egui::{Id, ViewportCommand, Window};
 use log::{error, info};
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 use tokio::sync::watch::{channel, Receiver, Sender};
@@ -29,6 +31,8 @@ impl<T> From<(Sender<T>, Receiver<T>)> for Channel<T> {
 	}
 }
 
+const RECENT_FRAME_COUNT: usize = 1000;
+
 pub struct MyApp {
 	map_data: Channel<MapData>,
 	styles: Styles,
@@ -37,6 +41,7 @@ pub struct MyApp {
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	debug_text: Rc<RefCell<DebugText>>,
 	last_update: Instant,
+	recent_frame_times: AllocRingBuffer<Duration>,
 	inspection: bool,
 }
 
@@ -93,6 +98,7 @@ impl MyApp {
 			map_widget_id,
 			debug_text: Rc::new(RefCell::new(DebugText::new())),
 			last_update: Instant::now(),
+			recent_frame_times: AllocRingBuffer::new(RECENT_FRAME_COUNT),
 			inspection: false,
 		};
 
@@ -195,13 +201,31 @@ impl eframe::App for MyApp {
 			.show(ctx, |ui| ctx.inspection_ui(ui));
 
 		puffin::GlobalProfiler::lock().new_frame();
+		let last_frame = self.last_update.elapsed();
+		let last_frame_ms = last_frame.as_micros() as f32 / 1000.0;
+		self.recent_frame_times.push(last_frame);
+		let average_ms = self
+			.recent_frame_times
+			.iter()
+			.fold(Duration::ZERO, |a, b| a + *b)
+			.as_micros() as f64
+			/ self.recent_frame_times.len() as f64
+			/ 1000.0;
+		let worst_ms = self
+			.recent_frame_times
+			.iter()
+			.max()
+			.unwrap_or(&Duration::ZERO)
+			.as_micros() as f32
+			/ 1000.0;
 		self.debug_text.borrow_mut().add(format!(
-			"Frame Time: {:.1}ms",
-			self.last_update.elapsed().as_micros() as f32 / 1000.0
+			"Frame Time: {:.1}ms\nAverage: {:.1}ms ({:.1} FPS)\nWorst: {:.1}ms",
+			last_frame_ms,
+			average_ms,
+			1000.0 / average_ms,
+			worst_ms
 		));
-		// self.debug_text
-		// 	.borrow_mut()
-		// 	.add(format!("CPU time: {:?} ms", start.elapsed().as_micros() as f32 / 1000.0));
+
 		self.last_update = Instant::now();
 	}
 }

@@ -194,6 +194,7 @@ impl Styles {
 	}
 
 	fn apply_style_rule(&self, style: &mut MapStyle, style_rule: &CssStyle) {
+		puffin::profile_function!();
 		let specifier = &style_rule.specifier.0;
 		let span = &style_rule.specifier.1;
 		match style_rule.key.as_str() {
@@ -251,6 +252,7 @@ struct Reporting {
 }
 
 fn matching_rules<'a>(css: &'a CSS, element: &'a MapElement) -> impl Iterator<Item = &'a Styleset> {
+	puffin::profile_function!();
 	return css.0.iter().filter(|styleset| matches_rule(styleset, element));
 }
 

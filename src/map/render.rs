@@ -5,9 +5,8 @@ use itertools::Itertools;
 use crate::css::Styles;
 use crate::map::map_data;
 use crate::map::map_data::{Element, MapData, MapElement};
-use crate::map::polygon::{Orientation, Polygon};
 use crate::map::style::Style;
-use crate::ui::map_widget::dvec2_to_pos;
+use crate::ui::map_widget::{dvec2_to_pos, View};
 
 pub type ElementId = i64;
 
@@ -77,11 +76,9 @@ impl DetailedElement {
 		map_element: &MapElement,
 		map_data: &MapData,
 		styles: &mut Styles,
-		pointer_pos: Option<DVec2>,
+		view: &View,
 	) {
 		puffin::profile_function!(map_element.id.to_string());
-
-		let style = styles.get_style(map_element, map_data);
 
 		let element = match &map_element.element {
 			Element::Node { pos } => RenderElement::Node(pos.to_web_mercator()),
@@ -98,62 +95,26 @@ impl DetailedElement {
 					})
 					.collect();
 
-				let mut polygon = Polygon::new(nodes.clone(), false);
-				let is_area = map_element.is_area();
-
-				let convex = if is_area {
-					polygon.set_orientation(Orientation::CCW);
-					// polygon.convex_partition()
-					// TODO
-					Some(())
-				} else {
-					None
-				};
-
-				if let Some(_partitions) = convex {
-					let path = RenderElement::Path(nodes, true);
-					// TODO improve area rendering
-					// let area = RenderElement::Area(partitions.into_iter().map(|p| p.points).collect());
-
-					RenderElement::Collection(vec![
-						Self {
-							id: map_element.id,
-							bounding_box: path.bounding_box(),
-							pointer_distance: path.distance(pointer_pos),
-							pointer_threshold: f64::from(style.size),
-							element: path,
-							style,
-						},
-						// DetailedElement {
-						// 	id: map_element.id,
-						// 	bounding_box: area.bounding_box(),
-						// 	element: area,
-						// 	style: Style::Colored {
-						// 		color: Color32::RED.gamma_multiply(0.5),
-						// 		size: 1.5,
-						// 		fill: true,
-						// 	},
-						// },
-					])
-				} else {
-					let is_closed = map_data::is_closed(node_indices.as_slice());
-					RenderElement::Path(nodes, is_closed)
-				}
+				// TODO: Area rendering
+				let is_closed = map_data::is_closed(node_indices.as_slice());
+				RenderElement::Path(nodes, is_closed)
 			}
 			Element::Relation { .. } => {
 				todo!()
-				// let members = members
-				// 	.iter()
-				// 	.filter_map(|m| map_data.get_element(m.ref_id))
-				// 	.map(|m| Self::from_map_element(m, map_data, pointer_pos))
-				// 	.collect();
-				// RenderElement::Collection(members)
 			}
 		};
+
+		let bounding_box = element.bounding_box();
+		if !bounding_box.intersects(view.world_view_rect) {
+			return;
+		}
+
+		let style = styles.get_style(map_element, map_data);
+
 		render_data.push(Self {
 			id: map_element.id,
-			bounding_box: element.bounding_box(),
-			pointer_distance: element.distance(pointer_pos),
+			bounding_box,
+			pointer_distance: element.distance(view.pointer_pos),
 			pointer_threshold: f64::from(style.size),
 			element,
 			style,
