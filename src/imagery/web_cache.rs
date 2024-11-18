@@ -91,11 +91,11 @@ impl Cache for WebCache {
 		self.cached_images.len()
 	}
 
-	async fn save_image(&mut self, tile: Tile, image_data: &Bytes, file_format: FileFormat) {
-		let window = web_sys::window().unwrap();
+	async fn save_image(&mut self, _tile: Tile, _image_data: &Bytes, _file_format: FileFormat) {
+		let _window = web_sys::window().unwrap();
 	}
 
-	async fn get_image(&self, tile: Tile, file_format: FileFormat) -> Option<Bytes> {
-		return None;
+	async fn get_image(&self, _tile: Tile, _file_format: FileFormat) -> Option<Bytes> {
+		None
 	}
 }

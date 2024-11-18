@@ -27,7 +27,8 @@ serde = { version = "1.0.215", features = ["derive"] }
 thiserror = "2"
 ariadne = "0.5"
 
-reqwest = { version = "0.12.9" }
+reqwest = "0.12.9"
+url = "*"
 quick-xml = { version = "0.37", default-features = false }
 bytes = "1.8.0"
 
@@ -78,6 +79,7 @@ web-sys = { version = "0.3.72", features = [
     "StorageManager",
     "IdbFactory",
     "IdbOpenDbRequest",
+    "Location",
 ] }
 wasm-bindgen = "0.2.95"
 wasm-bindgen-futures = "0.4.45"

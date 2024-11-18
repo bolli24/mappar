@@ -35,7 +35,7 @@ const RECENT_FRAME_COUNT: usize = 1000;
 
 pub struct MyApp {
 	map_data: Channel<MapData>,
-	styles: Styles,
+	styles: Option<Styles>,
 	render_data: Channel<Vec<DetailedElement>>,
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
@@ -89,10 +89,7 @@ impl MyApp {
 
 		let app = Self {
 			map_data: channel(MapData::new()).into(),
-			styles: get_default_styles(cc.egui_ctx.tex_manager().clone()).unwrap_or_else(|| {
-				error!("Unable to load default styles.");
-				panic!();
-			}),
+			styles: get_default_styles(cc.egui_ctx.tex_manager().clone()),
 			render_data: channel(Vec::new()).into(),
 			imagery_fetcher,
 			map_widget_id,
@@ -128,9 +125,20 @@ impl MyApp {
 impl eframe::App for MyApp {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
 		#[cfg(not(target_arch = "wasm32"))]
+		let mut reload_styles = false; // This is needed because we can't reload in the input closure
+		#[cfg(not(target_arch = "wasm32"))]
 		ctx.input(|input| {
-			if input.key_pressed(egui::Key::F5) {
-				self.styles.reload_from_file();
+			for e in &input.events {
+				if let egui::Event::Key {
+					pressed: true,
+					key: egui::Key::F5,
+					repeat: false,
+					modifiers: egui::Modifiers::NONE,
+					..
+				} = e
+				{
+					reload_styles = true;
+				}
 			}
 		});
 
@@ -141,7 +149,7 @@ impl eframe::App for MyApp {
 					#[cfg(not(target_arch = "wasm32"))]
 					{
 						if ui.button("Reload Styles").clicked() {
-							self.styles.reload_from_file();
+							reload_styles = true
 						}
 						if ui.button("Quit").clicked() {
 							ctx.send_viewport_cmd(ViewportCommand::Close);
@@ -152,6 +160,12 @@ impl eframe::App for MyApp {
 				egui::widgets::global_theme_preference_switch(ui);
 			});
 		});
+
+		#[cfg(not(target_arch = "wasm32"))]
+		if reload_styles {
+			info!("Reloading MapCSS styles.");
+			self.styles = get_default_styles(ctx.tex_manager())
+		}
 
 		egui::SidePanel::right("debug_panel").min_width(240.0).show(ctx, |ui| {
 			ui.heading("Debug Panel");

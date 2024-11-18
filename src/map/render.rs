@@ -75,7 +75,7 @@ impl DetailedElement {
 		render_data: &mut Vec<Self>,
 		map_element: &MapElement,
 		map_data: &MapData,
-		styles: &mut Styles,
+		styles: &mut Option<Styles>,
 		view: &View,
 	) {
 		puffin::profile_function!(map_element.id.to_string());
@@ -109,7 +109,10 @@ impl DetailedElement {
 			return;
 		}
 
-		let style = styles.get_style(map_element, map_data);
+		let style = styles
+			.as_mut()
+			.map(|styles| styles.get_style(map_element, map_data))
+			.unwrap_or_default();
 
 		render_data.push(Self {
 			id: map_element.id,

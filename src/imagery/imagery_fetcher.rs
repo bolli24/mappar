@@ -56,6 +56,10 @@ pub enum Error {
 	ImageDecode(#[from] image::ImageError),
 	#[error("Error reading image data: {0}")]
 	ImageIo(#[from] std::io::Error),
+	#[error("Error getting website url")]
+	NoBaseUrl,
+	#[error("Error Parsing Url: {0}")]
+	UrlParseError(#[from] url::ParseError),
 }
 
 type MemoryCache = Arc<Mutex<LruCache<Tile, Option<TextureId>>>>;
@@ -119,6 +123,7 @@ impl ImageryFetcher {
 		texture_manager: Arc<RwLock<TextureManager>>,
 		memory_cache: MemoryCache,
 	) -> Arc<Mutex<WorkerBridge<ImageWorker>>> {
+		// TODO: Replace Arc<Mutex>
 		let worker_bridge = Arc::new(Mutex::new(
 			ImageWorker::spawner()
 				.callback(move |output| {
@@ -133,7 +138,8 @@ impl ImageryFetcher {
 						return;
 					};
 
-					let texture = Self::create_texture_from_decoded(&texture_manager, output.0, &image);
+					let texture =
+						Self::create_texture_from_decoded(&texture_manager, tile_to_string(&output.0), &image);
 					Self::store_texture(&texture_manager, &memory_cache, tile, texture);
 				})
 				.spawn("./dummy_worker.js"),
@@ -226,6 +232,7 @@ impl ImageryFetcher {
 				let result = Self::fetch_tile(worker_bridge, imagery, persistent_cache, tile).await;
 
 				match result {
+					#[allow(unused_variables)]
 					Ok(texture) => {
 						#[cfg(not(target_arch = "wasm32"))]
 						Self::store_texture(&texture_manager, &memory_cache, tile, texture);
@@ -314,7 +321,7 @@ impl ImageryFetcher {
 
 	pub fn create_texture(
 		texture_manager: &Arc<RwLock<TextureManager>>,
-		tile: String,
+		name: String,
 		bytes: &Bytes,
 	) -> Result<TextureId, Error> {
 		use std::io::Cursor;
@@ -324,7 +331,7 @@ impl ImageryFetcher {
 			.decode()?
 			.to_rgba8();
 
-		Ok(Self::create_texture_from_decoded(texture_manager, tile, &image))
+		Ok(Self::create_texture_from_decoded(texture_manager, name, &image))
 	}
 
 	fn create_texture_from_decoded(

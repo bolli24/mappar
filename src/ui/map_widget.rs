@@ -24,7 +24,7 @@ const ZOOM_SPEED: f64 = 5.0;
 
 pub struct MapWidget<'a> {
 	map_data: &'a MapData,
-	styles: &'a mut Styles,
+	styles: &'a mut Option<Styles>,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	id: Id,
 	debug_text: Rc<RefCell<DebugText>>,
@@ -84,7 +84,7 @@ const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 impl<'a> MapWidget<'a> {
 	pub fn new(
 		map_data: &'a MapData,
-		styles: &'a mut Styles,
+		styles: &'a mut Option<Styles>,
 		imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 		id: Id,
 		debug_text: Rc<RefCell<DebugText>>,

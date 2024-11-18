@@ -4,7 +4,6 @@
 
 use log::{error, info};
 use mappar::MyApp;
-use simplelog::ConfigBuilder;
 
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
@@ -53,7 +52,8 @@ async fn main() -> eframe::Result<()> {
 #[cfg(target_arch = "wasm32")]
 fn main() {
 	use wasm_bindgen::JsCast;
-	eframe::WebLogger::init(log::LevelFilter::Info).ok();
+	eframe::WebLogger::init(log::LevelFilter::Info).expect("Error initializing logger.");
+	info!("Logger initialized");
 	let web_options = eframe::WebOptions::default();
 
 	wasm_bindgen_futures::spawn_local(async {
@@ -90,6 +90,7 @@ fn main() {
 fn init_logger() {
 	use chrono::{DateTime, Utc};
 	use flate2::write::GzEncoder;
+	use simplelog::ConfigBuilder;
 	use simplelog::{ColorChoice, CombinedLogger, LevelFilter, TermLogger, TerminalMode, WriteLogger};
 	use std::fs::File;
 

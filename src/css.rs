@@ -3,7 +3,6 @@ use crate::map::map_data::{Element, MapData, MapElement};
 use crate::map::render::ElementId;
 use crate::map::style::Style as MapStyle;
 use ariadne::{Color, Label, Report, ReportKind, Source};
-use bytes::Bytes;
 use egui::mutex::RwLock;
 use egui::{Color32, TextureOptions};
 use epaint::{TextureId, TextureManager};
@@ -14,9 +13,6 @@ use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
 use std::sync::Arc;
 
 // TODO: maybe use sparse set instead of hashmap
@@ -24,7 +20,7 @@ pub struct Styles {
 	css: CSS,
 	styles: HashMap<ElementId, MapStyle>,
 	class_assignments: HashMap<Selectors, Vec<String>>,
-	icons: HashMap<String, Icon>,
+	icons: Arc<RwLock<HashMap<String, Icon>>>,
 	texture_manager: Arc<RwLock<TextureManager>>,
 	fallback_texture: TextureId,
 	reporting: RefCell<Reporting>,
@@ -36,7 +32,7 @@ pub struct Icon(pub TextureId);
 impl Drop for Styles {
 	fn drop(&mut self) {
 		let mut texture_manager = self.texture_manager.borrow_mut().write();
-		for (name, icon) in self.icons.drain() {
+		for (name, icon) in self.icons.write().drain() {
 			info!("Freeing icon texture: {name}");
 			texture_manager.free(icon.0);
 		}
@@ -49,7 +45,7 @@ impl Drop for Styles {
 pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Option<Styles> {
 	info!("Getting default MapCSS styles.");
 
-	const PATH: &str = "./assets/default.mapcss";
+	const PATH: &str = "./assets/styles/default.mapcss";
 	#[cfg(not(target_arch = "wasm32"))]
 	let css_string = std::fs::read_to_string(PATH)
 		.map_err(|err| {
@@ -57,12 +53,12 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 		})
 		.ok()?;
 	#[cfg(target_arch = "wasm32")]
-	let css_string = include_str!("../assets/default.mapcss").to_string();
+	let css_string = include_str!("../assets/styles/default.mapcss").to_string();
 
 	let css = parse_str(&css_string, PATH)?;
 
 	let mut class_assignments: HashMap<Selectors, Vec<String>> = HashMap::new();
-	let mut icons = HashMap::new();
+	let icons = Arc::new(RwLock::new(HashMap::new()));
 	let fallback_texture = get_fallback_texture(&texture_manager);
 
 	let reporting = RefCell::new(Reporting::new(PATH.to_string(), css_string));
@@ -78,8 +74,7 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 					if style_rule.0.key == "icon-image" {
 						let Spanned(specifier, span) = &style_rule.0.specifier;
 						if let Specifier::Expression(Expression::String(file_name)) = specifier {
-							let texture_id = load_icon(file_name, &texture_manager, fallback_texture);
-							icons.insert(file_name.clone(), Icon(texture_id));
+							load_icon(file_name, &icons, &texture_manager, fallback_texture);
 						} else {
 							reporting.borrow_mut().report(
 								Error::IllegalSpecifier("icon-image".to_string(), specifier.clone()),
@@ -124,41 +119,91 @@ fn get_fallback_texture(texture_manager: &Arc<RwLock<TextureManager>>) -> Textur
 	)
 }
 
-fn load_icon(file_name: &str, texture_manager: &Arc<RwLock<TextureManager>>, fallback_texture: TextureId) -> TextureId {
-	try_get_icon_texture(file_name, texture_manager).unwrap_or_else(|err| {
+fn load_icon(
+	file_name: &str,
+	icons: &Arc<RwLock<HashMap<String, Icon>>>,
+	texture_manager: &Arc<RwLock<TextureManager>>,
+	fallback_texture: TextureId,
+) {
+	let texture_id = try_get_icon_texture(
+		file_name,
+		texture_manager,
+		#[cfg(target_arch = "wasm32")]
+		icons,
+		#[cfg(target_arch = "wasm32")]
+		fallback_texture,
+	)
+	.unwrap_or_else(|err| {
 		error!("Could not load icon '{file_name}': {err}");
 		fallback_texture
-	})
+	});
+	icons.write().insert(file_name.to_string(), Icon(texture_id));
 }
 
-// FIXME: Implement for web.
 // TODO: Maybe use async io
 fn try_get_icon_texture(
 	file_name: &str,
 	texture_manager: &Arc<RwLock<TextureManager>>,
+	#[cfg(target_arch = "wasm32")] icons: &Arc<RwLock<HashMap<String, Icon>>>,
+	#[cfg(target_arch = "wasm32")] fallback_texture: TextureId,
 ) -> Result<TextureId, imagery_fetcher::Error> {
-	let file_path = Path::new("./assets").join(file_name);
-	// format!("/assets/{file_name}");
-	let mut file = File::open(file_path)?;
+	#[cfg(not(target_arch = "wasm32"))]
+	{
+		use std::io::Read;
+		let file_path = std::path::Path::new("./assets/styles").join(file_name);
+		let mut file = std::fs::File::open(file_path)?;
 
-	let mut image_data = Vec::new();
-	file.read_to_end(&mut image_data)?;
-	let bytes = Bytes::from(image_data);
+		let mut image_data = Vec::new();
+		file.read_to_end(&mut image_data)?;
+		let bytes = bytes::Bytes::from(image_data);
+		imagery_fetcher::ImageryFetcher::create_texture(texture_manager, format!("icon {file_name}"), &bytes)
+	}
 
+	#[cfg(target_arch = "wasm32")]
+	{
+		let icons = icons.clone();
+		let texture_manager = texture_manager.clone();
+		let base_url = web_sys::window()
+			.ok_or(imagery_fetcher::Error::NoBaseUrl)?
+			.location()
+			.href()
+			.map_err(|_| imagery_fetcher::Error::NoBaseUrl)?;
+		let url = reqwest::Url::parse(&base_url)?.join("styles/")?.join(file_name)?;
+		let file_name = file_name.to_string();
+
+		info!("Fetching icon file: {url}");
+
+		wasm_bindgen_futures::spawn_local(async move {
+			let result = fetch_icon(url, &file_name, &texture_manager).await;
+
+			match result {
+				Ok(texture_id) => {
+					icons.write().insert(file_name, Icon(texture_id));
+				}
+
+				Err(err) => error!("Unable to get icon file '{file_name}': {err:?}"),
+			}
+		});
+
+		Ok(fallback_texture)
+	}
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn fetch_icon(
+	url: url::Url,
+	file_name: &str,
+	texture_manager: &Arc<RwLock<TextureManager>>,
+) -> Result<TextureId, imagery_fetcher::Error> {
+	let response = reqwest::get(url).await?;
+	let response = response.error_for_status()?;
+	info!("{response:?}");
+
+	let bytes = response.bytes().await?;
 	imagery_fetcher::ImageryFetcher::create_texture(texture_manager, format!("icon {file_name}"), &bytes)
 }
 
 impl Styles {
-	#[cfg(not(target_arch = "wasm32"))]
-	pub fn reload_from_file(&mut self) {
-		info!("Reloading MapCSS styles.");
-		if let Some(styles) = get_default_styles(self.texture_manager.clone()) {
-			*self = styles
-		} else {
-			error!("Unable to reload styles.")
-		}
-	}
-
 	pub fn get_style(&mut self, element: &MapElement, map_data: &MapData) -> MapStyle {
 		/* if !self.styles.contains_key(&element.id) {
 			let style = self.create_style(element, map_data);
@@ -220,7 +265,7 @@ impl Styles {
 			},
 			"icon-image" => {
 				if let Specifier::Expression(Expression::String(icon_file)) = &style_rule.0.specifier.0 {
-					style.icon = self.icons.get(icon_file).copied();
+					style.icon = self.icons.read().get(icon_file).copied();
 				} else {
 					self.error(
 						Error::IllegalSpecifier(style_rule.0.key.clone(), specifier.clone()),
