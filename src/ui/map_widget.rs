@@ -288,8 +288,6 @@ impl Widget for MapWidget<'_> {
 		ScrollArea::vertical()
 			.show(ui, |ui| {
 				Frame::canvas(ui.style()).show(ui, |ui| {
-					let mut render_data = Vec::with_capacity(self.map_data.len());
-
 					puffin::profile_function!("Draw Map");
 					let ui_scale = ui.ctx().pixels_per_point();
 					let mut debug_text = self.debug_text.borrow_mut();
@@ -366,8 +364,7 @@ impl Widget for MapWidget<'_> {
 
 					Self::draw_tiles(&painter, &self.imagery_fetcher, &view, &mut debug_text);
 
-					// TODO: Maybe reuse this to avoid reallocation
-					let mut shapes = DrawList::new();
+					let mut render_data = Vec::with_capacity(self.map_data.len());
 					let select_threshold = 5.0 * scale;
 
 					{
@@ -392,6 +389,8 @@ impl Widget for MapWidget<'_> {
 
 					debug_text.add(format!("Closest element: {:?}", hover_element.map(|e| e.id)));
 					debug_text.add(format!("Select threshold: {select_threshold:.3}"));
+
+					let mut shapes = DrawList::new();
 
 					for element in &render_data {
 						let hovered = hover_element.is_some_and(|e| e.id == element.id);

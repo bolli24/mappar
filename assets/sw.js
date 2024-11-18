@@ -8,7 +8,7 @@ const filesToCache = [
 
 self.addEventListener("message", e => {
   caches.open(cacheName).then(function (cache) {
-    return cache.addAll(e.data + filesToCache);
+   // return cache.addAll(e.data + filesToCache);
   })
 })
 
@@ -16,7 +16,7 @@ self.addEventListener("message", e => {
 self.addEventListener('fetch', function (e) {
   e.respondWith(
     caches.match(e.request).then(function (response) {
-      return response || fetch(e.request);
+      // return response || fetch(e.request);
     })
   );
 });
