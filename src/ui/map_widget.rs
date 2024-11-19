@@ -469,7 +469,7 @@ pub enum MapState {
 	Move,
 }
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, macros::Memory)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, mappar_macros::Memory)]
 pub struct MapMemory {
 	pub zoom_level: f64,
 	pub camera_pos: DVec2,

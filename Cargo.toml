@@ -10,12 +10,12 @@ default-run = "mappar"
 members = ["src/macros", "css"]
 
 [dependencies]
-macros = { path = "src/macros" }
-mappar_css = { path = "css" }
+mappar-macros = { path = "src/macros" }
+mappar-css = { path = "css" }
 
 egui = { version = "0.29.1" }
 epaint = { version = "0.29.1" }
-image = { version = "0.25.5", default-features = false, features = [
+image = { version = "0.25", default-features = false, features = [
     "jpeg",
     "png",
 ] }
