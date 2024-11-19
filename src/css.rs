@@ -29,6 +29,16 @@ pub struct Styles {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Icon(pub TextureId);
 
+#[derive(Debug, thiserror::Error)]
+enum IconError {
+	#[error("{0}")]
+	TextureFetchError(#[from] imagery_fetcher::Error),
+	#[error("Error getting website url")]
+	NoBaseUrl,
+	#[error("Error Parsing Url: {0}")]
+	UrlParseError(#[from] url::ParseError),
+}
+
 impl Drop for Styles {
 	fn drop(&mut self) {
 		let mut texture_manager = self.texture_manager.borrow_mut().write();
@@ -146,17 +156,22 @@ fn try_get_icon_texture(
 	texture_manager: &Arc<RwLock<TextureManager>>,
 	#[cfg(target_arch = "wasm32")] icons: &Arc<RwLock<HashMap<String, Icon>>>,
 	#[cfg(target_arch = "wasm32")] fallback_texture: TextureId,
-) -> Result<TextureId, imagery_fetcher::Error> {
+) -> Result<TextureId, IconError> {
 	#[cfg(not(target_arch = "wasm32"))]
 	{
 		use std::io::Read;
 		let file_path = std::path::Path::new("./assets/styles").join(file_name);
-		let mut file = std::fs::File::open(file_path)?;
+		let mut file = std::fs::File::open(file_path).map_err(imagery_fetcher::Error::ImageIo)?;
 
 		let mut image_data = Vec::new();
-		file.read_to_end(&mut image_data)?;
+		file.read_to_end(&mut image_data)
+			.map_err(imagery_fetcher::Error::ImageIo)?;
 		let bytes = bytes::Bytes::from(image_data);
-		imagery_fetcher::ImageryFetcher::create_texture(texture_manager, format!("icon {file_name}"), &bytes)
+		Ok(imagery_fetcher::ImageryFetcher::create_texture(
+			texture_manager,
+			format!("icon {file_name}"),
+			&bytes,
+		)?)
 	}
 
 	#[cfg(target_arch = "wasm32")]
@@ -164,10 +179,10 @@ fn try_get_icon_texture(
 		let icons = icons.clone();
 		let texture_manager = texture_manager.clone();
 		let base_url = web_sys::window()
-			.ok_or(imagery_fetcher::Error::NoBaseUrl)?
+			.ok_or(IconError::NoBaseUrl)?
 			.location()
 			.href()
-			.map_err(|_| imagery_fetcher::Error::NoBaseUrl)?;
+			.map_err(|_| IconError::NoBaseUrl)?;
 		let url = reqwest::Url::parse(&base_url)?.join("styles/")?.join(file_name)?;
 		let file_name = file_name.to_string();
 

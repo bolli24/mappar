@@ -56,10 +56,6 @@ pub enum Error {
 	ImageDecode(#[from] image::ImageError),
 	#[error("Error reading image data: {0}")]
 	ImageIo(#[from] std::io::Error),
-	#[error("Error getting website url")]
-	NoBaseUrl,
-	#[error("Error Parsing Url: {0}")]
-	UrlParseError(#[from] url::ParseError),
 }
 
 type MemoryCache = Arc<Mutex<LruCache<Tile, Option<TextureId>>>>;
