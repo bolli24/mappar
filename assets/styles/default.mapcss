@@ -25,5 +25,5 @@ way[highway=secondary] {
 
 node[natural=tree] {
     size: 10;
-    icon-image: "icons/tree.png";
+    icon-image: "icons/tree.svg";
 }

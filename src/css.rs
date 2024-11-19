@@ -4,11 +4,13 @@ use crate::map::render::ElementId;
 use crate::map::style::Style as MapStyle;
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use egui::mutex::RwLock;
-use egui::{Color32, TextureOptions};
+use egui::{Color32, ColorImage, TextureOptions};
 use epaint::{TextureId, TextureManager};
 use log::{error, info, warn};
 use mappar_css::color::get_named_color;
 use mappar_css::*;
+use resvg::tiny_skia::Pixmap;
+use resvg::usvg::{Options, Size, Transform, Tree};
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -37,6 +39,14 @@ enum IconError {
 	NoBaseUrl,
 	#[error("Error Parsing Url: {0}")]
 	UrlParseError(#[from] url::ParseError),
+	#[error("Unable to parse SVG: {0}")]
+	SvgParseError(#[from] resvg::usvg::Error),
+	#[error("Unable to allocate PixMap")]
+	PixmapAllocation,
+	#[error("File '{0}' has no valid file extension.")]
+	InvalidFileExtension(String),
+	#[error("File type {0} not supported. Must be JPEG/JPG, PNG or SVG.")]
+	UnsupportedFileType(String),
 }
 
 impl Drop for Styles {
@@ -161,17 +171,26 @@ fn try_get_icon_texture(
 	{
 		use std::io::Read;
 		let file_path = std::path::Path::new("./assets/styles").join(file_name);
-		let mut file = std::fs::File::open(file_path).map_err(imagery_fetcher::Error::ImageIo)?;
-
+		let mut file = std::fs::File::open(&file_path).map_err(imagery_fetcher::Error::ImageIo)?;
 		let mut image_data = Vec::new();
 		file.read_to_end(&mut image_data)
 			.map_err(imagery_fetcher::Error::ImageIo)?;
 		let bytes = bytes::Bytes::from(image_data);
-		Ok(imagery_fetcher::ImageryFetcher::create_texture(
+
+		let extension = file_path
+			.extension()
+			.ok_or(IconError::InvalidFileExtension(file_name.to_string()))?
+			.to_str()
+			.ok_or(IconError::InvalidFileExtension(file_name.to_string()))?
+			.to_lowercase();
+
+		let color_image = decode_or_render(&extension, bytes)?;
+
+		Ok(imagery_fetcher::ImageryFetcher::create_texture_from_decoded(
 			texture_manager,
 			format!("icon {file_name}"),
-			&bytes,
-		)?)
+			color_image,
+		))
 	}
 
 	#[cfg(target_arch = "wasm32")]
@@ -204,18 +223,60 @@ fn try_get_icon_texture(
 	}
 }
 
+fn decode_or_render(extension: &str, bytes: bytes::Bytes) -> Result<ColorImage, IconError> {
+	let color_image = match extension {
+		"png" | "jpg" | "jpeg" => imagery_fetcher::ImageryFetcher::decode_image(&bytes)?,
+		"svg" => render_svg(&bytes)?,
+		_ => Err(IconError::UnsupportedFileType(extension.to_string()))?,
+	};
+	Ok(color_image)
+}
+
+fn render_svg(bytes: &[u8]) -> Result<ColorImage, IconError> {
+	const SVG_MIN_SIZE: f32 = 100.0; // TODO: Config
+
+	let tree = Tree::from_data(bytes, &Options { ..Default::default() })?;
+
+	let size = tree.size();
+	let scaled_size = size.scale_to(Size::from_wh(SVG_MIN_SIZE, SVG_MIN_SIZE).unwrap());
+	let scale_factor = Size::from_wh(scaled_size.width() / size.width(), scaled_size.height() / size.height()).unwrap();
+
+	let mut pixmap =
+		Pixmap::new(scaled_size.width() as u32, scaled_size.height() as u32).ok_or(IconError::PixmapAllocation)?;
+	resvg::render(
+		&tree,
+		Transform::from_scale(scale_factor.width(), scale_factor.height()),
+		&mut pixmap.as_mut(),
+	);
+
+	Ok(ColorImage::from_rgba_unmultiplied(
+		[pixmap.width() as usize, pixmap.height() as usize],
+		bytemuck::cast_slice(pixmap.pixels()),
+	))
+}
+
 #[cfg(target_arch = "wasm32")]
 async fn fetch_icon(
 	url: url::Url,
 	file_name: &str,
 	texture_manager: &Arc<RwLock<TextureManager>>,
-) -> Result<TextureId, imagery_fetcher::Error> {
-	let response = reqwest::get(url).await?;
-	let response = response.error_for_status()?;
+) -> Result<TextureId, IconError> {
+	let extension = file_name
+		.split(".")
+		.last()
+		.ok_or(IconError::InvalidFileExtension(file_name.to_string()))?;
+
+	let response = reqwest::get(url).await.map_err(imagery_fetcher::Error::Reqwest)?;
+	let response = response.error_for_status().map_err(imagery_fetcher::Error::Reqwest)?;
 	info!("{response:?}");
 
-	let bytes = response.bytes().await?;
-	imagery_fetcher::ImageryFetcher::create_texture(texture_manager, format!("icon {file_name}"), &bytes)
+	let bytes = response.bytes().await.map_err(imagery_fetcher::Error::Reqwest)?;
+	let color_image = decode_or_render(&extension, bytes)?;
+	Ok(imagery_fetcher::ImageryFetcher::create_texture_from_decoded(
+		texture_manager,
+		format!("icon {file_name}"),
+		color_image,
+	))
 }
 
 impl Styles {

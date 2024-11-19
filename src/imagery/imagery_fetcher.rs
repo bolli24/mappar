@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::io::Cursor;
 use std::num::NonZeroUsize;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
@@ -10,7 +11,7 @@ use epaint::textures::TextureOptions;
 use epaint::{ColorImage, ImageData, TextureId, TextureManager};
 #[cfg(target_arch = "wasm32")]
 use gloo_worker::{Spawnable, WorkerBridge};
-use image::{EncodableLayout, RgbaImage};
+use image::EncodableLayout;
 use log::error;
 use lru::LruCache;
 #[cfg(not(target_arch = "wasm32"))]
@@ -129,13 +130,14 @@ impl ImageryFetcher {
 						error!("Failed to decode image for tile: {:?}", tile);
 						return;
 					};
-					let Some(image) = RgbaImage::from_raw(256, 256, image_data) else {
+					let Some(image) = image::RgbaImage::from_raw(256, 256, image_data) else {
 						error!("Failed to create image for tile: {:?}", tile);
 						return;
 					};
 
-					let texture =
-						Self::create_texture_from_decoded(&texture_manager, tile_to_string(&output.0), &image);
+					let image = rgba_image_to_color_image(&image);
+
+					let texture = Self::create_texture_from_decoded(&texture_manager, tile_to_string(&output.0), image);
 					Self::store_texture(&texture_manager, &memory_cache, tile, texture);
 				})
 				.spawn("./dummy_worker.js"),
@@ -314,34 +316,35 @@ impl ImageryFetcher {
 			}
 		}
 	}
+	pub fn decode_image(bytes: &[u8]) -> Result<ColorImage, Error> {
+		let image = image::ImageReader::new(Cursor::new(bytes))
+			.with_guessed_format()?
+			.decode()?
+			.to_rgba8();
+		let image = rgba_image_to_color_image(&image);
+		Ok(image)
+	}
 
 	pub fn create_texture(
 		texture_manager: &Arc<RwLock<TextureManager>>,
 		name: String,
 		bytes: &Bytes,
 	) -> Result<TextureId, Error> {
-		use std::io::Cursor;
-
-		let image = image::ImageReader::new(Cursor::new(bytes))
-			.with_guessed_format()?
-			.decode()?
-			.to_rgba8();
-
-		Ok(Self::create_texture_from_decoded(texture_manager, name, &image))
+		Ok(Self::create_texture_from_decoded(
+			texture_manager,
+			name,
+			Self::decode_image(bytes)?,
+		))
 	}
 
-	fn create_texture_from_decoded(
+	pub fn create_texture_from_decoded(
 		texture_manager: &Arc<RwLock<TextureManager>>,
 		name: String,
-		image: &RgbaImage,
+		image: ColorImage,
 	) -> TextureId {
-		let color_image = Arc::new(ColorImage::from_rgba_unmultiplied(
-			[image.width() as usize, image.height() as usize],
-			image.as_bytes(),
-		));
 		texture_manager
 			.write()
-			.alloc(name, ImageData::Color(color_image), TextureOptions::LINEAR)
+			.alloc(name, ImageData::Color(Arc::new(image)), TextureOptions::LINEAR)
 	}
 
 	pub fn get_tile(&self, x: u32, y: u32, zoom: u32, fetch: bool) -> Option<TextureId> {
@@ -402,4 +405,8 @@ impl ImageryFetcher {
 			Some((tile.0 / 2, tile.1 / 2, tile.0 - 1))
 		}
 	}
+}
+
+fn rgba_image_to_color_image(image: &image::ImageBuffer<image::Rgba<u8>, Vec<u8>>) -> ColorImage {
+	ColorImage::from_rgba_unmultiplied([image.width() as usize, image.height() as usize], image.as_bytes())
 }
