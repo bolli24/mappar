@@ -5,7 +5,7 @@ before_script:
   - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
   - cargo binstall -y trunk
   - trunk --version
-  - wget -O brotli.deb http://http.us.debian.org/debian/pool/main/b/brotli/brotli_1.1.0-2+b6_amd64.deb && dpkg -i brotli.deb
+  - wget -O brotli.deb http://http.us.debian.org/debian/pool/main/b/brotli/brotli_1.0.9-2+b6_amd64.deb && dpkg -i brotli.deb
   - brotli --version
 pages:
   script:
