@@ -1,7 +1,6 @@
 use crate::imagery::imagery_fetcher;
-use crate::map::map_data::{Element, MapData, MapElement};
-use crate::map::render::ElementId;
-use crate::map::style::Style as MapStyle;
+use crate::map::map_data::{Element, ElementId, MapData, MapElement};
+use crate::ui::map_widget::style::Style as MapStyle;
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use egui::mutex::RwLock;
 use egui::{Color32, ColorImage, TextureOptions};
@@ -73,7 +72,7 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 		})
 		.ok()?;
 	#[cfg(target_arch = "wasm32")]
-	let css_string = include_str!("../assets/styles/default.mapcss").to_string();
+	let css_string = include_str!("../../../assets/styles/default.mapcss").to_string();
 
 	let css = parse_str(&css_string, PATH)?;
 

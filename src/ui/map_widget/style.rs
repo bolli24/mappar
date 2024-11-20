@@ -1,6 +1,5 @@
+use super::css::Icon;
 use egui::Color32;
-
-use crate::css::Icon;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Style {

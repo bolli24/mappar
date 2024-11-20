@@ -1,11 +1,14 @@
-use crate::css::{get_default_styles, Styles};
+use super::map_widget::css::Styles;
+use super::map_widget::render::DetailedElement;
+use super::map_widget::MapWidget;
 use crate::imagery::esri_imagery;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::map::api::get_data;
 use crate::map::map_data::{Bounds, LatLon, MapData};
-use crate::map::render::DetailedElement;
 use crate::ui::debug_text::DebugText;
-use crate::ui::map_widget::{MapMemory, MapState, MapWidget};
+use crate::ui::map_widget::css::get_default_styles;
+use crate::ui::map_widget::map_memory::MapMemory;
+use crate::ui::map_widget::MapState;
 use crate::ui::memory::Memory;
 use egui::{Id, ViewportCommand, Window};
 use log::{error, info};

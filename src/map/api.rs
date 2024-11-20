@@ -1,3 +1,5 @@
+use super::map_data::ElementId;
+use crate::map::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member, Tag};
 use log::{error, info, warn};
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesStart, Event};
@@ -10,8 +12,6 @@ use std::str::from_utf8;
 use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
-
-use crate::map::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member, Tag};
 
 #[cfg(not(debug_assertions))]
 const API_URL: &str = "https://api.openstreetmap.org";
@@ -138,10 +138,10 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					let (id, lat_lon, info) = parse_attributes(e.attributes())?;
 
 					data.add(MapElement {
+						id,
 						info,
 						element: Element::Node { pos: lat_lon? },
 						tags: Vec::new(),
-						id,
 					});
 				}
 				Event::Eof => {
@@ -158,8 +158,8 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 	Some(data)
 }
 
-fn parse_member(e: &BytesStart) -> (i64, String, ElementType) {
-	let mut ref_id: i64 = -1;
+fn parse_member(e: &BytesStart) -> (ElementId, String, ElementType) {
+	let mut ref_id = ElementId(-1);
 	let mut role = String::new();
 	let mut member_type = ElementType::Node;
 	for attr in e.attributes() {
@@ -204,10 +204,10 @@ fn parse_tag(tags: &mut Vec<Tag>, e: &BytesStart) {
 	}
 }
 
-fn parse_attributes(attributes: Attributes) -> Option<(i64, Option<LatLon>, ElementInfo)> {
+fn parse_attributes(attributes: Attributes) -> Option<(ElementId, Option<LatLon>, ElementInfo)> {
 	let mut lat = f64::NAN;
 	let mut lon = f64::NAN;
-	let mut id = 0;
+	let mut id = ElementId(0);
 	let mut info = ElementInfo::default();
 
 	for attr in attributes {

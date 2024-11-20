@@ -1,14 +1,12 @@
+use super::css::Styles;
+use super::style::Style;
+use super::View;
+use crate::map::map_data::{self, ElementId};
+use crate::map::map_data::{Element, MapData, MapElement};
+use crate::util::convert::ToPos2;
 use egui::{Color32, Pos2, Rect, Vec2};
 use glam::DVec2;
 use itertools::Itertools;
-
-use crate::css::Styles;
-use crate::map::map_data;
-use crate::map::map_data::{Element, MapData, MapElement};
-use crate::map::style::Style;
-use crate::ui::map_widget::{dvec2_to_pos, View};
-
-pub type ElementId = i64;
 
 #[derive(Debug, Clone)]
 pub struct DetailedElement {
@@ -34,7 +32,7 @@ pub type RenderPolygon = Vec<DVec2>;
 impl RenderElement {
 	pub fn bounding_box(&self) -> Rect {
 		match self {
-			Self::Node(pos) => Rect::from_center_size(dvec2_to_pos(*pos), Vec2::splat(2.0)),
+			Self::Node(pos) => Rect::from_center_size(pos.to_pos2(), Vec2::splat(2.0)),
 			Self::Path(nodes, _) => {
 				assert!(!nodes.is_empty(), "Empty way");
 				bounding_box_from_points(nodes)
@@ -127,9 +125,9 @@ impl DetailedElement {
 	pub fn in_box_selection(&self, rect: Rect) -> bool {
 		puffin::profile_function!();
 		match &self.element {
-			RenderElement::Node(pos) => rect.contains(dvec2_to_pos(*pos)),
+			RenderElement::Node(pos) => rect.contains(pos.to_pos2()),
 			RenderElement::Path(nodes, _) | RenderElement::Area(nodes, _) => {
-				nodes.iter().all(|n| rect.contains(dvec2_to_pos(*n)))
+				nodes.iter().all(|n| rect.contains(n.to_pos2()))
 			}
 			RenderElement::Collection(elements) => elements.iter().all(|e| e.in_box_selection(rect)),
 		}

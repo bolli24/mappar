@@ -3,8 +3,6 @@
 pub use ui::app::MyApp;
 
 pub mod imagery;
-
-mod css;
 mod map;
 mod ui;
 pub mod util;

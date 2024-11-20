@@ -604,9 +604,8 @@ fn update_vertex(v: &PartitionVertex, vertices: &[PartitionVertex]) {
 
 #[cfg(test)]
 mod tests {
+	use super::*;
 	use glam::DVec2;
-
-	use crate::map::polygon::Polygon;
 
 	#[test]
 	fn triangulate() {
@@ -656,7 +655,7 @@ mod tests {
 		];
 
 		let poly = Polygon::new(points, false);
-		let partition = poly.convex_partition().unwrap();
+		assert!(poly.convex_partition().is_some());
 	}
 
 	#[test]
@@ -670,6 +669,6 @@ mod tests {
 
 		let poly = Polygon::new(points, false);
 
-		assert_eq!(poly.get_orientation(), crate::map::polygon::Orientation::CCW);
+		assert_eq!(poly.get_orientation(), Orientation::CCW);
 	}
 }

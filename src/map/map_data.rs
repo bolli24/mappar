@@ -1,14 +1,15 @@
+use chrono::{DateTime, Utc};
+use glam::{dvec2, DVec2};
 use std::collections::hash_map::Values;
 use std::collections::HashMap;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
-use std::fmt::Debug;
-
-use chrono::{DateTime, Utc};
-use glam::{dvec2, DVec2};
+use std::fmt::{Debug, Display};
+use std::num::ParseIntError;
+use std::str::FromStr;
 
 #[derive(Debug)]
 pub struct MapData {
-	elements: HashMap<i64, MapElement>,
+	elements: HashMap<ElementId, MapElement>,
 }
 
 impl MapData {
@@ -22,11 +23,11 @@ impl MapData {
 		self.elements.insert(element.id, element);
 	}
 
-	pub fn get_element(&self, id: i64) -> Option<&MapElement> {
+	pub fn get_element(&self, id: ElementId) -> Option<&MapElement> {
 		self.elements.get(&id)
 	}
 
-	pub fn get_node_pos(&self, id: i64) -> Option<LatLon> {
+	pub fn get_node_pos(&self, id: ElementId) -> Option<LatLon> {
 		let e = self.elements.get(&id)?;
 		if let Element::Node { pos } = e.element {
 			return Some(pos);
@@ -34,7 +35,7 @@ impl MapData {
 		None
 	}
 
-	pub fn iter(&self) -> Values<'_, i64, MapElement> {
+	pub fn iter(&self) -> Values<'_, ElementId, MapElement> {
 		self.elements.values()
 	}
 
@@ -51,9 +52,9 @@ pub struct Tag {
 
 #[derive(Debug)]
 pub struct ElementInfo {
-	pub version: u64,
+	pub version: Version,
 	pub timestamp: DateTime<Utc>,
-	pub changeset: u64,
+	pub changeset: Version,
 	pub uid: Option<u32>,
 	pub user: Option<String>,
 	pub visible: bool,
@@ -62,9 +63,9 @@ pub struct ElementInfo {
 impl Default for ElementInfo {
 	fn default() -> Self {
 		Self {
-			version: 0,
+			version: Version(0),
 			timestamp: Utc::now(),
-			changeset: 0,
+			changeset: Version(0),
 			uid: None,
 			user: None,
 			visible: true,
@@ -170,7 +171,7 @@ impl MapElement {
 		}
 	}
 }
-pub const fn is_closed(nodes: &[i64]) -> bool {
+pub fn is_closed(nodes: &[ElementId]) -> bool {
 	nodes.len() >= 2 && nodes[0] == nodes[nodes.len() - 1]
 }
 
@@ -202,7 +203,7 @@ pub const AREA_TAGS: [(&str, Option<&str>); 5] = [
 
 #[derive(Debug)]
 pub struct MapElement {
-	pub id: i64,
+	pub id: ElementId,
 	pub info: ElementInfo,
 	pub element: Element,
 	pub tags: Vec<Tag>,
@@ -228,7 +229,7 @@ impl ElementType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Member {
-	pub ref_id: i64,
+	pub ref_id: ElementId,
 	pub element_type: ElementType,
 	pub role: String,
 }
@@ -236,8 +237,53 @@ pub struct Member {
 #[derive(Debug)]
 pub enum Element {
 	Node { pos: LatLon },
-	Way { nodes: Vec<i64> },
+	Way { nodes: Vec<ElementId> },
 	Relation { members: Vec<Member> },
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct ElementId(pub i64);
+
+impl Display for ElementId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.0)
+	}
+}
+
+impl From<i64> for ElementId {
+	fn from(value: i64) -> Self {
+		Self(value)
+	}
+}
+
+impl FromStr for ElementId {
+	type Err = ParseIntError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		i64::from_str(s).map(|value| value.into())
+	}
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Version(pub u64);
+impl Display for Version {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.0)
+	}
+}
+
+impl From<u64> for Version {
+	fn from(value: u64) -> Self {
+		Self(value)
+	}
+}
+
+impl FromStr for Version {
+	type Err = ParseIntError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		u64::from_str(s).map(|value| value.into())
+	}
 }
 
 #[cfg(test)]

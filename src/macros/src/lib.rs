@@ -10,7 +10,7 @@ pub fn memory_derive(input: TokenStream) -> TokenStream {
 	let name = &ast.ident;
 
 	let expanded = quote! {
-		use egui::Context;
+		use egui::{Context, Id};
 		impl<'a> Memory<'a> for #name {
 			fn load_or_default(ctx: &Context, id: Id) -> Self {
 				ctx.data_mut(|d| *d.get_persisted_mut_or(id, Self::default()))
