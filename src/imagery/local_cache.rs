@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use bytes::Bytes;
-use log::info;
+use log::{info, warn};
 use regex::Regex;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -31,25 +31,9 @@ impl LocalCache {
 		let mut cached_images = HashSet::new();
 
 		for file in files {
-			let file = file.expect("Failed to read file");
-			let file_name = file.file_name();
-			let file_name = file_name.to_str().expect("Failed to convert file name to string");
-			if !file_regex.is_match(file_name) {
-				info!("Cache: Skipping invalid file: {}", file_name);
-				continue;
+			if let Some(entry) = try_get_file(file, &file_regex) {
+				cached_images.insert(entry);
 			}
-			let file_end = file_name.split('.').last().unwrap();
-			let file_format = FileFormat::from(file_end);
-
-			let tile = file_name.split('.').take(1).collect::<Vec<&str>>()[0]
-				.split('_')
-				.collect::<Vec<&str>>();
-			let tile = (
-				tile[1].parse().unwrap(),
-				tile[2].parse().unwrap(),
-				tile[0].parse().unwrap(),
-			);
-			cached_images.insert((tile, file_format));
 		}
 
 		info!(
@@ -74,16 +58,41 @@ impl LocalCache {
 		))
 	}
 }
+
+// TODO: Maybe better error handling
+fn try_get_file(file: Result<std::fs::DirEntry, std::io::Error>, file_regex: &Regex) -> Option<(Tile, FileFormat)> {
+	let file = file.ok()?;
+	let file_name = file.file_name();
+	let file_name = file_name.to_str()?;
+	if !file_regex.is_match(file_name) {
+		warn!("Cache: Skipping invalid file: {}", file_name);
+		return None;
+	}
+	let file_end = file_name.split('.').last().unwrap();
+	let file_format = FileFormat::try_from(file_end).ok()?;
+	let tile = file_name.split('.').take(1).collect::<Vec<&str>>()[0]
+		.split('_')
+		.collect::<Vec<&str>>();
+	let tile = (
+		tile[1].parse().unwrap(),
+		tile[2].parse().unwrap(),
+		tile[0].parse().unwrap(),
+	);
+	Some((tile, file_format))
+}
+
+// TODO: Maybe better error handling
 impl Cache for LocalCache {
 	fn cached_count(&self) -> usize {
 		self.cached_images.len()
 	}
 
-	async fn save_image(&mut self, tile: Tile, image_data: &Bytes, file_format: FileFormat) {
+	async fn save_image(&mut self, tile: Tile, image_data: &Bytes, file_format: FileFormat) -> Option<()> {
 		let file_path = self.file_path(tile, file_format);
-		let mut file = File::create(file_path).await.expect("Failed to create file");
-		file.write_all(image_data).await.expect("Failed to write image data");
+		let mut file = File::create(file_path).await.ok()?;
+		file.write_all(image_data).await.ok()?;
 		self.cached_images.insert((tile, file_format));
+		Some(())
 	}
 
 	async fn get_image(&self, tile: Tile, file_format: FileFormat) -> Option<Bytes> {
@@ -92,7 +101,7 @@ impl Cache for LocalCache {
 		}
 
 		let file_path = self.file_path(tile, file_format);
-		let mut file = File::open(file_path).await.expect("Failed to open file");
+		let mut file = File::open(file_path).await.ok()?;
 
 		let mut image_data = Vec::new();
 		file.read_to_end(&mut image_data)
