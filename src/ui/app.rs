@@ -10,7 +10,7 @@ use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
 use crate::ui::map_widget::MapState;
 use crate::ui::memory::Memory;
-use egui::{Id, ScrollArea, Sides, ViewportCommand, Window};
+use egui::{Id, ScrollArea, Sides, Window};
 use log::{error, info};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use std::cell::RefCell;
@@ -55,7 +55,7 @@ impl MyApp {
 		#[cfg(target_arch = "wasm32")]
 		tokio::runtime::Builder::new_current_thread().build().unwrap();
 		#[cfg(not(target_arch = "wasm32"))]
-		cc.egui_ctx.send_viewport_cmd(ViewportCommand::Maximized(true));
+		cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
 
 		let bounds = Bounds {
 			min: LatLon(51.82887, 12.19731),
@@ -169,7 +169,7 @@ impl eframe::App for MyApp {
 							reload_styles = true
 						}
 						if ui.button("Quit").clicked() {
-							ctx.send_viewport_cmd(ViewportCommand::Close);
+							ctx.send_viewport_cmd(egui::ViewportCommand::Close);
 						}
 					}
 				});
