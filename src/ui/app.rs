@@ -10,7 +10,7 @@ use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
 use crate::ui::map_widget::MapState;
 use crate::ui::memory::Memory;
-use egui::{Id, ViewportCommand, Window};
+use egui::{Id, ScrollArea, Sides, ViewportCommand, Window};
 use log::{error, info};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use std::cell::RefCell;
@@ -46,6 +46,7 @@ pub struct MyApp {
 	last_update: Instant,
 	recent_frame_times: AllocRingBuffer<Duration>,
 	inspection: bool,
+	debug_panel: bool,
 }
 
 impl MyApp {
@@ -53,6 +54,7 @@ impl MyApp {
 	pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
 		#[cfg(target_arch = "wasm32")]
 		tokio::runtime::Builder::new_current_thread().build().unwrap();
+		#[cfg(not(target_arch = "wasm32"))]
 		cc.egui_ctx.send_viewport_cmd(ViewportCommand::Maximized(true));
 
 		let bounds = Bounds {
@@ -100,6 +102,7 @@ impl MyApp {
 			last_update: Instant::now(),
 			recent_frame_times: AllocRingBuffer::new(RECENT_FRAME_COUNT),
 			inspection: false,
+			debug_panel: false,
 		};
 
 		let map_data_sender = app.map_data.sender.clone();
@@ -142,13 +145,24 @@ impl eframe::App for MyApp {
 				{
 					reload_styles = true;
 				}
+				if let egui::Event::Key {
+					pressed: true,
+					key: egui::Key::F3,
+					repeat: false,
+					modifiers: egui::Modifiers::NONE,
+					..
+				} = e
+				{
+					self.debug_panel = !self.debug_panel;
+				}
 			}
 		});
 
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
 			egui::menu::bar(ui, |ui| {
 				ui.menu_button("File", |ui| {
-					ui.checkbox(&mut self.inspection, "Inspector");
+					ui.checkbox(&mut self.debug_panel, "Debug Panel");
+					ui.checkbox(&mut self.inspection, "Egui Inspector");
 					#[cfg(not(target_arch = "wasm32"))]
 					{
 						if ui.button("Reload Styles").clicked() {
@@ -170,27 +184,35 @@ impl eframe::App for MyApp {
 			self.styles = get_default_styles(ctx.tex_manager())
 		}
 
-		egui::SidePanel::right("debug_panel").min_width(240.0).show(ctx, |ui| {
-			ui.heading("Debug Panel");
-			let response = ui.add(self.debug_text.borrow().clone());
-			self.debug_text.borrow_mut().clear();
-			response
+		egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+			Sides::new().show(
+				ui,
+				|ui| ui.hyperlink("https://gitlab.com/bolli24/mappar"),
+				|ui| {
+					ui.spacing_mut().item_spacing.x = 0.0;
+					let commit_hash = env!("VERGEN_GIT_SHA");
+					if ui.link(&commit_hash[0..7]).clicked() {
+						ui.output_mut(|o| o.copied_text = commit_hash.to_string())
+					}
+					ui.label(format!("{}/", env!("CARGO_PKG_VERSION")));
+				},
+			);
 		});
 
+		if self.debug_panel {
+			egui::SidePanel::right("debug_panel")
+				.width_range(80.0..=400.0)
+				.show(ctx, |ui| {
+					ui.heading("Debug Panel");
+					ui.separator();
+					ScrollArea::vertical().show(ui, |ui| {
+						ui.add(self.debug_text.borrow().clone());
+						self.debug_text.borrow_mut().clear();
+					})
+				});
+		}
+
 		egui::CentralPanel::default().show(ctx, |ui| {
-			// The central panel the region left after adding TopPanel's and SidePanel's
-			/*ui.heading("eframe template");
-
-			ui.horizontal(|ui| {
-				ui.label("Write something: ");
-				ui.text_edit_singleline(&mut self.label);
-			});
-
-			ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-			if ui.button("Increment").clicked() {
-				self.value += 1.0;
-			}*/
-
 			ui.add(MapWidget::new(
 				&self.map_data.receiver.borrow(),
 				&mut self.styles,
@@ -198,26 +220,13 @@ impl eframe::App for MyApp {
 				self.map_widget_id,
 				self.debug_text.clone(),
 			));
-
-			/*ui.separator();
-
-			ui.add(egui::github_link_file!(
-				"https://github.com/emilk/eframe_template/blob/main/",
-				"Source code."
-			));
-
-			ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-				powered_by_egui_and_eframe(ui);
-				egui::warn_if_debug_build(ui);
-			});*/
 		});
 
-		Window::new("Inpector")
+		Window::new("Egui Inpector")
 			.open(&mut self.inspection)
 			.vscroll(true)
 			.show(ctx, |ui| ctx.inspection_ui(ui));
 
-		puffin::GlobalProfiler::lock().new_frame();
 		let last_frame = self.last_update.elapsed();
 		let last_frame_ms = last_frame.as_micros() as f32 / 1000.0;
 		self.recent_frame_times.push(last_frame);
@@ -242,18 +251,7 @@ impl eframe::App for MyApp {
 			1000.0 / average_ms,
 			worst_ms
 		));
-
+		puffin::GlobalProfiler::lock().new_frame();
 		self.last_update = Instant::now();
 	}
-}
-
-fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
-	ui.horizontal(|ui| {
-		ui.spacing_mut().item_spacing.x = 0.0;
-		ui.label("Powered by ");
-		ui.hyperlink_to("egui", "https://github.com/emilk/egui");
-		ui.label(" and ");
-		ui.hyperlink_to("eframe", "https://github.com/emilk/egui/tree/master/crates/eframe");
-		ui.label(".");
-	});
 }

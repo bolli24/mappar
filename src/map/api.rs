@@ -21,7 +21,7 @@ const API_URL: &str = "https://master.apis.dev.openstreetmap.org";
 
 const API_BOUNDING_BOX: &str = "/api/0.6/map?bbox=";
 
-const USER_AGENT: &str = "mappar/0.1-alpha";
+const USER_AGENT: &str = concat!("mappar/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -32,11 +32,13 @@ pub enum Error {
 	#[error("XML error")]
 	XML,
 }
+
 pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 	info!("Getting data from the API");
 	let start = Instant::now();
 	let url = format!("{}{}{}", API_URL, API_BOUNDING_BOX, bounds.as_string());
 	let client = Client::new();
+	info!("User-Agent: {USER_AGENT}");
 	let request = client.get(url).header("User-Agent", USER_AGENT).build()?;
 	let response = client.execute(request).await?;
 

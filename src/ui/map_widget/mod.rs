@@ -81,7 +81,7 @@ pub enum MapState {
 impl Widget for MapWidget<'_> {
 	#[allow(clippy::too_many_lines)]
 	fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-		ScrollArea::vertical()
+		ScrollArea::neither()
 			.show(ui, |ui| {
 				Frame::canvas(ui.style()).show(ui, |ui| {
 					puffin::profile_function!("Draw Map");
@@ -90,8 +90,9 @@ impl Widget for MapWidget<'_> {
 					let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 					ui.ctx().request_repaint();
 					let clip_rect = ui.clip_rect();
-					debug_text.add(format!("Clip Rect: {:?}", clip_rect));
+					debug_text.add(format!("Clip Rect: {clip_rect:?}"));
 					let viewport = response.interact_rect;
+					debug_text.add(format!("Viewport: {viewport:?}"));
 
 					let mut mem = MapMemory::load_or_default(&response.ctx, self.id);
 
@@ -304,7 +305,7 @@ fn draw_tiles(
 
 	for (x, y) in x_tiles.cartesian_product(y_tiles) {
 		puffin::profile_scope!("Draw Tile", format!("{x} {y}"));
-		// TODO don't fetch new tiles when moving fast
+		// TODO: don't fetch new tiles when moving fast
 		let tile = imagery_fetcher.get_tile(x, y, tile_zoom_level, true);
 		if let Some(image) = tile {
 			let coords = get_tile_pos(x, y, tile_zoom_level);

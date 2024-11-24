@@ -33,6 +33,6 @@ impl DebugText {
 
 impl Widget for DebugText {
 	fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-		ui.label(egui::RichText::new(self.get_string()).monospace().size(9.0))
+		ui.label(egui::RichText::new(self.get_string()).monospace().size(10.0))
 	}
 }

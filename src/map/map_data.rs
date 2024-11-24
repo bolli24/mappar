@@ -199,8 +199,8 @@ fn is_area_tag(key: &str, value: &str) -> bool {
 	})
 }
 
-// TODO Expand
-// TODO Maybe use perfect hash table or other better data structure
+// TODO: Expand
+// TODO: Maybe use perfect hash table or other better data structure
 pub const AREA_TAGS: [(&str, Option<&str>); 5] = [
 	("building", None),
 	("natural", Some("water")),
