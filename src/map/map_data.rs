@@ -1,11 +1,19 @@
 use chrono::{DateTime, Utc};
 use glam::{dvec2, DVec2};
+use mappar_macros::Id;
 use std::collections::hash_map::Values;
 use std::collections::HashMap;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
-use std::fmt::{Debug, Display};
-use std::num::ParseIntError;
-use std::str::FromStr;
+use std::fmt::Debug;
+
+#[derive(Id, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct ElementId(pub i64);
+
+#[derive(Id, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Version(pub u64);
+
+#[derive(Id, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct UserId(pub u32);
 
 #[derive(Debug)]
 pub struct MapData {
@@ -55,7 +63,7 @@ pub struct ElementInfo {
 	pub version: Version,
 	pub timestamp: DateTime<Utc>,
 	pub changeset: Version,
-	pub uid: Option<u32>,
+	pub uid: Option<UserId>,
 	pub user: Option<String>,
 	pub visible: bool,
 }
@@ -239,51 +247,6 @@ pub enum Element {
 	Node { pos: LatLon },
 	Way { nodes: Vec<ElementId> },
 	Relation { members: Vec<Member> },
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct ElementId(pub i64);
-
-impl Display for ElementId {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.0)
-	}
-}
-
-impl From<i64> for ElementId {
-	fn from(value: i64) -> Self {
-		Self(value)
-	}
-}
-
-impl FromStr for ElementId {
-	type Err = ParseIntError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		i64::from_str(s).map(|value| value.into())
-	}
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Version(pub u64);
-impl Display for Version {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.0)
-	}
-}
-
-impl From<u64> for Version {
-	fn from(value: u64) -> Self {
-		Self(value)
-	}
-}
-
-impl FromStr for Version {
-	type Err = ParseIntError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		u64::from_str(s).map(|value| value.into())
-	}
 }
 
 #[cfg(test)]
