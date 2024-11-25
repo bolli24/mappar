@@ -18,7 +18,7 @@ use egui::{
 use epaint::{PathShape, PathStroke, Rounding, Shape};
 use glam::{dvec2, uvec2, DVec2, UVec2};
 use itertools::Itertools;
-use map_memory::MapMemory;
+use map_memory::{MapMemory, Selection};
 use render::{DetailedElement, RenderElement};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -182,10 +182,18 @@ impl Widget for MapWidget<'_> {
 						}
 					};
 
-					if let Some(hover_element) = hover_element {
-						if response.clicked() {
-							self.mem.selected.clear();
-							self.mem.selected.insert(hover_element.id);
+					let Selection {
+						selected_elements,
+						new_tag,
+						..
+					} = &mut self.mem.selection;
+					if response.clicked() {
+						if let Some(hover_element) = hover_element {
+							selected_elements.clear();
+							selected_elements.insert(hover_element.id);
+						} else {
+							selected_elements.clear();
+							*new_tag = None;
 						}
 					}
 
@@ -199,7 +207,7 @@ impl Widget for MapWidget<'_> {
 						if hovered {
 							draw_element(&element.hovered(), &mut shapes, &view);
 						}
-						let selected = self.mem.selected.contains(&element.id);
+						let selected = self.mem.selection.selected_elements.contains(&element.id);
 						if selected {
 							// TODO: Selection Style
 							draw_element(&element.hovered(), &mut shapes, &view)

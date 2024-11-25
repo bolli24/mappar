@@ -1,14 +1,15 @@
 use super::map_widget::css::Styles;
+use super::map_widget::map_memory::Selection;
 use super::map_widget::render::DetailedElement;
 use super::map_widget::MapWidget;
 use crate::imagery::esri_imagery;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::map::api::get_data;
-use crate::map::map_data::{Bounds, LatLon, MapData};
+use crate::map::map_data::{Bounds, LatLon, MapData, Tag};
 use crate::ui::debug_text::DebugText;
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
-use egui::{Id, ScrollArea, Sides, Window};
+use egui::{Id, ScrollArea, Sides, TextEdit, Window};
 use egui_extras::{Column, TableBuilder};
 use log::{error, info};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -198,20 +199,29 @@ impl eframe::App for MyApp {
 				},
 			);
 		});
-
 		egui::SidePanel::right("edit_panel")
-			.width_range(80.0..=400.0)
+			.width_range(80.0..=800.0)
 			.show(ctx, |ui| {
+				let panel = ui.response().rect;
+				let column_width = (panel.width() * 0.5).clamp(80.0, 400.0);
 				let map_data = self.map_data.receiver.borrow();
-				let selected = self.map_memory.selected.iter().next();
+				let Selection {
+					selected_elements,
+					new_tag,
+					..
+				} = &mut self.map_memory.selection;
+				let selected = selected_elements.iter().next();
 				let tags = selected.and_then(|id| map_data.get(id)).map(|e| &e.tags);
 				let tag_count = tags.map_or(0, |t| t.len());
 
 				TableBuilder::new(ui)
-					.auto_shrink([false, false])
-					.column(Column::auto())
-					.column(Column::auto())
-					.header(12.0, |mut header| {
+					.id_salt("key_value_table")
+					.auto_shrink([false, true])
+					.striped(true)
+					// .sense(Sense::click_and_drag())
+					.column(Column::exact(column_width))
+					.column(Column::remainder())
+					.header(20.0, |mut header| {
 						header.col(|ui| {
 							ui.strong("Key");
 						});
@@ -223,7 +233,7 @@ impl eframe::App for MyApp {
 						let Some(tags) = tags else {
 							return;
 						};
-						body.rows(30.0, tag_count + 1, |mut row| {
+						body.rows(20.0, tag_count + 1, |mut row| {
 							let index = row.index();
 							if index < tag_count {
 								row.col(|ui| {
@@ -233,13 +243,17 @@ impl eframe::App for MyApp {
 									ui.label(&tags[index].value);
 								});
 							} else {
-								let mut key = "";
-								let mut value = "";
+								const COLUMN_MARGIN: f32 = 20.0; // FIXME: Make it so we don't need this for the side panel to be able to shrink
+								let Tag { key, value } = new_tag.get_or_insert(Default::default());
 								row.col(|ui| {
-									ui.text_edit_singleline(&mut key);
+									TextEdit::singleline(key)
+										.desired_width(column_width - COLUMN_MARGIN)
+										.show(ui);
 								});
 								row.col(|ui| {
-									ui.text_edit_singleline(&mut value);
+									TextEdit::singleline(value)
+										.desired_width(column_width - COLUMN_MARGIN)
+										.show(ui);
 								});
 							}
 						});

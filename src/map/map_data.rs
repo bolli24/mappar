@@ -57,7 +57,7 @@ impl MapData {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct Tag {
 	pub key: String,
 	pub value: String,

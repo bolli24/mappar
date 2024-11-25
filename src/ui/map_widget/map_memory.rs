@@ -1,24 +1,39 @@
 use std::collections::HashSet;
 
 use super::MapState;
-use crate::map::map_data::ElementId;
-use glam::{dvec2, DVec2};
+use crate::map::map_data::{ElementId, Tag};
+use glam::DVec2;
 
 #[derive(Debug, Clone)]
 pub struct MapMemory {
 	pub zoom_level: f64,
 	pub camera_pos: DVec2,
 	pub state: MapState,
-	pub selected: HashSet<ElementId>,
+	pub selection: Selection,
 }
 
 impl Default for MapMemory {
 	fn default() -> Self {
 		Self {
 			zoom_level: 1.0,
-			camera_pos: dvec2(0.0, 0.0),
+			camera_pos: DVec2::ZERO,
 			state: MapState::Default,
-			selected: HashSet::new(),
+			selection: Selection::default(),
 		}
+	}
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Selection {
+	pub selected_elements: HashSet<ElementId>,
+	pub selected_tags: HashSet<usize>,
+	pub new_tag: Option<Tag>,
+}
+
+impl Selection {
+	fn clear(&mut self) {
+		self.selected_elements.clear();
+		self.selected_tags.clear();
+		self.new_tag = None;
 	}
 }
