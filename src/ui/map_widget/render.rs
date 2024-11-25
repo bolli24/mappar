@@ -109,7 +109,7 @@ impl DetailedElement {
 
 		let style = styles
 			.as_mut()
-			.map(|styles| styles.get_style(map_element, map_data))
+			.map(|styles| styles.get_style(map_element))
 			.unwrap_or_default();
 
 		render_data.push(Self {

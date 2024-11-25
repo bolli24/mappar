@@ -1,5 +1,5 @@
 use crate::imagery::imagery_fetcher;
-use crate::map::map_data::{Element, ElementId, MapData, MapElement};
+use crate::map::map_data::{Element, ElementId, MapElement};
 use crate::ui::map_widget::style::Style as MapStyle;
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use egui::mutex::RwLock;
@@ -279,20 +279,20 @@ async fn fetch_icon(
 }
 
 impl Styles {
-	pub fn get_style(&mut self, element: &MapElement, map_data: &MapData) -> MapStyle {
+	pub fn get_style(&mut self, element: &MapElement) -> MapStyle {
 		/* if !self.styles.contains_key(&element.id) {
 			let style = self.create_style(element, map_data);
 			self.styles.insert(element.id, style);
 		}
 
 		&self.styles[&element.id] */
-		self.create_style(element, map_data)
+		self.create_style(element)
 	}
 
-	fn create_style(&mut self, element: &MapElement, map_data: &MapData) -> MapStyle {
+	fn create_style(&mut self, element: &MapElement) -> MapStyle {
 		let mut style = MapStyle::default();
 
-		let stylesets = matching_rules(&self.css, map_data.get_element(element.id).unwrap());
+		let stylesets = matching_rules(&self.css, element);
 		// TODO: sort styles
 		for Styleset { rules, .. } in stylesets {
 			self.apply_rules(&mut style, rules);

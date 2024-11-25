@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use glam::{dvec2, DVec2};
 use mappar_macros::Id;
-use std::collections::hash_map::Values;
 use std::collections::HashMap;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 use std::fmt::Debug;
@@ -17,38 +16,65 @@ pub struct UserId(pub u32);
 
 #[derive(Debug)]
 pub struct MapData {
-	elements: HashMap<ElementId, MapElement>,
+	nodes: HashMap<ElementId, MapElement>,
+	ways: HashMap<ElementId, MapElement>,
+	relations: HashMap<ElementId, MapElement>,
 }
 
 impl MapData {
 	pub fn new() -> Self {
 		Self {
-			elements: HashMap::new(),
+			nodes: HashMap::new(),
+			ways: HashMap::new(),
+			relations: HashMap::new(),
 		}
 	}
 
 	pub fn add(&mut self, element: MapElement) {
-		self.elements.insert(element.id, element);
+		match &element.element {
+			Element::Node { .. } => self.nodes.insert(element.id, element),
+			Element::Way { .. } => self.ways.insert(element.id, element),
+			Element::Relation { .. } => self.relations.insert(element.id, element),
+		};
 	}
 
-	pub fn get_element(&self, id: ElementId) -> Option<&MapElement> {
-		self.elements.get(&id)
+	pub fn add_node(&mut self, element: MapElement) {
+		self.nodes.insert(element.id, element);
+	}
+	pub fn add_way(&mut self, element: MapElement) {
+		self.ways.insert(element.id, element);
+	}
+	pub fn add_relation(&mut self, element: MapElement) {
+		self.relations.insert(element.id, element);
+	}
+
+	pub fn get_node(&self, id: &ElementId) -> Option<&MapElement> {
+		self.nodes.get(id)
+	}
+	pub fn get_way(&self, id: &ElementId) -> Option<&MapElement> {
+		self.ways.get(id)
+	}
+	pub fn get_relation(&self, id: &ElementId) -> Option<&MapElement> {
+		self.relations.get(id)
 	}
 
 	pub fn get_node_pos(&self, id: ElementId) -> Option<LatLon> {
-		let e = self.elements.get(&id)?;
+		let e = self.nodes.get(&id)?;
 		if let Element::Node { pos } = e.element {
 			return Some(pos);
 		}
 		None
 	}
 
-	pub fn iter(&self) -> Values<'_, ElementId, MapElement> {
-		self.elements.values()
+	pub fn iter(&self) -> impl Iterator<Item = &MapElement> {
+		self.relations
+			.values()
+			.chain(self.ways.values())
+			.chain(self.nodes.values())
 	}
 
 	pub fn len(&self) -> usize {
-		self.elements.len()
+		self.nodes.len() + self.ways.len() + self.relations.len()
 	}
 }
 
