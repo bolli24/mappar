@@ -8,9 +8,8 @@ use crate::map::map_data::{Bounds, LatLon, MapData};
 use crate::ui::debug_text::DebugText;
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
-use crate::ui::map_widget::MapState;
-use crate::ui::memory::Memory;
 use egui::{Id, ScrollArea, Sides, Window};
+use egui_extras::{Column, TableBuilder};
 use log::{error, info};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use std::cell::RefCell;
@@ -47,6 +46,7 @@ pub struct MyApp {
 	recent_frame_times: AllocRingBuffer<Duration>,
 	inspection: bool,
 	debug_panel: bool,
+	map_memory: MapMemory,
 }
 
 impl MyApp {
@@ -68,12 +68,11 @@ impl MyApp {
 		info!("Camera: {:?}", LatLon::from_web_mercator(camera_pos));
 
 		let map_widget_id = Id::new("map_widget");
-		let map_mem = MapMemory {
+		let map_memory = MapMemory {
 			camera_pos: glam::dvec2(camera_pos.x, camera_pos.y),
 			zoom_level: 15.0,
-			state: MapState::Default,
+			..Default::default()
 		};
-		map_mem.store(&cc.egui_ctx, map_widget_id);
 
 		#[cfg(not(target_arch = "wasm32"))]
 		let imagery_fetcher = {
@@ -103,6 +102,7 @@ impl MyApp {
 			recent_frame_times: AllocRingBuffer::new(RECENT_FRAME_COUNT),
 			inspection: false,
 			debug_panel: false,
+			map_memory,
 		};
 
 		let map_data_sender = app.map_data.sender.clone();
@@ -199,6 +199,53 @@ impl eframe::App for MyApp {
 			);
 		});
 
+		egui::SidePanel::right("edit_panel")
+			.width_range(80.0..=400.0)
+			.show(ctx, |ui| {
+				let map_data = self.map_data.receiver.borrow();
+				let selected = self.map_memory.selected.iter().next();
+				let tags = selected.and_then(|id| map_data.get(id)).map(|e| &e.tags);
+				let tag_count = tags.map_or(0, |t| t.len());
+
+				TableBuilder::new(ui)
+					.auto_shrink([false, false])
+					.column(Column::auto())
+					.column(Column::auto())
+					.header(12.0, |mut header| {
+						header.col(|ui| {
+							ui.strong("Key");
+						});
+						header.col(|ui| {
+							ui.strong("Value");
+						});
+					})
+					.body(|body| {
+						let Some(tags) = tags else {
+							return;
+						};
+						body.rows(30.0, tag_count + 1, |mut row| {
+							let index = row.index();
+							if index < tag_count {
+								row.col(|ui| {
+									ui.label(&tags[index].key);
+								});
+								row.col(|ui| {
+									ui.label(&tags[index].value);
+								});
+							} else {
+								let mut key = "";
+								let mut value = "";
+								row.col(|ui| {
+									ui.text_edit_singleline(&mut key);
+								});
+								row.col(|ui| {
+									ui.text_edit_singleline(&mut value);
+								});
+							}
+						});
+					});
+			});
+
 		if self.debug_panel {
 			egui::SidePanel::right("debug_panel")
 				.width_range(80.0..=400.0)
@@ -219,6 +266,7 @@ impl eframe::App for MyApp {
 				self.imagery_fetcher.clone(),
 				self.map_widget_id,
 				self.debug_text.clone(),
+				&mut self.map_memory,
 			));
 		});
 

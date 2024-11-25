@@ -92,16 +92,15 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 								b"nd" => {
 									let node_ref = e.attributes().next()?.ok()?;
 									if node_ref.key.as_ref() == b"ref" {
-										nodes.push(from_utf8(&node_ref.value).ok()?.parse().ok()?);
+										nodes.push(ElementId(
+											from_utf8(&node_ref.value).ok()?.parse().ok()?,
+											ElementType::Node,
+										));
 									}
 								}
 								b"member" => {
-									let (ref_id, role, member_type) = parse_member(e);
-									members.push(Member {
-										ref_id,
-										element_type: member_type,
-										role,
-									});
+									let (ref_id, role) = parse_member(e);
+									members.push(Member { ref_id, role });
 								}
 								name => {
 									warn!("Unknown tag: {:?}", from_utf8(name).ok()?);
@@ -116,17 +115,17 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 
 					let (id, lat_lon, info) = parse_attributes(attributes)?;
 
-					let element = match e.name().as_ref() {
-						b"node" => Element::Node { pos: lat_lon? },
-						b"way" => Element::Way { nodes },
-						b"relation" => Element::Relation { members },
+					let (element, element_type) = match e.name().as_ref() {
+						b"node" => (Element::Node { pos: lat_lon? }, ElementType::Node),
+						b"way" => (Element::Way { nodes }, ElementType::Way),
+						b"relation" => (Element::Relation { members }, ElementType::Relation),
 						_ => {
 							warn!("Unknown element type: {e:?}");
 							continue;
 						}
 					};
 					data.add(MapElement {
-						id,
+						id: ElementId(id, element_type),
 						info,
 						element,
 						tags,
@@ -140,7 +139,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					let (id, lat_lon, info) = parse_attributes(e.attributes())?;
 
 					data.add(MapElement {
-						id,
+						id: ElementId(id, ElementType::Node),
 						info,
 						element: Element::Node { pos: lat_lon? },
 						tags: Vec::new(),
@@ -160,20 +159,19 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 	Some(data)
 }
 
-fn parse_member(e: &BytesStart) -> (ElementId, String, ElementType) {
-	let mut ref_id = ElementId(-1);
+fn parse_member(e: &BytesStart) -> (ElementId, String) {
+	let mut ref_id = ElementId(-1, ElementType::Node);
 	let mut role = String::new();
-	let mut member_type = ElementType::Node;
 	for attr in e.attributes() {
 		let attr = attr.unwrap();
 		match attr.key.as_ref() {
 			b"ref" => {
-				ref_id = from_utf8(attr.value.as_ref()).unwrap().parse().unwrap();
+				ref_id.0 = from_utf8(attr.value.as_ref()).unwrap().parse().unwrap();
 			}
 			b"role" => {
 				role = from_utf8(attr.value.as_ref()).unwrap().to_string();
 			}
-			b"type" => member_type = ElementType::from_str(from_utf8(attr.value.as_ref()).unwrap()).unwrap(),
+			b"type" => ref_id.1 = ElementType::from_str(from_utf8(attr.value.as_ref()).unwrap()).unwrap(),
 			_ => {
 				error!(
 					"Unknown attribute on relation member: {:?}=\"{:?}\"",
@@ -182,7 +180,7 @@ fn parse_member(e: &BytesStart) -> (ElementId, String, ElementType) {
 			}
 		}
 	}
-	(ref_id, role, member_type)
+	(ref_id, role)
 }
 
 fn parse_tag(tags: &mut Vec<Tag>, e: &BytesStart) {
@@ -206,10 +204,10 @@ fn parse_tag(tags: &mut Vec<Tag>, e: &BytesStart) {
 	}
 }
 
-fn parse_attributes(attributes: Attributes) -> Option<(ElementId, Option<LatLon>, ElementInfo)> {
+fn parse_attributes(attributes: Attributes) -> Option<(i64, Option<LatLon>, ElementInfo)> {
 	let mut lat = f64::NAN;
 	let mut lon = f64::NAN;
-	let mut id = ElementId(0);
+	let mut id = 0;
 	let mut info = ElementInfo::default();
 
 	for attr in attributes {

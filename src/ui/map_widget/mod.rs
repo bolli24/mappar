@@ -8,7 +8,6 @@ mod style;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::map::map_data::{Element, LatLon, MapData, CIRCUMFERENCE_EARTH};
 use crate::ui::debug_text::DebugText;
-use crate::ui::memory::Memory;
 use crate::util::convert::{ToDVec2, ToPos2};
 use css::Styles;
 use draw_list::DrawList;
@@ -37,6 +36,7 @@ pub struct MapWidget<'a> {
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	id: Id,
 	debug_text: Rc<RefCell<DebugText>>,
+	mem: &'a mut MapMemory,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -60,6 +60,7 @@ impl<'a> MapWidget<'a> {
 		imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 		id: Id,
 		debug_text: Rc<RefCell<DebugText>>,
+		mem: &'a mut MapMemory,
 	) -> Self {
 		Self {
 			map_data,
@@ -67,6 +68,7 @@ impl<'a> MapWidget<'a> {
 			imagery_fetcher,
 			id,
 			debug_text,
+			mem,
 		}
 	}
 }
@@ -94,8 +96,6 @@ impl Widget for MapWidget<'_> {
 					let viewport = response.interact_rect;
 					debug_text.add(format!("Viewport: {viewport:?}"));
 
-					let mut mem = MapMemory::load_or_default(&response.ctx, self.id);
-
 					let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y as f64;
 					if zoom != 0.0
 						&& response.ctx.input(|i| {
@@ -105,11 +105,11 @@ impl Widget for MapWidget<'_> {
 								.unwrap_or(false)
 						}) {
 						// TODO: fix zoom speed on chrome
-						mem.zoom_level += zoom / 1000.0 * ZOOM_SPEED;
-						mem.zoom_level = mem.zoom_level.clamp(1.0, 25.0);
+						self.mem.zoom_level += zoom / 1000.0 * ZOOM_SPEED;
+						self.mem.zoom_level = self.mem.zoom_level.clamp(1.0, 25.0);
 					}
 
-					let scale = scale(mem.zoom_level);
+					let scale = scale(self.mem.zoom_level);
 
 					if response.dragged_by(PointerButton::Middle)
 						|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
@@ -121,17 +121,17 @@ impl Widget for MapWidget<'_> {
 						let delta = response.drag_delta();
 						let delta = delta * scale as f32;
 						let delta = dvec2(f64::from(delta.x), -f64::from(delta.y));
-						mem.camera_pos -= delta;
+						self.mem.camera_pos -= delta;
 					}
 
-					debug_text.add(format!("Camera: {:?}", mem.camera_pos));
-					debug_text.add(format!("Zoom: {}", mem.zoom_level));
+					debug_text.add(format!("Camera: {:?}", self.mem.camera_pos));
+					debug_text.add(format!("Zoom: {}", self.mem.zoom_level));
 					debug_text.add(format!("Scale: {scale}"));
 					debug_text.add(format!("UI Scale: {ui_scale}"));
 
 					let camera_rect = viewport.translate(-viewport.size() / 2.0) * scale as f32;
 					let transform = RectTransform::from_to(camera_rect, viewport);
-					let world_corners = get_world_corners(viewport, mem.camera_pos, scale);
+					let world_corners = get_world_corners(viewport, self.mem.camera_pos, scale);
 					let world_view_rect = Rect::from_two_pos(world_corners.0.to_pos2(), world_corners.1.to_pos2());
 
 					debug_text.add(format!("World View Rect: {:?}", world_view_rect));
@@ -140,7 +140,7 @@ impl Widget for MapWidget<'_> {
 						response
 							.ctx
 							.input(|i| i.pointer.latest_pos())
-							.map(|pos| get_world_pos(pos, viewport, mem.camera_pos, scale))
+							.map(|pos| get_world_pos(pos, viewport, self.mem.camera_pos, scale))
 					} else {
 						None
 					};
@@ -149,10 +149,10 @@ impl Widget for MapWidget<'_> {
 					let view = View {
 						transform,
 						viewport,
-						camera_pos: mem.camera_pos,
+						camera_pos: self.mem.camera_pos,
 						world_view_rect,
 						scale,
-						zoom_level: mem.zoom_level,
+						zoom_level: self.mem.zoom_level,
 						ui_scale,
 						pointer_pos,
 					};
@@ -182,6 +182,13 @@ impl Widget for MapWidget<'_> {
 						}
 					};
 
+					if let Some(hover_element) = hover_element {
+						if response.clicked() {
+							self.mem.selected.clear();
+							self.mem.selected.insert(hover_element.id);
+						}
+					}
+
 					debug_text.add(format!("Closest element: {:?}", hover_element.map(|e| e.id)));
 					debug_text.add(format!("Select threshold: {select_threshold:.3}"));
 
@@ -192,6 +199,11 @@ impl Widget for MapWidget<'_> {
 						if hovered {
 							draw_element(&element.hovered(), &mut shapes, &view);
 						}
+						let selected = self.mem.selected.contains(&element.id);
+						if selected {
+							// TODO: Selection Style
+							draw_element(&element.hovered(), &mut shapes, &view)
+						}
 						draw_element(element, &mut shapes, &view);
 					}
 
@@ -199,7 +211,6 @@ impl Widget for MapWidget<'_> {
 
 					shapes.draw(&painter);
 
-					mem.store(&response.ctx, self.id);
 					response
 				})
 			})
