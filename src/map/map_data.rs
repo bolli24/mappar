@@ -40,6 +40,10 @@ impl MapData {
 		self.elements.get(id)
 	}
 
+	pub fn get_mut(&mut self, id: &ElementId) -> Option<&mut MapElement> {
+		self.elements.get_mut(id)
+	}
+
 	pub fn get_node_pos(&self, id: ElementId) -> Option<LatLon> {
 		let e = self.get(&id)?;
 		if let Element::Node { pos } = e.element {

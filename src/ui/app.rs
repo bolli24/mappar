@@ -1,16 +1,15 @@
+use super::key_value_table::KeyValueTable;
 use super::map_widget::css::Styles;
-use super::map_widget::map_memory::Selection;
 use super::map_widget::render::DetailedElement;
 use super::map_widget::MapWidget;
 use crate::imagery::esri_imagery;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::map::api::get_data;
-use crate::map::map_data::{Bounds, LatLon, MapData, Tag};
+use crate::map::map_data::{Bounds, LatLon, MapData};
 use crate::ui::debug_text::DebugText;
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
-use egui::{Id, ScrollArea, Sides, TextEdit, Window};
-use egui_extras::{Column, TableBuilder};
+use egui::{Id, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use std::cell::RefCell;
@@ -37,7 +36,7 @@ impl<T> From<(Sender<T>, Receiver<T>)> for Channel<T> {
 const RECENT_FRAME_COUNT: usize = 1000;
 
 pub struct MyApp {
-	map_data: Channel<MapData>,
+	map_data: Arc<Mutex<MapData>>,
 	styles: Option<Styles>,
 	render_data: Channel<Vec<DetailedElement>>,
 	map_widget_id: Id,
@@ -93,7 +92,7 @@ impl MyApp {
 		)));
 
 		let app = Self {
-			map_data: channel(MapData::new()).into(),
+			map_data: Arc::new(Mutex::new(MapData::new())),
 			styles: get_default_styles(cc.egui_ctx.tex_manager().clone()),
 			render_data: channel(Vec::new()).into(),
 			imagery_fetcher,
@@ -106,12 +105,13 @@ impl MyApp {
 			map_memory,
 		};
 
-		let map_data_sender = app.map_data.sender.clone();
+		let map_data = app.map_data.clone();
 		let closure = async move {
-			let map_data = get_data(bounds).await;
-			match map_data {
-				Ok(map_data) => {
-					map_data_sender.send(map_data).unwrap();
+			let new_map_data = get_data(bounds).await;
+			match new_map_data {
+				Ok(new_map_data) => {
+					let mut data = map_data.lock().unwrap();
+					*data = new_map_data;
 				}
 				Err(err) => {
 					error!("Error fetching data:");
@@ -202,62 +202,7 @@ impl eframe::App for MyApp {
 		egui::SidePanel::right("edit_panel")
 			.width_range(80.0..=800.0)
 			.show(ctx, |ui| {
-				let panel = ui.response().rect;
-				let column_width = (panel.width() * 0.5).clamp(80.0, 400.0);
-				let map_data = self.map_data.receiver.borrow();
-				let Selection {
-					selected_elements,
-					new_tag,
-					..
-				} = &mut self.map_memory.selection;
-				let selected = selected_elements.iter().next();
-				let tags = selected.and_then(|id| map_data.get(id)).map(|e| &e.tags);
-				let tag_count = tags.map_or(0, |t| t.len());
-
-				TableBuilder::new(ui)
-					.id_salt("key_value_table")
-					.auto_shrink([false, true])
-					.striped(true)
-					// .sense(Sense::click_and_drag())
-					.column(Column::exact(column_width))
-					.column(Column::remainder())
-					.header(20.0, |mut header| {
-						header.col(|ui| {
-							ui.strong("Key");
-						});
-						header.col(|ui| {
-							ui.strong("Value");
-						});
-					})
-					.body(|body| {
-						let Some(tags) = tags else {
-							return;
-						};
-						body.rows(20.0, tag_count + 1, |mut row| {
-							let index = row.index();
-							if index < tag_count {
-								row.col(|ui| {
-									ui.label(&tags[index].key);
-								});
-								row.col(|ui| {
-									ui.label(&tags[index].value);
-								});
-							} else {
-								const COLUMN_MARGIN: f32 = 20.0; // FIXME: Make it so we don't need this for the side panel to be able to shrink
-								let Tag { key, value } = new_tag.get_or_insert(Default::default());
-								row.col(|ui| {
-									TextEdit::singleline(key)
-										.desired_width(column_width - COLUMN_MARGIN)
-										.show(ui);
-								});
-								row.col(|ui| {
-									TextEdit::singleline(value)
-										.desired_width(column_width - COLUMN_MARGIN)
-										.show(ui);
-								});
-							}
-						});
-					});
+				KeyValueTable::new(self.map_data.clone(), &mut self.map_memory.selection).ui(ui);
 			});
 
 		if self.debug_panel {
@@ -275,7 +220,7 @@ impl eframe::App for MyApp {
 
 		egui::CentralPanel::default().show(ctx, |ui| {
 			ui.add(MapWidget::new(
-				&self.map_data.receiver.borrow(),
+				&self.map_data.lock().unwrap(),
 				&mut self.styles,
 				self.imagery_fetcher.clone(),
 				self.map_widget_id,
