@@ -13,6 +13,8 @@ use egui::{Id, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use std::cell::RefCell;
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -47,6 +49,8 @@ pub struct MyApp {
 	inspection: bool,
 	debug_panel: bool,
 	map_memory: MapMemory,
+	#[cfg(not(target_arch = "wasm32"))]
+	storage_dir: PathBuf,
 }
 
 impl MyApp {
@@ -73,10 +77,12 @@ impl MyApp {
 			zoom_level: 15.0,
 			..Default::default()
 		};
+		#[cfg(not(target_arch = "wasm32"))]
+		let storage_dir = eframe::storage_dir(Self::APP_NAME).expect("Failed to get storage dir");
 
 		#[cfg(not(target_arch = "wasm32"))]
 		let imagery_fetcher = {
-			let mut cache_path = eframe::storage_dir(Self::APP_NAME).expect("Failed to get storage dir");
+			let mut cache_path = storage_dir.clone();
 			cache_path.push("cache");
 			Arc::new(Mutex::new(ImageryFetcher::new(
 				esri_imagery(),
@@ -103,6 +109,8 @@ impl MyApp {
 			inspection: false,
 			debug_panel: false,
 			map_memory,
+			#[cfg(not(target_arch = "wasm32"))]
+			storage_dir,
 		};
 
 		let map_data = app.map_data.clone();
@@ -168,6 +176,10 @@ impl eframe::App for MyApp {
 					{
 						if ui.button("Reload Styles").clicked() {
 							reload_styles = true
+						}
+						if ui.button("Open Config Folder").clicked() {
+							open::that(&self.storage_dir)
+								.unwrap_or_else(|e| error!("Couldn't open config folder: {e}"));
 						}
 						if ui.button("Quit").clicked() {
 							ctx.send_viewport_cmd(egui::ViewportCommand::Close);
