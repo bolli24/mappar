@@ -115,7 +115,7 @@ impl DetailedElement {
 		render_data.push(Self {
 			id: map_element.id,
 			bounding_box,
-			pointer_distance: element.distance(view.pointer_pos),
+			pointer_distance: element.distance(view.pointer_world_pos),
 			pointer_threshold: f64::from(style.size),
 			element,
 			style,

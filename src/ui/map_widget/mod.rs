@@ -13,7 +13,8 @@ use css::Styles;
 use draw_list::DrawList;
 use eframe::emath::RectTransform;
 use egui::{
-	pos2, vec2, Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, ScrollArea, Sense, Vec2, Widget,
+	pos2, vec2, Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, Response, ScrollArea, Sense, Vec2,
+	Widget,
 };
 use epaint::{PathShape, PathStroke, Rounding, Shape};
 use glam::{dvec2, uvec2, DVec2, UVec2};
@@ -48,7 +49,7 @@ pub struct View {
 	pub zoom_level: f64,
 	pub scale: f64,
 	pub ui_scale: f32,
-	pub pointer_pos: Option<DVec2>,
+	pub pointer_world_pos: Option<DVec2>,
 }
 
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
@@ -97,16 +98,17 @@ impl Widget for MapWidget<'_> {
 					debug_text.add(format!("Viewport: {viewport:?}"));
 
 					let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y as f64;
-					if zoom != 0.0
-						&& response.ctx.input(|i| {
-							i.pointer
-								.latest_pos()
-								.map(|p| response.rect.contains(p))
-								.unwrap_or(false)
-						}) {
+					if zoom != 0.0 && response.contains_pointer() {
 						// TODO: fix zoom speed on chrome
-						self.mem.zoom_level += zoom / 1000.0 * ZOOM_SPEED;
+						let zoom_diff = zoom / 1000.0 * ZOOM_SPEED;
+						self.mem.zoom_level += zoom_diff;
 						self.mem.zoom_level = self.mem.zoom_level.clamp(1.0, 25.0);
+						if let Some(pointer_world_pos) =
+							pointer_world_pos(self.mem.camera_pos, &response, viewport, scale(self.mem.zoom_level))
+						{
+							let camera_diff = pointer_world_pos - self.mem.camera_pos;
+							self.mem.camera_pos += camera_diff * zoom_diff * 0.69; // No idea why the funny number is right here
+						}
 					}
 
 					let scale = scale(self.mem.zoom_level);
@@ -115,9 +117,6 @@ impl Widget for MapWidget<'_> {
 						|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
 							&& response.dragged_by(PointerButton::Primary))
 					{
-						#[cfg(not(target_arch = "wasm32"))]
-						let delta = response.drag_delta();
-						#[cfg(target_arch = "wasm32")]
 						let delta = response.drag_delta();
 						let delta = delta * scale as f32;
 						let delta = dvec2(f64::from(delta.x), -f64::from(delta.y));
@@ -133,19 +132,14 @@ impl Widget for MapWidget<'_> {
 					let transform = RectTransform::from_to(camera_rect, viewport);
 					let world_corners = get_world_corners(viewport, self.mem.camera_pos, scale);
 					let world_view_rect = Rect::from_two_pos(world_corners.0.to_pos2(), world_corners.1.to_pos2());
+					let pointer_world_pos = pointer_world_pos(self.mem.camera_pos, &response, viewport, scale); // We get this here again to reduce latency
 
 					debug_text.add(format!("World View Rect: {:?}", world_view_rect));
+					debug_text.add(format!(
+						"Pointer Pos: {:?}",
+						pointer_world_pos.map(|p| p.round().as_ivec2())
+					));
 
-					let pointer_pos = if response.contains_pointer() {
-						response
-							.ctx
-							.input(|i| i.pointer.latest_pos())
-							.map(|pos| get_world_pos(pos, viewport, self.mem.camera_pos, scale))
-					} else {
-						None
-					};
-
-					debug_text.add(format!("Pointer Pos: {:?}", pointer_pos.map(|p| p.round().as_ivec2())));
 					let view = View {
 						transform,
 						viewport,
@@ -154,7 +148,7 @@ impl Widget for MapWidget<'_> {
 						scale,
 						zoom_level: self.mem.zoom_level,
 						ui_scale,
-						pointer_pos,
+						pointer_world_pos,
 					};
 
 					draw_tiles(&painter, &self.imagery_fetcher, &view, &mut debug_text);
@@ -176,7 +170,7 @@ impl Widget for MapWidget<'_> {
 
 					let hover_element = {
 						puffin::profile_scope!("Get hover element");
-						match pointer_pos {
+						match pointer_world_pos {
 							Some(_) => closest_element(&render_data, &scale),
 							None => None,
 						}
@@ -226,6 +220,8 @@ impl Widget for MapWidget<'_> {
 			.response
 	}
 }
+
+impl<'a> MapWidget<'a> {}
 
 #[inline]
 fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View) {
@@ -418,9 +414,22 @@ fn get_world_corners(viewport: Rect, camera_pos: DVec2, scale: f64) -> (DVec2, D
 	(camera_pos - half, camera_pos + half)
 }
 
-fn get_world_pos(pos: Pos2, view: Rect, camera_pos: DVec2, scale: f64) -> DVec2 {
+fn view_to_world_pos(pos: Pos2, view: Rect, camera_pos: DVec2, scale: f64) -> DVec2 {
 	let pos = pos - view.size() * 0.5;
 	(dvec2(pos.x as f64, -pos.y as f64)) * scale + dvec2(camera_pos.x, camera_pos.y)
+}
+
+fn pointer_world_pos(camera_pos: DVec2, response: &Response, viewport: Rect, scale: f64) -> Option<DVec2> {
+	let pointer_world_pos = response
+		.contains_pointer()
+		.then(|| {
+			response
+				.ctx
+				.input(|i| i.pointer.latest_pos())
+				.map(|pos| view_to_world_pos(pos, viewport, camera_pos, scale))
+		})
+		.flatten();
+	pointer_world_pos
 }
 
 fn get_tile_bound(view: Rect, camera_pos: DVec2, scale: f64) -> (DVec2, DVec2) {
