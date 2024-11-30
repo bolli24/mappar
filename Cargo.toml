@@ -62,7 +62,6 @@ tokio = { version = "1.41.1", features = [
 ] }
 flate2 = "1.0"
 tar = "0.4"
-directories = "5.0"
 open = "5.3.1"
 
 # web:
@@ -77,16 +76,16 @@ tokio = { version = "1.41.1", default-features = false, features = [
     "sync",
     "rt",
 ] }
-js-sys = "0.3.72"
-web-sys = { version = "0.3.72", features = [
+js-sys = "0.3.74"
+web-sys = { version = "0.3.74", features = [
     "Navigator",
     "StorageManager",
     "IdbFactory",
     "IdbOpenDbRequest",
     "Location",
 ] }
-wasm-bindgen = "0.2.95"
-wasm-bindgen-futures = "0.4.45"
+wasm-bindgen = "0.2.97"
+wasm-bindgen-futures = "0.4.47"
 web-time = "1.1.0"
 gloo-worker = "0.5.0"
 
