@@ -11,6 +11,11 @@ pub enum Action {
 		key: String,
 		value: String,
 	},
+	OverrideTag {
+		key: String,
+		value: String,
+		previous_value: String,
+	},
 	UpdateValue {
 		key: String,
 		value: String,
@@ -37,14 +42,14 @@ impl Edit for UpdateData {
 			unreachable!("Element must exist");
 		};
 		match &self.1 {
-			Action::AddTag { key, value } => {
-				// TODO: Error when key already exists.
-				match element.tags.entry(key.clone()) {
-					Entry::Occupied(_) => return Err(EditError::KeyAlreadyExists(key.clone())),
-					Entry::Vacant(entry) => {
-						entry.insert(value.clone());
-					}
+			Action::AddTag { key, value } => match element.tags.entry(key.clone()) {
+				Entry::Occupied(_) => return Err(EditError::KeyAlreadyExists(key.clone())),
+				Entry::Vacant(entry) => {
+					entry.insert(value.clone());
 				}
+			},
+			Action::OverrideTag { key, value, .. } => {
+				element.tags.insert(key.clone(), value.clone());
 			}
 			Action::UpdateValue { key, value, .. } => {
 				element.tags.insert(key.clone(), value.clone());
@@ -64,7 +69,10 @@ impl Edit for UpdateData {
 			Action::AddTag { key, .. } => {
 				element.tags.remove(key);
 			}
-			Action::UpdateValue {
+			Action::OverrideTag {
+				key, previous_value, ..
+			}
+			| Action::UpdateValue {
 				key, previous_value, ..
 			} => {
 				element.tags.insert(key.clone(), previous_value.clone());
