@@ -1,3 +1,5 @@
+use std::collections::hash_map::Entry;
+
 use undo::Edit;
 
 use super::map_data::{ElementId, MapData};
@@ -21,12 +23,14 @@ pub enum Action {
 }
 
 // TODO:
-pub enum EditError {}
+pub enum EditError {
+	KeyAlreadyExists(String),
+}
 
 // TODO: Merging
 impl Edit for UpdateData {
 	type Target = MapData;
-	type Output = Result<(), EditError>;
+	type Output = Result<ElementId, EditError>;
 
 	fn edit(&mut self, target: &mut Self::Target) -> Self::Output {
 		let Some(element) = target.get_mut(&self.0) else {
@@ -35,7 +39,12 @@ impl Edit for UpdateData {
 		match &self.1 {
 			Action::AddTag { key, value } => {
 				// TODO: Error when key already exists.
-				element.tags.insert(key.clone(), value.clone());
+				match element.tags.entry(key.clone()) {
+					Entry::Occupied(_) => return Err(EditError::KeyAlreadyExists(key.clone())),
+					Entry::Vacant(entry) => {
+						entry.insert(value.clone());
+					}
+				}
 			}
 			Action::UpdateValue { key, value, .. } => {
 				element.tags.insert(key.clone(), value.clone());
@@ -44,7 +53,7 @@ impl Edit for UpdateData {
 				element.tags.remove(key);
 			}
 		}
-		Ok(())
+		Ok(self.0)
 	}
 
 	fn undo(&mut self, target: &mut Self::Target) -> Self::Output {
@@ -64,6 +73,6 @@ impl Edit for UpdateData {
 				element.tags.insert(key.clone(), value.clone());
 			}
 		}
-		Ok(())
+		Ok(self.0)
 	}
 }

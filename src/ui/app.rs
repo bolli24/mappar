@@ -253,12 +253,26 @@ impl eframe::App for MyApp {
 
 		ctx.input(|i| {
 			if i.modifiers == Modifiers::CTRL | Modifiers::COMMAND {
-				if i.key_pressed(egui::Key::Z) {
+				let change_result = if i.key_pressed(egui::Key::Z) {
 					let mut map_data = self.map_data.lock().unwrap();
-					self.history.undo(&mut map_data);
+					self.history.undo(&mut map_data)
 				} else if i.key_pressed(egui::Key::Y) {
 					let mut map_data = self.map_data.lock().unwrap();
-					self.history.redo(&mut map_data);
+					self.history.redo(&mut map_data)
+				} else {
+					None
+				};
+
+				if let Some(change_result) = change_result {
+					match change_result {
+						Ok(id) => {
+							self.map_memory.selection.selected_elements.clear();
+							self.map_memory.selection.selected_elements.insert(id);
+						}
+						Err(_err) => {
+							todo!()
+						}
+					}
 				}
 			}
 		});
