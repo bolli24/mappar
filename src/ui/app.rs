@@ -11,7 +11,6 @@ use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
 use egui::{Id, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
-use ringbuffer::{AllocRingBuffer, RingBuffer};
 use std::cell::RefCell;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
@@ -35,7 +34,7 @@ impl<T> From<(Sender<T>, Receiver<T>)> for Channel<T> {
 	}
 }
 
-const RECENT_FRAME_COUNT: usize = 1000;
+const MAX_RECENT_FRAME_COUNT: usize = 1000;
 
 pub struct MyApp {
 	map_data: Arc<Mutex<MapData>>,
@@ -44,8 +43,9 @@ pub struct MyApp {
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	debug_text: Rc<RefCell<DebugText>>,
+	startup_time: Instant,
 	last_update: Instant,
-	recent_frame_times: AllocRingBuffer<Duration>,
+	recent_frame_times: egui::util::History<Duration>,
 	inspection: bool,
 	debug_panel: bool,
 	map_memory: MapMemory,
@@ -104,8 +104,9 @@ impl MyApp {
 			imagery_fetcher,
 			map_widget_id,
 			debug_text: Rc::new(RefCell::new(DebugText::new())),
+			startup_time: Instant::now(),
 			last_update: Instant::now(),
-			recent_frame_times: AllocRingBuffer::new(RECENT_FRAME_COUNT),
+			recent_frame_times: egui::util::History::new(10..MAX_RECENT_FRAME_COUNT, 1.0),
 			inspection: false,
 			debug_panel: false,
 			map_memory,
@@ -246,21 +247,23 @@ impl eframe::App for MyApp {
 			.vscroll(true)
 			.show(ctx, |ui| ctx.inspection_ui(ui));
 
+		self.recent_frame_times.flush(self.startup_time.elapsed().as_secs_f64());
 		let last_frame = self.last_update.elapsed();
 		let last_frame_ms = last_frame.as_micros() as f32 / 1000.0;
-		self.recent_frame_times.push(last_frame);
+		self.recent_frame_times
+			.add(self.startup_time.elapsed().as_secs_f64(), last_frame);
 		let average_ms = self
 			.recent_frame_times
-			.iter()
-			.fold(Duration::ZERO, |a, b| a + *b)
+			.values()
+			.fold(Duration::ZERO, |a, b| a + b)
 			.as_micros() as f64
 			/ self.recent_frame_times.len() as f64
 			/ 1000.0;
 		let worst_ms = self
 			.recent_frame_times
-			.iter()
+			.values()
 			.max()
-			.unwrap_or(&Duration::ZERO)
+			.unwrap_or(Duration::ZERO)
 			.as_micros() as f32
 			/ 1000.0;
 		self.debug_text.borrow_mut().add(format!(

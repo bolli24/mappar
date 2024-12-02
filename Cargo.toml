@@ -37,7 +37,6 @@ bytemuck = "1.19"
 
 chrono = { version = "0.4", features = ["wasmbind"] }
 
-ringbuffer = "0.15.0"
 lru = "0.12.5"
 itertools = "0.13.0"
 regex = "1.11.1"
