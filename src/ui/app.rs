@@ -5,11 +5,12 @@ use super::map_widget::MapWidget;
 use crate::imagery::esri_imagery;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::map::api::get_data;
+use crate::map::edit::UpdateData;
 use crate::map::map_data::{Bounds, LatLon, MapData};
 use crate::ui::debug_text::DebugText;
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
-use egui::{Id, ScrollArea, Sides, Widget, Window};
+use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
 use std::cell::RefCell;
 #[cfg(not(target_arch = "wasm32"))]
@@ -20,6 +21,7 @@ use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 use tokio::sync::watch::{channel, Receiver, Sender};
+use undo::Record;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
@@ -51,6 +53,7 @@ pub struct MyApp {
 	map_memory: MapMemory,
 	#[cfg(not(target_arch = "wasm32"))]
 	storage_dir: PathBuf,
+	history: Record<UpdateData>,
 }
 
 impl MyApp {
@@ -112,6 +115,7 @@ impl MyApp {
 			map_memory,
 			#[cfg(not(target_arch = "wasm32"))]
 			storage_dir,
+			history: Record::new(),
 		};
 
 		let map_data = app.map_data.clone();
@@ -215,7 +219,7 @@ impl eframe::App for MyApp {
 		egui::SidePanel::right("edit_panel")
 			.width_range(80.0..=800.0)
 			.show(ctx, |ui| {
-				KeyValueTable::new(self.map_data.clone(), &mut self.map_memory.selection).ui(ui);
+				KeyValueTable::new(self.map_data.clone(), &mut self.map_memory.selection, &mut self.history).ui(ui);
 			});
 
 		if self.debug_panel {
@@ -246,6 +250,18 @@ impl eframe::App for MyApp {
 			.open(&mut self.inspection)
 			.vscroll(true)
 			.show(ctx, |ui| ctx.inspection_ui(ui));
+
+		ctx.input(|i| {
+			if i.modifiers == Modifiers::CTRL | Modifiers::COMMAND {
+				if i.key_pressed(egui::Key::Z) {
+					let mut map_data = self.map_data.lock().unwrap();
+					self.history.undo(&mut map_data);
+				} else if i.key_pressed(egui::Key::Y) {
+					let mut map_data = self.map_data.lock().unwrap();
+					self.history.redo(&mut map_data);
+				}
+			}
+		});
 
 		self.recent_frame_times.flush(self.startup_time.elapsed().as_secs_f64());
 		let last_frame = self.last_update.elapsed();

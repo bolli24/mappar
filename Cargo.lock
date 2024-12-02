@@ -2015,6 +2015,7 @@ dependencies = [
  "tar",
  "thiserror 2.0.3",
  "tokio",
+ "undo",
  "url",
  "vergen-gitcl",
  "wasm-bindgen",
@@ -3727,6 +3728,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "deb68604048ff8fa93347f02441e4487594adc20bb8a084f9e564d2b827a0a9f"
 dependencies = [
  "rustc-hash",
+]
+
+[[package]]
+name = "undo"
+version = "0.51.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd8be0a8a8e33d55025c36fc461beafffcaebe2ef104eca0287334310cb685b6"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

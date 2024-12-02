@@ -1,10 +1,11 @@
 use super::map_data::ElementId;
-use crate::map::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member, Tag};
+use crate::map::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member};
 use log::{error, info, warn};
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 use reqwest::{Client, StatusCode};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::str::from_utf8;
 
@@ -80,7 +81,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					}
 					let attributes = e.attributes();
 
-					let mut tags: Vec<Tag> = Vec::new();
+					let mut tags = HashMap::new();
 					let mut nodes = Vec::new();
 					let mut members = Vec::new();
 					loop {
@@ -142,7 +143,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 						id: ElementId(id, ElementType::Node),
 						info,
 						element: Element::Node { pos: lat_lon? },
-						tags: Vec::new(),
+						tags: HashMap::new(),
 					});
 				}
 				Event::Eof => {
@@ -183,7 +184,7 @@ fn parse_member(e: &BytesStart) -> (ElementId, String) {
 	(ref_id, role)
 }
 
-fn parse_tag(tags: &mut Vec<Tag>, e: &BytesStart) {
+fn parse_tag(tags: &mut HashMap<String, String>, e: &BytesStart) {
 	let mut key = String::new();
 	let mut value = String::new();
 
@@ -200,7 +201,7 @@ fn parse_tag(tags: &mut Vec<Tag>, e: &BytesStart) {
 		}
 	}
 	if !key.is_empty() && !value.is_empty() {
-		tags.push(Tag { key, value });
+		tags.insert(key, value);
 	}
 }
 

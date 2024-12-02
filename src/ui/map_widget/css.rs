@@ -374,7 +374,7 @@ struct Reporting {
 
 fn matching_rules<'a>(css: &'a CSS, element: &'a MapElement) -> impl Iterator<Item = &'a Styleset> {
 	puffin::profile_function!();
-	return css.0.iter().filter(|styleset| matches_rule(styleset, element));
+	css.0.iter().filter(|styleset| matches_rule(styleset, element))
 }
 
 fn matches_rule(styleset: &Styleset, element: &MapElement) -> bool {
@@ -415,10 +415,9 @@ fn matches_object(object: &Object, element: &MapElement) -> bool {
 
 fn matches_conditions(conditions: &[Condition], element: &MapElement) -> bool {
 	conditions.iter().all(|condition| match condition {
-		Condition::Binary(tag_key, BinaryOp::Eq, Expression::Identifier(tag_value)) => element
-			.tags
-			.iter()
-			.any(|tag| tag_key == &tag.key && tag_value == &tag.value),
+		Condition::Binary(tag_key, BinaryOp::Eq, Expression::Identifier(tag_value)) => {
+			element.tags.get(tag_key) == Some(tag_value)
+		}
 		_ => false,
 	})
 }

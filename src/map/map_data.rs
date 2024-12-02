@@ -61,12 +61,6 @@ impl MapData {
 	}
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct Tag {
-	pub key: String,
-	pub value: String,
-}
-
 #[derive(Debug)]
 pub struct ElementInfo {
 	pub version: Version,
@@ -179,26 +173,25 @@ impl MapElement {
 				if !is_closed(nodes.as_slice()) {
 					return false;
 				}
-				has_area_tag(&self.tags)
+				self.has_area_tag()
 			}
 			Element::Relation { .. } => {
 				// TODO: check if members form a closed area
-				has_multipolygon_tag(&self.tags) && has_area_tag(&self.tags)
+				self.has_multipolygon_tag() && self.has_area_tag()
 			}
 		}
+	}
+	fn has_multipolygon_tag(&self) -> bool {
+		self.tags.iter().any(|t| t.0 == "type" && t.1 == "multipolygon")
+	}
+	fn has_area_tag(&self) -> bool {
+		self.tags
+			.iter()
+			.any(|t| (t.0 == "area" && t.1 == "yes") || is_area_tag(&t.0, &t.1))
 	}
 }
 pub fn is_closed(nodes: &[ElementId]) -> bool {
 	nodes.len() >= 2 && nodes[0] == nodes[nodes.len() - 1]
-}
-
-fn has_multipolygon_tag(tags: &[Tag]) -> bool {
-	tags.iter().any(|t| t.key == "type" && t.value == "multipolygon")
-}
-
-fn has_area_tag(tags: &[Tag]) -> bool {
-	tags.iter()
-		.any(|t| (t.key == "area" && t.value == "yes") || is_area_tag(&t.key, &t.value))
 }
 
 fn is_area_tag(key: &str, value: &str) -> bool {
@@ -223,7 +216,7 @@ pub struct MapElement {
 	pub id: ElementId,
 	pub info: ElementInfo,
 	pub element: Element,
-	pub tags: Vec<Tag>,
+	pub tags: HashMap<String, String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

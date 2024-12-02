@@ -1,18 +1,30 @@
+use super::map_widget::map_memory::Selection;
+use crate::map::{
+	edit::{Action, UpdateData},
+	map_data::MapData,
+};
 use egui::{Frame, Margin, TextBuffer, TextEdit, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
-
-use super::map_widget::map_memory::Selection;
-use crate::map::map_data::{MapData, Tag};
 use std::sync::{Arc, Mutex};
+use undo::Record;
 
 pub struct KeyValueTable<'a> {
 	map_data: Arc<Mutex<MapData>>,
 	selection: &'a mut Selection,
+	history: &'a mut Record<UpdateData>,
 }
 
 impl<'a> KeyValueTable<'a> {
-	pub fn new(map_data: Arc<Mutex<MapData>>, selection: &'a mut Selection) -> Self {
-		Self { map_data, selection }
+	pub fn new(
+		map_data: Arc<Mutex<MapData>>,
+		selection: &'a mut Selection,
+		history: &'a mut Record<UpdateData>,
+	) -> Self {
+		Self {
+			map_data,
+			selection,
+			history,
+		}
 	}
 }
 
@@ -24,17 +36,12 @@ impl Widget for KeyValueTable<'_> {
 		let column_width = ((panel.width() - ACTION_COLUMN) * 0.5).clamp(40.0, 400.0);
 		let mut map_data = self.map_data.lock().unwrap();
 
-		let tags = self
-			.selection
-			.selected_elements
-			.iter()
-			.next()
-			.and_then(|id| map_data.get_mut(id))
-			.map(|e| &mut e.tags);
+		let id = self.selection.selected_elements.iter().next();
 
-		let mut delete_index = None;
+		let tags = id.and_then(|id| map_data.get(id)).map(|e| &e.tags);
+		let mut edit = None;
 
-		Frame::none()
+		let response = Frame::none()
 			.show(ui, |ui| {
 				TableBuilder::new(ui)
 					.id_salt("key_value_table")
@@ -56,22 +63,43 @@ impl Widget for KeyValueTable<'_> {
 						let Some(tags) = tags else {
 							return;
 						};
+						let id = *id.unwrap();
+						// FIXME: Keep order of tags.
+						let mut tags_iter = tags.iter();
 						body.rows(16.0, tags.len() + 1, |mut row| {
-							let index = row.index();
-							if index < tags.len() {
+							if let Some((key, value)) = tags_iter.next() {
+								let mut key = key.clone();
+								let mut update_value = value.clone();
 								row.col(|ui| {
-									table_field(&mut tags[index].key, ui);
+									table_field(&mut key, ui);
 								});
 								row.col(|ui| {
-									table_field(&mut tags[index].value, ui);
+									table_field(&mut update_value, ui);
 								});
+								if update_value != *value {
+									edit = Some(UpdateData(
+										id,
+										Action::UpdateValue {
+											key: key.clone(),
+											value: update_value,
+											previous_value: value.clone(),
+										},
+									));
+								}
 								row.col(|ui| {
 									if ui.small_button("🗑").clicked() {
-										delete_index = Some(index);
+										edit = Some(UpdateData(
+											id,
+											Action::RemoveTag {
+												key,
+												value: value.clone(),
+											},
+										));
 									}
 								});
 							} else {
-								let Tag { key, value } = self.selection.new_tag.get_or_insert(Default::default());
+								// TODO: Add Action for editing new_tag
+								let (key, value) = self.selection.new_tag.get_or_insert(Default::default());
 								row.col(|ui| {
 									table_field(key, ui);
 								});
@@ -79,18 +107,20 @@ impl Widget for KeyValueTable<'_> {
 									table_field(value, ui);
 								});
 								if !key.is_empty() && !value.is_empty() {
-									let new_tag = self.selection.new_tag.take().unwrap();
-									tags.push(new_tag);
+									let (key, value) = self.selection.new_tag.take().unwrap();
+									edit = Some(UpdateData(id, Action::AddTag { key, value }));
 								}
 							}
 						});
-
-						if let Some(delete_index) = delete_index {
-							tags.remove(delete_index);
-						}
 					});
 			})
-			.response
+			.response;
+
+		if let Some(edit) = edit {
+			self.history.edit(&mut map_data, edit);
+		}
+
+		response
 	}
 }
 

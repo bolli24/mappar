@@ -40,6 +40,7 @@ chrono = { version = "0.4", features = ["wasmbind"] }
 lru = "0.12.5"
 itertools = "0.13.0"
 regex = "1.11.1"
+undo = "0.51"
 
 puffin = "0.19"
 puffin_http = "0.16"
