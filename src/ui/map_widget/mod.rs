@@ -22,11 +22,9 @@ use itertools::Itertools;
 use map_memory::{MapMemory, Selection};
 use render::{DetailedElement, RenderElement};
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::f64::consts::PI;
 use std::ops::RangeInclusive;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 const ZOOM_SPEED: f64 = 5.0;
@@ -36,7 +34,7 @@ pub struct MapWidget<'a> {
 	styles: &'a mut Option<Styles>,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	id: Id,
-	debug_text: Rc<RefCell<DebugText>>,
+	debug_text: &'a mut DebugText,
 	mem: &'a mut MapMemory,
 }
 
@@ -60,7 +58,7 @@ impl<'a> MapWidget<'a> {
 		styles: &'a mut Option<Styles>,
 		imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 		id: Id,
-		debug_text: Rc<RefCell<DebugText>>,
+		debug_text: &'a mut DebugText,
 		mem: &'a mut MapMemory,
 	) -> Self {
 		Self {
@@ -89,13 +87,12 @@ impl Widget for MapWidget<'_> {
 				Frame::canvas(ui.style()).show(ui, |ui| {
 					puffin::profile_function!("Draw Map");
 					let ui_scale = ui.ctx().pixels_per_point();
-					let mut debug_text = self.debug_text.borrow_mut();
 					let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 					ui.ctx().request_repaint();
 					let clip_rect = ui.clip_rect();
-					debug_text.add(format!("Clip Rect: {clip_rect:?}"));
+					self.debug_text.add(format!("Clip Rect: {clip_rect:?}"));
 					let viewport = response.interact_rect;
-					debug_text.add(format!("Viewport: {viewport:?}"));
+					self.debug_text.add(format!("Viewport: {viewport:?}"));
 
 					let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y as f64;
 					if zoom != 0.0 && response.contains_pointer() {
@@ -123,10 +120,10 @@ impl Widget for MapWidget<'_> {
 						self.mem.camera_pos -= delta;
 					}
 
-					debug_text.add(format!("Camera: {:?}", self.mem.camera_pos));
-					debug_text.add(format!("Zoom: {}", self.mem.zoom_level));
-					debug_text.add(format!("Scale: {scale}"));
-					debug_text.add(format!("UI Scale: {ui_scale}"));
+					self.debug_text.add(format!("Camera: {:?}", self.mem.camera_pos));
+					self.debug_text.add(format!("Zoom: {}", self.mem.zoom_level));
+					self.debug_text.add(format!("Scale: {scale}"));
+					self.debug_text.add(format!("UI Scale: {ui_scale}"));
 
 					let camera_rect = viewport.translate(-viewport.size() / 2.0) * scale as f32;
 					let transform = RectTransform::from_to(camera_rect, viewport);
@@ -134,8 +131,8 @@ impl Widget for MapWidget<'_> {
 					let world_view_rect = Rect::from_two_pos(world_corners.0.to_pos2(), world_corners.1.to_pos2());
 					let pointer_world_pos = pointer_world_pos(self.mem.camera_pos, &response, viewport, scale); // We get this here again to reduce latency
 
-					debug_text.add(format!("World View Rect: {:?}", world_view_rect));
-					debug_text.add(format!(
+					self.debug_text.add(format!("World View Rect: {:?}", world_view_rect));
+					self.debug_text.add(format!(
 						"Pointer Pos: {:?}",
 						pointer_world_pos.map(|p| p.round().as_ivec2())
 					));
@@ -151,7 +148,7 @@ impl Widget for MapWidget<'_> {
 						pointer_world_pos,
 					};
 
-					draw_tiles(&painter, &self.imagery_fetcher, &view, &mut debug_text);
+					draw_tiles(&painter, &self.imagery_fetcher, &view, self.debug_text);
 
 					let mut render_data = Vec::with_capacity(self.map_data.len());
 					let select_threshold = 5.0 * scale;
@@ -191,8 +188,9 @@ impl Widget for MapWidget<'_> {
 						}
 					}
 
-					debug_text.add(format!("Closest element: {:?}", hover_element.map(|e| e.id)));
-					debug_text.add(format!("Select threshold: {select_threshold:.3}"));
+					self.debug_text
+						.add(format!("Closest element: {:?}", hover_element.map(|e| e.id)));
+					self.debug_text.add(format!("Select threshold: {select_threshold:.3}"));
 
 					let mut shapes = DrawList::new();
 
@@ -209,7 +207,7 @@ impl Widget for MapWidget<'_> {
 						draw_element(element, &mut shapes, &view);
 					}
 
-					debug_text.add(format!("Drawn Elements: {}", shapes.count()));
+					self.debug_text.add(format!("Drawn Elements: {}", shapes.count()));
 
 					shapes.draw(&painter);
 

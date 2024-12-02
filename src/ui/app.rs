@@ -12,10 +12,8 @@ use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
 use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
-use std::cell::RefCell;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
@@ -44,7 +42,7 @@ pub struct MyApp {
 	render_data: Channel<Vec<DetailedElement>>,
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
-	debug_text: Rc<RefCell<DebugText>>,
+	debug_text: DebugText,
 	startup_time: Instant,
 	last_update: Instant,
 	recent_frame_times: egui::util::History<Duration>,
@@ -106,7 +104,7 @@ impl MyApp {
 			render_data: channel(Vec::new()).into(),
 			imagery_fetcher,
 			map_widget_id,
-			debug_text: Rc::new(RefCell::new(DebugText::new())),
+			debug_text: DebugText::new(),
 			startup_time: Instant::now(),
 			last_update: Instant::now(),
 			recent_frame_times: egui::util::History::new(10..MAX_RECENT_FRAME_COUNT, 1.0),
@@ -229,8 +227,8 @@ impl eframe::App for MyApp {
 					ui.heading("Debug Panel");
 					ui.separator();
 					ScrollArea::vertical().show(ui, |ui| {
-						ui.add(self.debug_text.borrow().clone());
-						self.debug_text.borrow_mut().clear();
+						ui.add(self.debug_text.clone());
+						self.debug_text.clear();
 					})
 				});
 		}
@@ -241,7 +239,7 @@ impl eframe::App for MyApp {
 				&mut self.styles,
 				self.imagery_fetcher.clone(),
 				self.map_widget_id,
-				self.debug_text.clone(),
+				&mut self.debug_text,
 				&mut self.map_memory,
 			));
 		});
@@ -296,7 +294,7 @@ impl eframe::App for MyApp {
 			.unwrap_or(Duration::ZERO)
 			.as_micros() as f32
 			/ 1000.0;
-		self.debug_text.borrow_mut().add(format!(
+		self.debug_text.add(format!(
 			"Frame Time: {:.1}ms\nAverage: {:.1}ms ({:.1} FPS)\nWorst: {:.1}ms",
 			last_frame_ms,
 			average_ms,
