@@ -207,9 +207,10 @@ impl eframe::App for MyApp {
 				|ui| {
 					ui.spacing_mut().item_spacing.x = 0.0;
 					let commit_hash = env!("VERGEN_GIT_SHA");
-					if ui.link(&commit_hash[0..7]).clicked() {
-						ui.output_mut(|o| o.copied_text = commit_hash.to_string())
-					}
+					ui.hyperlink_to(
+						&commit_hash[0..7],
+						format!("https://gitlab.com/bolli24/mappar/tree/{commit_hash}"),
+					);
 					ui.label(format!("{}/", env!("CARGO_PKG_VERSION")));
 				},
 			);
