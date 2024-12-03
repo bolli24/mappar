@@ -1,8 +1,8 @@
-use super::map_data::{ElementId, MapData};
+use super::map_data::{ElementId, MapElement};
 use indexmap::map::Entry;
-use undo::Edit;
+use std::collections::HashMap;
 
-pub struct UpdateData(pub ElementId, pub Action);
+pub struct Edit(pub ElementId, pub Action);
 
 pub enum Action {
 	AddTag {
@@ -22,6 +22,7 @@ pub enum Action {
 	RemoveTag {
 		key: String,
 		value: String,
+		index: usize,
 	},
 }
 
@@ -30,13 +31,13 @@ pub enum EditError {
 }
 
 // TODO: Merging
-impl Edit for UpdateData {
-	type Target = MapData;
+impl undo::Edit for Edit {
+	type Target = HashMap<ElementId, MapElement>;
 	type Output = Result<ElementId, EditError>;
 
 	fn edit(&mut self, target: &mut Self::Target) -> Self::Output {
 		let Some(element) = target.get_mut(&self.0) else {
-			unreachable!("Element must exist");
+			unreachable!("Element {} must exist", self.0);
 		};
 		match &self.1 {
 			Action::AddTag { key, value } => match element.tags.entry(key.clone()) {
@@ -74,9 +75,8 @@ impl Edit for UpdateData {
 			} => {
 				element.tags.insert(key.clone(), previous_value.clone());
 			}
-			Action::RemoveTag { key, value } => {
-				// TODO: insert at index?
-				element.tags.insert(key.clone(), value.clone());
+			Action::RemoveTag { key, value, index } => {
+				element.tags.insert_before(*index, key.clone(), value.clone());
 			}
 		}
 		Ok(self.0)

@@ -1,3 +1,4 @@
+use super::edit::{Action, Edit, EditError};
 use chrono::{DateTime, Utc};
 use glam::{dvec2, DVec2};
 use indexmap::IndexMap;
@@ -5,6 +6,7 @@ use mappar_macros::Id;
 use std::collections::HashMap;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 use std::fmt::{Debug, Display};
+use undo::Record;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ElementId(pub i64, pub ElementType);
@@ -21,15 +23,16 @@ pub struct Version(pub u64);
 #[derive(Id, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct UserId(pub u32);
 
-#[derive(Debug)]
 pub struct MapData {
 	elements: HashMap<ElementId, MapElement>,
+	history: Record<Edit>,
 }
 
 impl MapData {
 	pub fn new() -> Self {
 		Self {
 			elements: HashMap::new(),
+			history: Record::new(),
 		}
 	}
 
@@ -59,6 +62,66 @@ impl MapData {
 
 	pub fn len(&self) -> usize {
 		self.elements.len()
+	}
+
+	pub fn edit(&mut self, edit: Edit) -> Result<ElementId, EditError> {
+		self.history.edit(&mut self.elements, edit)
+	}
+
+	pub fn undo(&mut self) -> Option<Result<ElementId, EditError>> {
+		self.history.undo(&mut self.elements)
+	}
+
+	pub fn redo(&mut self) -> Option<Result<ElementId, EditError>> {
+		self.history.undo(&mut self.elements)
+	}
+
+	pub fn add_tag(&self, id: ElementId, key: String, value: String) -> Edit {
+		Edit(id, Action::AddTag { key, value })
+	}
+
+	pub fn override_tag(&self, id: ElementId, key: String, value: String) -> Edit {
+		Edit(
+			id,
+			Action::OverrideTag {
+				previous_value: self.get_value(&id, &key),
+				key,
+				value,
+			},
+		)
+	}
+
+	pub fn update_value(&self, id: ElementId, key: String, value: String) -> Edit {
+		Edit(
+			id,
+			Action::UpdateValue {
+				previous_value: self.get_value(&id, &key),
+				key,
+				value,
+			},
+		)
+	}
+	pub fn remove_tag(&self, id: ElementId, key: String) -> Edit {
+		let Some(element) = self.get(&id) else {
+			unreachable!("Element {id} must exist.");
+		};
+		let Some(index) = element.tags.get_index_of(&key) else {
+			unreachable!("Element {id} must have key '{key}' to be overwritten.");
+		};
+		let value = element.tags.get_index(index).unwrap().1.clone();
+		Edit(id, Action::RemoveTag { key, value, index })
+	}
+
+	/// # Safety:
+	/// Panics if element or key does not exist.
+	fn get_value(&self, id: &ElementId, key: &String) -> String {
+		let Some(element) = self.get(id) else {
+			unreachable!("Element {id} must exist.");
+		};
+		let Some(previous_value) = element.tags.get(key) else {
+			unreachable!("Element {id} must have key '{key}' to be overwritten.");
+		};
+		previous_value.clone()
 	}
 }
 

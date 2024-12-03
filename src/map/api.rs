@@ -6,7 +6,6 @@ use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 use reqwest::{Client, StatusCode};
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::str::from_utf8;
 

@@ -1,30 +1,17 @@
 use super::map_widget::map_memory::Selection;
-use crate::map::{
-	edit::{Action, UpdateData},
-	map_data::MapData,
-};
+use crate::map::map_data::MapData;
 use egui::{Frame, Margin, TextBuffer, TextEdit, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
 use std::sync::{Arc, Mutex};
-use undo::Record;
 
 pub struct KeyValueTable<'a> {
 	map_data: Arc<Mutex<MapData>>,
 	selection: &'a mut Selection,
-	history: &'a mut Record<UpdateData>,
 }
 
 impl<'a> KeyValueTable<'a> {
-	pub fn new(
-		map_data: Arc<Mutex<MapData>>,
-		selection: &'a mut Selection,
-		history: &'a mut Record<UpdateData>,
-	) -> Self {
-		Self {
-			map_data,
-			selection,
-			history,
-		}
+	pub fn new(map_data: Arc<Mutex<MapData>>, selection: &'a mut Selection) -> Self {
+		Self { map_data, selection }
 	}
 }
 
@@ -77,24 +64,11 @@ impl Widget for KeyValueTable<'_> {
 									table_field(&mut update_value, ui);
 								});
 								if update_value != *value {
-									edit = Some(UpdateData(
-										id,
-										Action::UpdateValue {
-											key: key.clone(),
-											value: update_value,
-											previous_value: value.clone(),
-										},
-									));
+									edit = Some(map_data.update_value(id, key.clone(), update_value))
 								}
 								row.col(|ui| {
 									if ui.small_button("🗑").clicked() {
-										edit = Some(UpdateData(
-											id,
-											Action::RemoveTag {
-												key,
-												value: value.clone(),
-											},
-										));
+										edit = Some(map_data.remove_tag(id, key));
 									}
 								});
 							} else {
@@ -108,7 +82,7 @@ impl Widget for KeyValueTable<'_> {
 								});
 								if !key.is_empty() && !value.is_empty() {
 									let (key, value) = self.selection.new_tag.take().unwrap();
-									edit = Some(UpdateData(id, Action::AddTag { key, value }));
+									edit = Some(map_data.add_tag(id, key, value));
 								}
 							}
 						});
@@ -117,7 +91,7 @@ impl Widget for KeyValueTable<'_> {
 			.response;
 
 		if let Some(edit) = edit {
-			self.history.edit(&mut map_data, edit);
+			map_data.edit(edit);
 		}
 
 		response
