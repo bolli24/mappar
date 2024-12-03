@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use glam::{dvec2, DVec2};
+use indexmap::IndexMap;
 use mappar_macros::Id;
 use std::collections::HashMap;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
@@ -216,7 +217,7 @@ pub struct MapElement {
 	pub id: ElementId,
 	pub info: ElementInfo,
 	pub element: Element,
-	pub tags: HashMap<String, String>,
+	pub tags: IndexMap<String, String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

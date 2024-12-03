@@ -1,5 +1,6 @@
 use super::map_data::ElementId;
 use crate::map::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member};
+use indexmap::IndexMap;
 use log::{error, info, warn};
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesStart, Event};
@@ -81,7 +82,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					}
 					let attributes = e.attributes();
 
-					let mut tags = HashMap::new();
+					let mut tags = IndexMap::new();
 					let mut nodes = Vec::new();
 					let mut members = Vec::new();
 					loop {
@@ -143,7 +144,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 						id: ElementId(id, ElementType::Node),
 						info,
 						element: Element::Node { pos: lat_lon? },
-						tags: HashMap::new(),
+						tags: IndexMap::new(),
 					});
 				}
 				Event::Eof => {
@@ -184,7 +185,7 @@ fn parse_member(e: &BytesStart) -> (ElementId, String) {
 	(ref_id, role)
 }
 
-fn parse_tag(tags: &mut HashMap<String, String>, e: &BytesStart) {
+fn parse_tag(tags: &mut IndexMap<String, String>, e: &BytesStart) {
 	let mut key = String::new();
 	let mut value = String::new();
 

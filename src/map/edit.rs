@@ -1,8 +1,6 @@
-use std::collections::hash_map::Entry;
-
-use undo::Edit;
-
 use super::map_data::{ElementId, MapData};
+use indexmap::map::Entry;
+use undo::Edit;
 
 pub struct UpdateData(pub ElementId, pub Action);
 
@@ -27,7 +25,6 @@ pub enum Action {
 	},
 }
 
-// TODO:
 pub enum EditError {
 	KeyAlreadyExists(String),
 }
@@ -55,7 +52,7 @@ impl Edit for UpdateData {
 				element.tags.insert(key.clone(), value.clone());
 			}
 			Action::RemoveTag { key, .. } => {
-				element.tags.remove(key);
+				element.tags.shift_remove(key);
 			}
 		}
 		Ok(self.0)
@@ -67,7 +64,7 @@ impl Edit for UpdateData {
 		};
 		match &self.1 {
 			Action::AddTag { key, .. } => {
-				element.tags.remove(key);
+				element.tags.shift_remove(key);
 			}
 			Action::OverrideTag {
 				key, previous_value, ..
@@ -78,6 +75,7 @@ impl Edit for UpdateData {
 				element.tags.insert(key.clone(), previous_value.clone());
 			}
 			Action::RemoveTag { key, value } => {
+				// TODO: insert at index?
 				element.tags.insert(key.clone(), value.clone());
 			}
 		}
