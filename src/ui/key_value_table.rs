@@ -1,4 +1,4 @@
-use super::map_widget::map_memory::Selection;
+use super::{map_widget::map_memory::Selection, messages::Messages};
 use crate::map::map_data::MapData;
 use egui::{Frame, Margin, TextBuffer, TextEdit, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
@@ -7,11 +7,16 @@ use std::sync::{Arc, Mutex};
 pub struct KeyValueTable<'a> {
 	map_data: Arc<Mutex<MapData>>,
 	selection: &'a mut Selection,
+	messages: &'a mut Messages,
 }
 
 impl<'a> KeyValueTable<'a> {
-	pub fn new(map_data: Arc<Mutex<MapData>>, selection: &'a mut Selection) -> Self {
-		Self { map_data, selection }
+	pub fn new(map_data: Arc<Mutex<MapData>>, selection: &'a mut Selection, messages: &'a mut Messages) -> Self {
+		Self {
+			map_data,
+			selection,
+			messages,
+		}
 	}
 }
 
@@ -90,8 +95,8 @@ impl Widget for KeyValueTable<'_> {
 			})
 			.response;
 
-		if let Some(edit) = edit {
-			map_data.edit(edit);
+		if let Some(Err(err)) = edit.map(|edit| map_data.edit(edit)) {
+			self.messages.add(err);
 		}
 
 		response

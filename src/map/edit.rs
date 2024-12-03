@@ -1,4 +1,5 @@
 use super::map_data::{ElementId, MapElement};
+use crate::unreachable_log;
 use indexmap::map::Entry;
 use std::collections::HashMap;
 
@@ -26,7 +27,9 @@ pub enum Action {
 	},
 }
 
+#[derive(thiserror::Error, Debug)]
 pub enum EditError {
+	#[error("Key '{0}' already exists.")]
 	KeyAlreadyExists(String),
 }
 
@@ -37,7 +40,7 @@ impl undo::Edit for Edit {
 
 	fn edit(&mut self, target: &mut Self::Target) -> Self::Output {
 		let Some(element) = target.get_mut(&self.0) else {
-			unreachable!("Element {} must exist", self.0);
+			unreachable_log!("Element {} must exist", self.0);
 		};
 		match &self.1 {
 			Action::AddTag { key, value } => match element.tags.entry(key.clone()) {
@@ -61,7 +64,7 @@ impl undo::Edit for Edit {
 
 	fn undo(&mut self, target: &mut Self::Target) -> Self::Output {
 		let Some(element) = target.get_mut(&self.0) else {
-			unreachable!("Element must exist");
+			unreachable_log!("Element must exist");
 		};
 		match &self.1 {
 			Action::AddTag { key, .. } => {

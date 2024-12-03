@@ -2,6 +2,7 @@ use super::key_value_table::KeyValueTable;
 use super::map_widget::css::Styles;
 use super::map_widget::render::DetailedElement;
 use super::map_widget::MapWidget;
+use super::messages::Messages;
 use crate::imagery::esri_imagery;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::map::api::get_data;
@@ -9,6 +10,7 @@ use crate::map::map_data::{Bounds, LatLon, MapData};
 use crate::ui::debug_text::DebugText;
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
+use crate::unreachable_log;
 use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
 #[cfg(not(target_arch = "wasm32"))]
@@ -49,6 +51,7 @@ pub struct MyApp {
 	map_memory: MapMemory,
 	#[cfg(not(target_arch = "wasm32"))]
 	storage_dir: PathBuf,
+	messages: Messages,
 }
 
 impl MyApp {
@@ -110,6 +113,7 @@ impl MyApp {
 			map_memory,
 			#[cfg(not(target_arch = "wasm32"))]
 			storage_dir,
+			messages: Messages::new(),
 		};
 
 		let map_data = app.map_data.clone();
@@ -214,7 +218,12 @@ impl eframe::App for MyApp {
 		egui::SidePanel::right("edit_panel")
 			.width_range(80.0..=800.0)
 			.show(ctx, |ui| {
-				KeyValueTable::new(self.map_data.clone(), &mut self.map_memory.selection).ui(ui);
+				KeyValueTable::new(
+					self.map_data.clone(),
+					&mut self.map_memory.selection,
+					&mut self.messages,
+				)
+				.ui(ui);
 			});
 
 		if self.debug_panel {
@@ -231,14 +240,18 @@ impl eframe::App for MyApp {
 		}
 
 		egui::CentralPanel::default().show(ctx, |ui| {
-			ui.add(MapWidget::new(
-				&self.map_data.lock().unwrap(),
-				&mut self.styles,
-				self.imagery_fetcher.clone(),
-				self.map_widget_id,
-				&mut self.debug_text,
-				&mut self.map_memory,
-			));
+			let mut rect = ui
+				.add(MapWidget::new(
+					&self.map_data.lock().unwrap(),
+					&mut self.styles,
+					self.imagery_fetcher.clone(),
+					self.map_widget_id,
+					&mut self.debug_text,
+					&mut self.map_memory,
+				))
+				.rect;
+			rect.min += egui::Vec2::new(5.0, 5.0);
+			ui.put(rect, self.messages.clone());
 		});
 
 		Window::new("Egui Inpector")
@@ -249,9 +262,15 @@ impl eframe::App for MyApp {
 		ctx.input(|i| {
 			if i.modifiers == Modifiers::CTRL | Modifiers::COMMAND {
 				let change_result = if i.key_pressed(egui::Key::Z) {
-					self.map_data.lock().unwrap().undo()
+					self.map_data.lock().unwrap().undo().or_else(|| {
+						self.messages.add("Nothing to undo.");
+						None
+					})
 				} else if i.key_pressed(egui::Key::Y) {
-					self.map_data.lock().unwrap().redo()
+					self.map_data.lock().unwrap().redo().or_else(|| {
+						self.messages.add("Nothing to redo.");
+						None
+					})
 				} else {
 					None
 				};
@@ -262,8 +281,8 @@ impl eframe::App for MyApp {
 							self.map_memory.selection.selected_elements.clear();
 							self.map_memory.selection.selected_elements.insert(id);
 						}
-						Err(_err) => {
-							todo!()
+						Err(_) => {
+							unreachable_log!("Undo should not error.");
 						}
 					}
 				}
