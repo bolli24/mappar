@@ -29,6 +29,18 @@ pub fn esri_imagery() -> UrlImagery {
 	.unwrap()
 }
 
+#[must_use]
+pub fn osm_imagery() -> UrlImagery {
+	UrlImagery::new(
+		"https://tile.openstreetmap.org/{zoom}/{x}/{y}.png".to_string(),
+		256,
+		23,
+		0,
+		FileFormat::PNG,
+	)
+	.unwrap()
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[must_use]
 pub fn local_image_imagery() -> UrlImagery {
