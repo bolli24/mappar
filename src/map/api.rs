@@ -18,7 +18,7 @@ const API_URL: &str = "https://master.apis.dev.openstreetmap.org";
 
 const API_BOUNDING_BOX: &str = "/api/0.6/map?bbox=";
 
-const USER_AGENT: &str = concat!("mappar/", env!("CARGO_PKG_VERSION"));
+pub const USER_AGENT: &str = concat!("mappar/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

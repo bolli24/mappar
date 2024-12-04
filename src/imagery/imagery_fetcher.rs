@@ -27,6 +27,7 @@ use crate::imagery::local_cache;
 #[cfg(target_arch = "wasm32")]
 use crate::imagery::web_cache;
 use crate::imagery::Imagery;
+use crate::map::api::USER_AGENT;
 #[cfg(target_arch = "wasm32")]
 use crate::util::sleep::timer;
 
@@ -266,8 +267,11 @@ impl ImageryFetcher {
 		}
 
 		let url = imagery.lock().unwrap().tile_url(tile.0, tile.1, tile.2);
-
-		let response = reqwest::Client::new().get(url.clone()).send().await?;
+		let response = reqwest::Client::new()
+			.get(url.clone())
+			.header("User-Agent", USER_AGENT)
+			.send()
+			.await?;
 		match response.error_for_status() {
 			Err(err) => Err(Error::Reqwest(err)),
 			Ok(response) => {
@@ -298,7 +302,11 @@ impl ImageryFetcher {
 
 		let url = imagery.lock().unwrap().tile_url(tile.0, tile.1, tile.2);
 
-		let response = reqwest::Client::new().get(url.clone()).send().await?;
+		let response = reqwest::Client::new()
+			.get(url.clone())
+			.header("User-Agent", USER_AGENT)
+			.send()
+			.await?;
 
 		match response.error_for_status() {
 			Err(err) => Err(Error::Reqwest(err)),
