@@ -36,6 +36,7 @@ bytes = "1.8.0"
 bytemuck = "1.19"
 
 chrono = { version = "0.4", features = ["wasmbind"] }
+instant = "0.1"
 
 lru = "0.12.5"
 indexmap = "2.7.0"
@@ -87,7 +88,6 @@ web-sys = { version = "0.3.74", features = [
 ] }
 wasm-bindgen = "0.2.97"
 wasm-bindgen-futures = "0.4.47"
-web-time = "1.1.0"
 gloo-worker = "0.5.0"
 
 [build-dependencies]

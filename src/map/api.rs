@@ -1,6 +1,7 @@
 use super::map_data::ElementId;
 use crate::map::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member};
 use indexmap::IndexMap;
+use instant::Instant;
 use log::{error, info, warn};
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesStart, Event};
@@ -8,11 +9,6 @@ use quick_xml::Reader;
 use reqwest::{Client, StatusCode};
 use std::fmt::Debug;
 use std::str::from_utf8;
-
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
-#[cfg(target_arch = "wasm32")]
-use web_time::Instant;
 
 #[cfg(not(debug_assertions))]
 const API_URL: &str = "https://api.openstreetmap.org";

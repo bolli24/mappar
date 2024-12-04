@@ -1,6 +1,7 @@
 use crate::util::history::History;
 use egui::{Frame, Style, Widget};
-use std::{cell::RefCell, rc::Rc, time::Instant};
+use instant::Instant;
+use std::{cell::RefCell, rc::Rc};
 
 #[derive(Clone)]
 pub struct Messages {
