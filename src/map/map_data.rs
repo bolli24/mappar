@@ -64,6 +64,10 @@ impl MapData {
 		self.elements.len()
 	}
 
+	pub fn history_len(&self) -> usize {
+		self.history.len()
+	}
+
 	pub fn edit(&mut self, edit: Edit) -> Result<ElementId, EditError> {
 		self.history.edit(&mut self.elements, edit)
 	}
@@ -78,6 +82,11 @@ impl MapData {
 
 	pub fn add_tag(&self, id: ElementId, key: String, value: String) -> Edit {
 		Edit(id, Action::AddTag { key, value })
+	}
+
+	pub fn add_new_tag(&self, id: ElementId) -> Edit {
+		let (key, value) = self.get(&id).unwrap().new_tag.clone().unwrap();
+		Edit(id, Action::AddNewTag { key, value })
 	}
 
 	pub fn override_tag(&self, id: ElementId, key: String, value: String) -> Edit {
@@ -110,6 +119,19 @@ impl MapData {
 		};
 		let value = element.tags.get_index(index).unwrap().1.clone();
 		Edit(id, Action::RemoveTag { key, value, index })
+	}
+
+	pub fn update_new_tag(&self, id: ElementId, key: String, value: String) -> Edit {
+		let Some(element) = self.get(&id) else {
+			unreachable!("Element {id} must exist.");
+		};
+		Edit(
+			id,
+			Action::UpdateNewTag {
+				current: (key, value),
+				previous: element.new_tag.clone(),
+			},
+		)
 	}
 
 	/// # Safety:
@@ -281,6 +303,7 @@ pub struct MapElement {
 	pub info: ElementInfo,
 	pub element: Element,
 	pub tags: IndexMap<String, String>,
+	pub new_tag: Option<(String, String)>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

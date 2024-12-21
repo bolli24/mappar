@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use super::MapState;
-use crate::map::map_data::ElementId;
+use crate::map::map_data::{ElementId, MapData};
 use glam::DVec2;
 
 #[derive(Debug, Clone)]
@@ -27,13 +27,13 @@ impl Default for MapMemory {
 pub struct Selection {
 	pub selected_elements: HashSet<ElementId>,
 	pub selected_tags: HashSet<usize>,
-	pub new_tag: Option<(String, String)>,
 }
 
 impl Selection {
-	fn clear(&mut self) {
-		self.selected_elements.clear();
+	pub fn clear(&mut self, map_data: &mut MapData) {
+		for element in self.selected_elements.drain() {
+			map_data.get_mut(&element).unwrap().new_tag = None;
+		}
 		self.selected_tags.clear();
-		self.new_tag = None;
 	}
 }

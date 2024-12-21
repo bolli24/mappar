@@ -3,8 +3,10 @@ use crate::unreachable_log;
 use indexmap::map::Entry;
 use std::collections::HashMap;
 
+#[derive(Debug)]
 pub struct Edit(pub ElementId, pub Action);
 
+#[derive(Debug)]
 pub enum Action {
 	AddTag {
 		key: String,
@@ -24,6 +26,14 @@ pub enum Action {
 		key: String,
 		value: String,
 		index: usize,
+	},
+	UpdateNewTag {
+		current: (String, String),
+		previous: Option<(String, String)>,
+	},
+	AddNewTag {
+		key: String,
+		value: String,
 	},
 }
 
@@ -58,6 +68,20 @@ impl undo::Edit for Edit {
 			Action::RemoveTag { key, .. } => {
 				element.tags.shift_remove(key);
 			}
+			Action::UpdateNewTag { current, .. } => {
+				element.new_tag = Some(current.clone());
+			}
+			Action::AddNewTag { key, value } => {
+				element.new_tag = None;
+				return Self(
+					self.0,
+					Action::AddTag {
+						key: key.clone(),
+						value: value.clone(),
+					},
+				)
+				.edit(target);
+			}
 		}
 		Ok(self.0)
 	}
@@ -80,6 +104,13 @@ impl undo::Edit for Edit {
 			}
 			Action::RemoveTag { key, value, index } => {
 				element.tags.insert_before(*index, key.clone(), value.clone());
+			}
+			Action::UpdateNewTag { previous, .. } => {
+				element.new_tag = previous.clone();
+			}
+			Action::AddNewTag { key, value } => {
+				element.tags.shift_remove(key);
+				element.new_tag = Some((key.clone(), value.clone()))
 			}
 		}
 		Ok(self.0)

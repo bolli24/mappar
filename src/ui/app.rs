@@ -167,6 +167,11 @@ impl eframe::App for MyApp {
 			}
 		});
 
+		self.debug_text.add(format!(
+			"History count: {}",
+			self.map_data.lock().unwrap().history_len()
+		));
+
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
 			egui::menu::bar(ui, |ui| {
 				ui.menu_button("File", |ui| {
@@ -219,6 +224,7 @@ impl eframe::App for MyApp {
 					self.map_data.clone(),
 					&mut self.map_memory.selection,
 					&mut self.messages,
+					&mut self.debug_text,
 				)
 				.ui(ui);
 			});
@@ -239,7 +245,7 @@ impl eframe::App for MyApp {
 		egui::CentralPanel::default().show(ctx, |ui| {
 			let mut rect = ui
 				.add(MapWidget::new(
-					&self.map_data.lock().unwrap(),
+					&mut self.map_data.lock().unwrap(),
 					&mut self.styles,
 					self.imagery_fetcher.clone(),
 					self.map_widget_id,

@@ -1,21 +1,29 @@
-use super::{map_widget::map_memory::Selection, messages::Messages};
-use crate::map::map_data::MapData;
-use egui::{Frame, Margin, TextBuffer, TextEdit, Ui, Widget};
+use super::{debug_text::DebugText, map_widget::map_memory::Selection, messages::Messages};
+use crate::map::map_data::{MapData, MapElement};
+use egui::{text_edit::TextEditOutput, Frame, Key, Margin, TextBuffer, TextEdit, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
+use log::info;
 use std::sync::{Arc, Mutex};
 
 pub struct KeyValueTable<'a> {
 	map_data: Arc<Mutex<MapData>>,
 	selection: &'a mut Selection,
 	messages: &'a mut Messages,
+	debug_text: &'a mut DebugText,
 }
 
 impl<'a> KeyValueTable<'a> {
-	pub fn new(map_data: Arc<Mutex<MapData>>, selection: &'a mut Selection, messages: &'a mut Messages) -> Self {
+	pub fn new(
+		map_data: Arc<Mutex<MapData>>,
+		selection: &'a mut Selection,
+		messages: &'a mut Messages,
+		debug_text: &'a mut DebugText,
+	) -> Self {
 		Self {
 			map_data,
 			selection,
 			messages,
+			debug_text,
 		}
 	}
 }
@@ -30,7 +38,7 @@ impl Widget for KeyValueTable<'_> {
 
 		let id = self.selection.selected_elements.iter().next();
 
-		let tags = id.and_then(|id| map_data.get(id)).map(|e| &e.tags);
+		let element = id.and_then(|id| map_data.get(id));
 		let mut edit = None;
 
 		let response = Frame::none()
@@ -52,11 +60,10 @@ impl Widget for KeyValueTable<'_> {
 						});
 					})
 					.body(|body| {
-						let Some(tags) = tags else {
+						let Some(MapElement { tags, new_tag, .. }) = element else {
 							return;
 						};
 						let id = *id.unwrap();
-						// FIXME: Keep order of tags.
 						let mut tags_iter = tags.iter();
 						body.rows(16.0, tags.len() + 1, |mut row| {
 							if let Some((key, value)) = tags_iter.next() {
@@ -78,16 +85,32 @@ impl Widget for KeyValueTable<'_> {
 								});
 							} else {
 								// TODO: Add Action for editing new_tag
-								let (key, value) = self.selection.new_tag.get_or_insert(Default::default());
-								row.col(|ui| {
-									table_field(key, ui);
-								});
-								row.col(|ui| {
-									table_field(value, ui);
-								});
-								if !key.is_empty() && !value.is_empty() {
-									let (key, value) = self.selection.new_tag.take().unwrap();
-									edit = Some(map_data.add_tag(id, key, value));
+								let (mut key, mut value) = new_tag.clone().unwrap_or_default();
+								let mut confirm = false;
+								for field in [&mut key, &mut value] {
+									row.col(|ui| {
+										if table_field(field, ui).response.lost_focus()
+											&& ui.ctx().input(|i| i.key_down(Key::Enter))
+										{
+											confirm = true;
+										}
+									});
+								}
+								match new_tag {
+									Some((previous_key, previous_value)) => {
+										if *previous_value != value || *previous_key != key {
+											edit = Some(map_data.update_new_tag(id, key, value));
+										}
+									}
+									None => {
+										if !key.is_empty() || !value.is_empty() {
+											edit = Some(map_data.update_new_tag(id, key, value));
+										}
+									}
+								}
+								if confirm {
+									info!("Confirmed");
+									edit = Some(map_data.add_new_tag(id));
 								}
 							}
 						});
@@ -103,6 +126,6 @@ impl Widget for KeyValueTable<'_> {
 	}
 }
 
-fn table_field(value: &mut dyn TextBuffer, ui: &mut Ui) {
-	TextEdit::singleline(value).margin(Margin::same(1.0)).show(ui);
+fn table_field(value: &mut dyn TextBuffer, ui: &mut Ui) -> TextEditOutput {
+	TextEdit::singleline(value).margin(Margin::same(1.0)).show(ui)
 }

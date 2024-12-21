@@ -19,7 +19,7 @@ use egui::{
 use epaint::{PathShape, PathStroke, Rounding, Shape};
 use glam::{dvec2, uvec2, DVec2, UVec2};
 use itertools::Itertools;
-use map_memory::{MapMemory, Selection};
+use map_memory::MapMemory;
 use render::{DetailedElement, RenderElement};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -30,7 +30,7 @@ use std::sync::{Arc, Mutex};
 const ZOOM_SPEED: f64 = 5.0;
 
 pub struct MapWidget<'a> {
-	map_data: &'a MapData,
+	map_data: &'a mut MapData,
 	styles: &'a mut Option<Styles>,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	id: Id,
@@ -54,7 +54,7 @@ const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 
 impl<'a> MapWidget<'a> {
 	pub fn new(
-		map_data: &'a MapData,
+		map_data: &'a mut MapData,
 		styles: &'a mut Option<Styles>,
 		imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 		id: Id,
@@ -173,18 +173,12 @@ impl Widget for MapWidget<'_> {
 						}
 					};
 
-					let Selection {
-						selected_elements,
-						new_tag,
-						..
-					} = &mut self.mem.selection;
 					if response.clicked() {
 						if let Some(hover_element) = hover_element {
-							selected_elements.clear();
-							selected_elements.insert(hover_element.id);
+							self.mem.selection.clear(self.map_data);
+							self.mem.selection.selected_elements.insert(hover_element.id);
 						} else {
-							selected_elements.clear();
-							*new_tag = None;
+							self.mem.selection.clear(self.map_data);
 						}
 					}
 
