@@ -114,7 +114,7 @@ impl MyApp {
 		};
 
 		let map_data = app.map_data.clone();
-		let closure = async move {
+		crate::spawn_task!(async move {
 			let new_map_data = get_data(bounds).await;
 			match new_map_data {
 				Ok(new_map_data) => {
@@ -126,12 +126,7 @@ impl MyApp {
 					error!("{:?}", err);
 				}
 			}
-		};
-
-		#[cfg(not(target_arch = "wasm32"))]
-		tokio::spawn(closure);
-		#[cfg(target_arch = "wasm32")]
-		wasm_bindgen_futures::spawn_local(closure);
+		});
 
 		app
 	}
