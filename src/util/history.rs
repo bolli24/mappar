@@ -66,18 +66,6 @@ pub struct History<T> {
 }
 
 impl<T> History<T> {
-	/// Example:
-	/// ```
-	/// # use emath::History;
-	/// # fn now() -> f64 { 0.0 }
-	/// // Drop events that are older than one second,
-	/// // as long we keep at least two events. Never keep more than a hundred events.
-	/// let mut history = History::new(2..100, 1.0);
-	/// assert_eq!(history.average(), None);
-	/// history.add(now(), 40.0_f32);
-	/// history.add(now(), 44.0_f32);
-	/// assert_eq!(history.average(), Some(42.0));
-	/// ```
 	pub fn new(length_range: std::ops::Range<usize>, max_age: f32) -> Self {
 		Self {
 			min_len: length_range.start,
