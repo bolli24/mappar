@@ -3,10 +3,10 @@ use super::map_widget::css::Styles;
 use super::map_widget::render::DetailedElement;
 use super::map_widget::MapWidget;
 use super::messages::Messages;
-use crate::imagery::esri_imagery;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
+use crate::imagery::{esri_imagery, Imageries, JOSM_FILE};
 use crate::map::api::get_data;
-use crate::map::map_data::{Bounds, LatLon, MapData};
+use crate::map::map_data::{latlon, Bounds, LatLon, MapData};
 use crate::ui::debug_text::DebugText;
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
@@ -14,6 +14,7 @@ use crate::unreachable_log;
 use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use instant::Instant;
 use log::{error, info};
+use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -39,6 +40,7 @@ pub struct MyApp {
 	render_data: Channel<Vec<DetailedElement>>,
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
+	imageries: Arc<Mutex<Imageries>>,
 	debug_text: DebugText,
 	startup_time: Instant,
 	last_update: Instant,
@@ -60,8 +62,8 @@ impl MyApp {
 		cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
 
 		let bounds = Bounds {
-			min: LatLon(51.82887, 12.19731),
-			max: LatLon(51.82344, 12.21268),
+			min: latlon(51.82887, 12.19731),
+			max: latlon(51.82344, 12.21268),
 		};
 
 		let camera_pos = bounds.center().to_web_mercator();
@@ -100,6 +102,7 @@ impl MyApp {
 			styles: get_default_styles(cc.egui_ctx.tex_manager().clone()),
 			render_data: channel(Vec::new()).into(),
 			imagery_fetcher,
+			imageries: Arc::new(Mutex::new(Imageries::new())),
 			map_widget_id,
 			debug_text: DebugText::new(),
 			startup_time: Instant::now(),
@@ -114,6 +117,7 @@ impl MyApp {
 		};
 
 		let map_data = app.map_data.clone();
+
 		crate::spawn_task!(async move {
 			let new_map_data = get_data(bounds).await;
 			match new_map_data {
@@ -167,6 +171,11 @@ impl eframe::App for MyApp {
 			self.map_data.lock().unwrap().history_len()
 		));
 
+		self.debug_text.add(format!(
+			"Loaded imageries: {}",
+			self.imageries.lock().unwrap().entries.len()
+		));
+
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
 			egui::menu::bar(ui, |ui| {
 				ui.menu_button("File", |ui| {
@@ -175,15 +184,27 @@ impl eframe::App for MyApp {
 					#[cfg(not(target_arch = "wasm32"))]
 					{
 						if ui.button("Reload Styles").clicked() {
+							ui.close_menu();
 							reload_styles = true
 						}
 						if ui.button("Open Config Folder").clicked() {
+							ui.close_menu();
 							open::that(&self.storage_dir)
 								.unwrap_or_else(|e| error!("Couldn't open config folder: {e}"));
 						}
 						if ui.button("Quit").clicked() {
 							ctx.send_viewport_cmd(egui::ViewportCommand::Close);
 						}
+					}
+				});
+				ui.menu_button("Imagery", |ui| {
+					if ui.button("Fetch JOSM imagery").clicked() {
+						ui.close_menu();
+						crate::imagery::update_josm_imagery(
+							Path::new(&self.storage_dir).join(JOSM_FILE).to_path_buf(),
+							self.messages.clone(),
+							self.imageries.clone(),
+						);
 					}
 				});
 				ui.add_space(16.0);

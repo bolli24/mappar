@@ -1,4 +1,16 @@
-use crate::imagery::cache::FileFormat;
+use crate::map::api::USER_AGENT;
+use crate::map::map_data::LatLon;
+use crate::ui::messages::Messages;
+use crate::{message_error, message_info};
+use instant::Instant;
+use quick_xml::de::Deserializer;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use serde_inline_default::serde_inline_default;
+use std::fmt::Display;
+use std::num::NonZeroUsize;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 mod cache;
 #[cfg(target_arch = "wasm32")]
@@ -9,104 +21,239 @@ mod local_cache;
 #[cfg(target_arch = "wasm32")]
 mod web_cache;
 
-pub trait Imagery: Send {
-	fn tile_size(&self) -> u32;
-	fn max_zoom(&self) -> u32;
-	fn min_zoom(&self) -> u32;
-	fn tile_url(&self, x: u32, y: u32, zoom: u32) -> String;
-	fn file_format(&self) -> FileFormat;
+mod schema;
+
+pub const JOSM_URL: &str = "https://josm.openstreetmap.de/maps";
+pub const JOSM_FILE: &str = "josm_imagery.xml";
+
+pub fn update_josm_imagery(josm_xml_path: PathBuf, mut messages: Messages, imageries: Arc<Mutex<Imageries>>) {
+	async fn get_xml() -> Result<String, crate::map::api::Error> {
+		let client = Client::new();
+		let request = client.get(JOSM_URL).header("User-Agent", USER_AGENT).build()?;
+		let xml = client.execute(request).await?.error_for_status()?.text().await?;
+		Ok(xml)
+	}
+
+	crate::spawn_task!(async move {
+		let xml = match get_xml().await {
+			Ok(xml) => xml,
+			Err(err) => {
+				message_error!(messages, "Unable to fetch JOSM imagery data: {err}");
+				return;
+			}
+		};
+
+		// FIXME: Wasm32
+		if let Err(err) = std::fs::write(josm_xml_path, &xml) {
+			message_error!(messages, "Unable to write JOSM imagery data to file: {err}");
+			return;
+		};
+
+		let start = Instant::now();
+
+		let mut deserializer = Deserializer::from_str(&xml);
+		deserializer.event_buffer_size(Some(NonZeroUsize::new(10000).unwrap()));
+		let result = serde_path_to_error::deserialize(&mut deserializer);
+
+		let parsed: Imageries = match result {
+			Ok(imageries) => imageries,
+			Err(err) => {
+				let path = err.path().to_string();
+				message_error!(messages, "Unable to parse JOSM imagery data: <{path}> - {err}");
+				return;
+			}
+		};
+
+		message_info!(
+			messages,
+			"Parsed {} imagery sources. Took: {:?}",
+			parsed.entries.len(),
+			start.elapsed()
+		);
+		*imageries.lock().unwrap() = parsed;
+	});
 }
 
-#[must_use]
-pub fn esri_imagery() -> UrlImagery {
-	UrlImagery::new(
-		"https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}".to_string(),
-		256,
-		23,
-		0,
-		FileFormat::JPG,
-	)
-	.unwrap()
-}
-
-#[must_use]
-pub fn osm_imagery() -> UrlImagery {
-	UrlImagery::new(
-		"https://tile.openstreetmap.org/{zoom}/{x}/{y}.png".to_string(),
-		256,
-		23,
-		0,
-		FileFormat::PNG,
-	)
-	.unwrap()
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[must_use]
-pub fn local_image_imagery() -> UrlImagery {
-	UrlImagery::new(
-		"http://localhost:6969/{zoom}/{x}/{y}.png".to_string(),
-		256,
-		19,
-		12,
-		FileFormat::PNG,
-	)
-	.unwrap()
-}
-
-pub struct UrlImagery {
-	url: String,
-	tile_size: u32,
-	max_zoom: u32,
-	min_zoom: u32,
-	file_format: FileFormat,
-}
-
-impl UrlImagery {
-	#[must_use]
-	pub fn new(url: String, tile_size: u32, max_zoom: u32, min_zoom: u32, file_format: FileFormat) -> Option<Self> {
-		if max_zoom < min_zoom {
-			return None;
-		}
-		if tile_size == 0 {
-			return None;
-		}
-
-		if !url.contains("{x}") || !url.contains("{y}") || !url.contains("{zoom}") {
-			return None;
-		}
-
-		Some(Self {
-			url,
-			tile_size,
-			max_zoom,
-			min_zoom,
-			file_format,
-		})
+pub fn esri_imagery() -> Imagery {
+	Imagery {
+		name: vec!["ESRI World Imagery".into()],
+		description: None,
+		imagery_type: ImageryType::Tms,
+		url: "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}"
+			.to_string(),
+		max_zoom: 22,
+		min_zoom: 0,
+		tile_size: Some(256),
+		bounds: None,
 	}
 }
 
-impl Imagery for UrlImagery {
-	fn tile_size(&self) -> u32 {
+pub fn osm_imagery() -> Imagery {
+	Imagery {
+		name: vec!["OpenStreetMap Carto".into()],
+		description: None,
+		imagery_type: ImageryType::Tms,
+		url: "https://tile.openstreetmap.org/{zoom}/{x}/{y}.png".to_string(),
+		max_zoom: 19,
+		min_zoom: 0,
+		tile_size: Some(256),
+		bounds: None,
+	}
+}
+
+impl From<&str> for Name {
+	fn from(text: &str) -> Self {
+		Name {
+			lang: None,
+			text: text.to_string(),
+		}
+	}
+}
+
+#[serde_inline_default]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Imagery {
+	pub name: Vec<Name>,
+	pub description: Option<Vec<Description>>,
+	#[serde(rename = "type")]
+	imagery_type: ImageryType,
+	url: String,
+	#[serde_inline_default(20)]
+	max_zoom: u32,
+	#[serde_inline_default(0)]
+	min_zoom: u32,
+	tile_size: Option<u32>,
+	bounds: Option<ImageryBounds>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ImageryBounds {
+	#[serde(rename = "@max-lat")]
+	pub max_lat: f64,
+	#[serde(rename = "@max-lon")]
+	pub max_lon: f64,
+	#[serde(rename = "@min-lat")]
+	pub min_lat: f64,
+	#[serde(rename = "@min-lon")]
+	pub min_lon: f64,
+	pub shape: Option<Vec<Shape>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Shape {
+	pub point: Vec<LatLon>,
+}
+
+/* #[derive(Serialize, Deserialize)]
+pub struct Point {
+	#[serde(rename = "@lat")]
+	pub lat: String,
+	#[serde(rename = "@lon")]
+	pub lon: String,
+}*/
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImageryType {
+	Tms,
+	Wmts,
+	Wms,
+	WmsEndpoint,
+	Mvt,
+	Bing,
+	Scanex,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Imageries {
+	#[serde(rename = "entry")]
+	pub entries: Vec<Imagery>,
+}
+impl Imageries {
+	pub(crate) fn new() -> Self {
+		Self { entries: Vec::new() }
+	}
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Name {
+	#[serde(rename = "$text")]
+	pub text: String,
+	#[serde(rename = "@lang")]
+	pub lang: Option<String>,
+}
+
+impl Display for Name {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match &self.lang {
+			None => write!(f, "{}", self.text),
+			Some(lang) => write!(f, "{}:{}", lang, self.text),
+		}
+	}
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Description {
+	#[serde(rename = "@lang")]
+	pub lang: Option<String>,
+	#[serde(rename = "$text")]
+	pub text: Option<String>,
+}
+
+impl Display for Description {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.text.as_ref().unwrap_or(&"".to_string()))
+	}
+}
+
+impl Imagery {
+	pub fn tile_size(&self) -> Option<u32> {
 		self.tile_size
 	}
 
-	fn max_zoom(&self) -> u32 {
+	pub fn max_zoom(&self) -> u32 {
 		self.max_zoom
 	}
 
-	fn min_zoom(&self) -> u32 {
+	pub fn min_zoom(&self) -> u32 {
 		self.min_zoom
 	}
 
-	fn tile_url(&self, x: u32, y: u32, zoom: u32) -> String {
+	pub fn tile_url(&self, x: u32, y: u32, zoom: u32) -> String {
 		self.url
 			.replace("{x}", &x.to_string())
 			.replace("{y}", &y.to_string())
 			.replace("{zoom}", &zoom.to_string())
 	}
 
-	fn file_format(&self) -> FileFormat {
-		self.file_format
+	pub fn name(&self) -> &str {
+		&self.name[0].text
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use log::error;
+
+	use super::*;
+
+	#[test]
+	pub fn xml_parsing() {
+		crate::init_test_logger();
+		let xml = include_str!("../../josm_imagery_test.xml");
+		// let xml = include_str!("../../imagery_small.xml");
+		let mut de = Deserializer::from_str(xml);
+		let result: Result<Imageries, _> = serde_path_to_error::deserialize(&mut de);
+
+		match result {
+			Ok(imageries) => {
+				info!("Success: {} sources parsed.", imageries.entries.len())
+			}
+			Err(err) => {
+				let path = err.path().to_string();
+				error!("Unable to parse JOSM imagery data: <{path}> - {err}");
+			}
+		};
 	}
 }

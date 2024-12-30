@@ -11,7 +11,7 @@ use epaint::textures::TextureOptions;
 use epaint::{ColorImage, ImageData, TextureId, TextureManager};
 #[cfg(target_arch = "wasm32")]
 use gloo_worker::{Spawnable, WorkerBridge};
-use image::EncodableLayout;
+use image::{EncodableLayout, ImageFormat};
 use log::error;
 use lru::LruCache;
 #[cfg(not(target_arch = "wasm32"))]
@@ -33,7 +33,7 @@ use crate::util::sleep::timer;
 
 pub struct ImageryFetcher {
 	memory_cache: MemoryCache,
-	imagery: Arc<Mutex<dyn Imagery>>,
+	imagery: Arc<Mutex<Imagery>>,
 	pending: Arc<Mutex<HashSet<Tile>>>,
 	#[cfg(not(target_arch = "wasm32"))]
 	persistent_cache: Arc<tokio::sync::Mutex<local_cache::LocalCache>>,
@@ -68,7 +68,7 @@ type PersistentCache = Arc<tokio::sync::Mutex<web_cache::WebCache>>;
 
 impl ImageryFetcher {
 	pub fn new(
-		imagery: impl Imagery + 'static,
+		imagery: Imagery,
 		texture_manager: Arc<RwLock<TextureManager>>,
 		#[cfg(not(target_arch = "wasm32"))] cache_directory: PathBuf,
 	) -> Self {
@@ -158,14 +158,14 @@ impl ImageryFetcher {
 	}
 
 	#[must_use]
-	pub fn imagery(&self) -> Arc<Mutex<dyn Imagery>> {
+	pub fn imagery(&self) -> Arc<Mutex<Imagery>> {
 		self.imagery.clone()
 	}
 
 	async fn fetching_loop(
 		pending: Arc<Mutex<HashSet<Tile>>>,
 		memory_cache: MemoryCache,
-		imagery: Arc<Mutex<dyn Imagery>>,
+		imagery: Arc<Mutex<Imagery>>,
 		persistent_cache: PersistentCache,
 		texture_manager: Arc<RwLock<TextureManager>>,
 		#[cfg(target_arch = "wasm32")] worker_bridge: Arc<Mutex<WorkerBridge<ImageWorker>>>,
@@ -257,12 +257,11 @@ impl ImageryFetcher {
 	#[cfg(not(target_arch = "wasm32"))]
 	async fn fetch_tile(
 		texture_manager: &Arc<RwLock<TextureManager>>,
-		imagery: Arc<Mutex<dyn Imagery>>,
+		imagery: Arc<Mutex<Imagery>>,
 		persistent_cache: Arc<tokio::sync::Mutex<local_cache::LocalCache>>,
 		tile: Tile,
 	) -> Result<TextureId, Error> {
-		let file_format = imagery.lock().unwrap().file_format();
-		if let Some(image_data) = persistent_cache.lock().await.get_image(tile, file_format).await {
+		if let Some(image_data) = persistent_cache.lock().await.get_image(tile).await {
 			return Self::create_texture(texture_manager, tile_to_string(&tile), &image_data);
 		}
 
@@ -276,10 +275,11 @@ impl ImageryFetcher {
 			Err(err) => Err(Error::Reqwest(err)),
 			Ok(response) => {
 				let bytes = response.bytes().await?;
+				let image_format = image::guess_format(&bytes)?;
 				persistent_cache
 					.lock()
 					.await
-					.save_image(tile, &bytes, file_format)
+					.save_image(tile, &bytes, image_format)
 					.await; // TODO: Maybe do this on a separate thread
 
 				Self::create_texture(texture_manager, tile_to_string(&tile), &bytes)
@@ -290,7 +290,7 @@ impl ImageryFetcher {
 	#[cfg(target_arch = "wasm32")]
 	async fn fetch_tile(
 		worker_bridge: Arc<Mutex<WorkerBridge<ImageWorker>>>,
-		imagery: Arc<Mutex<dyn Imagery>>,
+		imagery: Arc<Mutex<Imagery>>,
 		persistent_cache: Arc<tokio::sync::Mutex<web_cache::WebCache>>,
 		tile: Tile,
 	) -> Result<(), Error> {
@@ -324,13 +324,13 @@ impl ImageryFetcher {
 			}
 		}
 	}
-	pub fn decode_image(bytes: &[u8]) -> Result<ColorImage, Error> {
-		let image = image::ImageReader::new(Cursor::new(bytes))
-			.with_guessed_format()?
+	pub fn decode_image(bytes: &[u8]) -> Result<(ColorImage, ImageFormat), Error> {
+		let image_format = image::guess_format(bytes)?;
+		let image = image::ImageReader::with_format(Cursor::new(bytes), image_format)
 			.decode()?
 			.to_rgba8();
 		let image = rgba_image_to_color_image(&image);
-		Ok(image)
+		Ok((image, image_format))
 	}
 
 	pub fn create_texture(
@@ -341,7 +341,7 @@ impl ImageryFetcher {
 		Ok(Self::create_texture_from_decoded(
 			texture_manager,
 			name,
-			Self::decode_image(bytes)?,
+			Self::decode_image(bytes)?.0,
 		))
 	}
 
@@ -381,7 +381,7 @@ impl ImageryFetcher {
 
 	/// Estimated VRAM usages of tiles in MiB
 	pub fn vram_used(&self) -> usize {
-		let tile_size = self.imagery().lock().unwrap().tile_size().pow(2) as usize;
+		let tile_size = self.imagery().lock().unwrap().tile_size().unwrap().pow(2) as usize;
 		self.memory_cached_count() * tile_size * 4 / 1024 / 1024
 	}
 

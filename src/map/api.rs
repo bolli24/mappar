@@ -1,4 +1,4 @@
-use super::map_data::ElementId;
+use super::map_data::{latlon, ElementId};
 use crate::map::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member};
 use indexmap::IndexMap;
 use instant::Instant;
@@ -245,7 +245,7 @@ fn parse_attributes(attributes: Attributes) -> Option<(i64, Option<LatLon>, Elem
 		}
 	}
 	let lat_lon = if !lat.is_nan() && !lon.is_nan() {
-		Some(LatLon(lat, lon))
+		Some(latlon(lat, lon))
 	} else {
 		None
 	};
@@ -254,7 +254,7 @@ fn parse_attributes(attributes: Attributes) -> Option<(i64, Option<LatLon>, Elem
 
 #[cfg(test)]
 mod tests {
-	use crate::map::map_data::LatLon;
+	use crate::map::map_data::latlon;
 
 	use super::*;
 
@@ -263,11 +263,10 @@ mod tests {
 		crate::init_test_logger();
 
 		let bounds = Bounds {
-			min: LatLon(51.82887, 12.19731),
-			max: LatLon(51.82344, 12.21268),
+			min: latlon(51.82887, 12.19731),
+			max: latlon(51.82344, 12.21268),
 		};
 		let result = get_data(bounds).await;
-		info!("Result: {result:?}");
 		assert!(result.is_ok());
 	}
 }

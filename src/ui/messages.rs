@@ -1,11 +1,11 @@
 use crate::util::history::History;
 use egui::{Frame, Style, Widget};
 use instant::Instant;
-use std::{cell::RefCell, rc::Rc};
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub struct Messages {
-	messages: Rc<RefCell<History<String>>>,
+	messages: Arc<Mutex<History<String>>>,
 	startup: Instant,
 }
 
@@ -15,13 +15,13 @@ const MAX_MESSAGE_AGE: f32 = 5.0;
 impl Messages {
 	pub fn new() -> Self {
 		Self {
-			messages: Rc::new(RefCell::new(History::new(0..MAX_MESSAGE_COUNT, MAX_MESSAGE_AGE))),
+			messages: Arc::new(Mutex::new(History::new(0..MAX_MESSAGE_COUNT, MAX_MESSAGE_AGE))),
 			startup: Instant::now(),
 		}
 	}
 
 	pub fn add(&mut self, message: impl ToString) {
-		self.messages.borrow_mut().add(self.now(), message.to_string());
+		self.messages.lock().unwrap().add(self.now(), message.to_string());
 	}
 
 	pub fn now(&self) -> f64 {
@@ -31,7 +31,7 @@ impl Messages {
 
 impl Widget for Messages {
 	fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-		let mut messages = self.messages.borrow_mut();
+		let mut messages = self.messages.lock().unwrap();
 		messages.flush(self.now());
 		let mut style: Style = ui.style().as_ref().clone();
 		style.visuals.window_fill = style.visuals.window_fill.gamma_multiply(0.80);

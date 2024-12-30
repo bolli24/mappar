@@ -1,6 +1,7 @@
-use crate::imagery::cache::{Cache, FileFormat};
+use crate::imagery::cache::Cache;
 use crate::imagery::imagery_fetcher::Tile;
 use bytes::Bytes;
+use image::ImageFormat;
 use js_sys::Reflect;
 use log::{error, info};
 use std::collections::HashSet;
@@ -91,12 +92,12 @@ impl Cache for WebCache {
 		self.cached_images.len()
 	}
 
-	async fn save_image(&mut self, _tile: Tile, _image_data: &Bytes, _file_format: FileFormat) -> Option<()> {
+	async fn save_image(&mut self, _tile: Tile, _image_data: &Bytes, _image_format: ImageFormat) -> Option<()> {
 		let _window = web_sys::window().unwrap();
 		None
 	}
 
-	async fn get_image(&self, _tile: Tile, _file_format: FileFormat) -> Option<Bytes> {
+	async fn get_image(&self, _tile: Tile, _image_format: ImageFormat) -> Option<Bytes> {
 		None
 	}
 }

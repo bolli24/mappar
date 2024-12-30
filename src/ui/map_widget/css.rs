@@ -223,12 +223,11 @@ fn try_get_icon_texture(
 }
 
 fn decode_or_render(extension: &str, bytes: bytes::Bytes) -> Result<ColorImage, IconError> {
-	let color_image = match extension {
-		"png" | "jpg" | "jpeg" => imagery_fetcher::ImageryFetcher::decode_image(&bytes)?,
-		"svg" => render_svg(&bytes)?,
-		_ => Err(IconError::UnsupportedFileType(extension.to_string()))?,
-	};
-	Ok(color_image)
+	if extension == "svg" {
+		Ok(render_svg(&bytes)?)
+	} else {
+		Ok(imagery_fetcher::ImageryFetcher::decode_image(&bytes)?.0)
+	}
 }
 
 fn render_svg(bytes: &[u8]) -> Result<ColorImage, IconError> {

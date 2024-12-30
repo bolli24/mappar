@@ -6,7 +6,7 @@ pub mod render;
 mod style;
 
 use crate::imagery::imagery_fetcher::ImageryFetcher;
-use crate::map::map_data::{Element, LatLon, MapData, CIRCUMFERENCE_EARTH};
+use crate::map::map_data::{latlon, Element, LatLon, MapData, CIRCUMFERENCE_EARTH};
 use crate::ui::debug_text::DebugText;
 use crate::util::convert::{ToDVec2, ToPos2};
 use css::Styles;
@@ -294,7 +294,7 @@ fn draw_tiles(
 
 	let corners = get_world_corners(view.viewport, view.camera_pos, view.scale);
 
-	let base_tile_size = imagery_fetcher.imagery().lock().unwrap().tile_size();
+	let base_tile_size = imagery_fetcher.imagery().lock().unwrap().tile_size().unwrap();
 	let max_zoom = imagery_fetcher.imagery().lock().unwrap().max_zoom();
 
 	let tile_zoom_level = u32::min(
@@ -375,11 +375,11 @@ fn get_tile(coords: DVec2, zoom_level: u32) -> UVec2 {
 	let lat_lon = LatLon::from_web_mercator(coords);
 	let scale = 2.0f64.powi(zoom_level as i32);
 
-	let mut siny = lat_lon.0.to_radians().sin();
+	let mut siny = lat_lon.lat.to_radians().sin();
 
 	siny = siny.clamp(-0.9999, 0.9999);
 	let world_coords = dvec2(
-		0.5 + lat_lon.1 / 360.0,
+		0.5 + lat_lon.lon / 360.0,
 		0.5 - f64::ln((1.0 + siny) / (1.0 - siny)) / (4.0 * PI),
 	);
 
@@ -398,7 +398,7 @@ fn get_tile_pos(tile_x: u32, tile_y: u32, zoom_level: u32) -> DVec2 {
 	let lon_deg = (tile_x as f64 / n).mul_add(360.0, -180.0);
 	let lat_rad = (PI - 2.0 * PI * tile_y as f64 / n).sinh().atan();
 
-	LatLon(-lat_rad.to_degrees(), lon_deg).to_web_mercator()
+	latlon(-lat_rad.to_degrees(), lon_deg).to_web_mercator()
 }
 
 fn get_world_corners(viewport: Rect, camera_pos: DVec2, scale: f64) -> (DVec2, DVec2) {

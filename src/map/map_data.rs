@@ -170,9 +170,13 @@ impl Default for ElementInfo {
 	}
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct LatLon(pub f64, pub f64);
-
+#[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LatLon {
+	#[serde(rename = "@lat")]
+	pub lat: f64,
+	#[serde(rename = "@lon")]
+	pub lon: f64,
+}
 pub const RADIUS_EARTH: f64 = 6_378_137.0;
 pub const CIRCUMFERENCE_EARTH: f64 = 2.0 * PI * RADIUS_EARTH;
 
@@ -182,8 +186,8 @@ impl LatLon {
 	#[inline]
 	pub fn to_web_mercator(self) -> DVec2 {
 		DVec2 {
-			x: RADIUS_EARTH * self.1.to_radians(),
-			y: f64::ln(f64::tan(self.0.to_radians().mul_add(0.5, FRAC_PI_4))) * RADIUS_EARTH,
+			x: RADIUS_EARTH * self.lon.to_radians(),
+			y: f64::ln(f64::tan(self.lat.to_radians().mul_add(0.5, FRAC_PI_4))) * RADIUS_EARTH,
 		}
 	}
 
@@ -195,55 +199,59 @@ impl LatLon {
 
 	#[inline]
 	pub fn from_web_mercator(pos: DVec2) -> Self {
-		Self(
-			f64::atan(f64::exp(pos.y / RADIUS_EARTH))
+		Self {
+			lat: f64::atan(f64::exp(pos.y / RADIUS_EARTH))
 				.mul_add(2.0, -FRAC_PI_2)
 				.to_degrees(),
-			(pos.x / RADIUS_EARTH).to_degrees(),
-		)
+			lon: (pos.x / RADIUS_EARTH).to_degrees(),
+		}
 	}
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Bounds {
 	pub min: LatLon,
 	pub max: LatLon,
 }
 
+pub fn latlon(lat: f64, lon: f64) -> LatLon {
+	LatLon { lat, lon }
+}
+
 impl Bounds {
 	pub fn center(&self) -> LatLon {
-		LatLon((self.top() + self.bottom()) / 2.0, (self.left() + self.right()) / 2.0)
+		latlon((self.top() + self.bottom()) / 2.0, (self.left() + self.right()) / 2.0)
 	}
 	pub fn left(&self) -> f64 {
-		f64::min(self.min.1, self.max.1)
+		f64::min(self.min.lon, self.max.lon)
 	}
 
 	pub fn right(&self) -> f64 {
-		f64::max(self.min.1, self.max.1)
+		f64::max(self.min.lon, self.max.lon)
 	}
 
 	pub fn top(&self) -> f64 {
-		f64::max(self.min.0, self.max.0)
+		f64::max(self.min.lat, self.max.lat)
 	}
 
 	pub fn bottom(&self) -> f64 {
-		f64::min(self.min.0, self.max.0)
+		f64::min(self.min.lat, self.max.lat)
 	}
 
 	pub fn top_left(&self) -> LatLon {
-		LatLon(self.top(), self.left())
+		latlon(self.top(), self.left())
 	}
 
 	pub fn top_right(&self) -> LatLon {
-		LatLon(self.top(), self.right())
+		latlon(self.top(), self.right())
 	}
 
 	pub fn bottom_left(&self) -> LatLon {
-		LatLon(self.bottom(), self.left())
+		latlon(self.bottom(), self.left())
 	}
 
 	pub fn bottom_right(&self) -> LatLon {
-		LatLon(self.bottom(), self.right())
+		latlon(self.bottom(), self.right())
 	}
 
 	pub fn as_string(&self) -> String {
@@ -355,11 +363,14 @@ mod tests {
 	#[test]
 	fn test_lat_lon() {
 		crate::init_test_logger();
-		let lat_lon = LatLon(51.82887, 12.19731);
+		let lat_lon = LatLon {
+			lat: 51.82887,
+			lon: 12.19731,
+		};
 		let web_mercator = lat_lon.to_web_mercator();
 		info!("Web Mercator: {:?}", web_mercator);
 		let lat_lon2 = LatLon::from_web_mercator(web_mercator);
-		let diff = (lat_lon.0 - lat_lon2.0).abs() + (lat_lon.1 - lat_lon2.1).abs();
+		let diff = (lat_lon.lat - lat_lon2.lat).abs() + (lat_lon.lon - lat_lon2.lon).abs();
 		assert!(diff < 0.0001);
 	}
 }
