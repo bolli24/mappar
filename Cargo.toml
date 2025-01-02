@@ -45,7 +45,7 @@ instant = "0.1"
 
 lru = "0.12.5"
 indexmap = "2.7.0"
-itertools = "0.13.0"
+itertools = "0.14"
 regex = "1.11.1"
 undo = "0.51"
 
