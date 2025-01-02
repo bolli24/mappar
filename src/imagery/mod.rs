@@ -26,6 +26,18 @@ mod schema;
 pub const JOSM_URL: &str = "https://josm.openstreetmap.de/maps";
 pub const JOSM_FILE: &str = "josm_imagery.xml";
 
+pub fn get_imagery(josm_xml_path: PathBuf, mut messages: Messages, imageries: Arc<Mutex<Imageries>>) {
+	crate::spawn_task!(async move {
+		if let Ok(xml) = tokio::fs::read_to_string(&josm_xml_path).await {
+			message_info!(messages, "Found local iamgery info.");
+			imageries_from_str(&xml, messages, imageries).await;
+		} else {
+			message_info!(messages, "Could not find local iamgery info. Fetching...");
+			update_josm_imagery(josm_xml_path, messages, imageries);
+		}
+	});
+}
+
 pub fn update_josm_imagery(josm_xml_path: PathBuf, mut messages: Messages, imageries: Arc<Mutex<Imageries>>) {
 	async fn get_xml() -> Result<String, crate::map::api::Error> {
 		let client = Client::new();
@@ -49,33 +61,38 @@ pub fn update_josm_imagery(josm_xml_path: PathBuf, mut messages: Messages, image
 			return;
 		};
 
-		let start = Instant::now();
-
-		let mut deserializer = Deserializer::from_str(&xml);
-		deserializer.event_buffer_size(Some(NonZeroUsize::new(10000).unwrap()));
-		let result = serde_path_to_error::deserialize(&mut deserializer);
-
-		let parsed: Imageries = match result {
-			Ok(imageries) => imageries,
-			Err(err) => {
-				let path = err.path().to_string();
-				message_error!(messages, "Unable to parse JOSM imagery data: <{path}> - {err}");
-				return;
-			}
-		};
-
-		message_info!(
-			messages,
-			"Parsed {} imagery sources. Took: {:?}",
-			parsed.entries.len(),
-			start.elapsed()
-		);
-		*imageries.lock().unwrap() = parsed;
+		imageries_from_str(&xml, messages, imageries).await;
 	});
+}
+
+async fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mutex<Imageries>>) {
+	let start = Instant::now();
+
+	let mut deserializer = Deserializer::from_str(xml);
+	deserializer.event_buffer_size(Some(NonZeroUsize::new(10000).unwrap()));
+	let result = serde_path_to_error::deserialize(&mut deserializer);
+
+	let parsed: Imageries = match result {
+		Ok(imageries) => imageries,
+		Err(err) => {
+			let path = err.path().to_string();
+			message_error!(messages, "Unable to parse JOSM imagery data: <{path}> - {err}");
+			return;
+		}
+	};
+
+	message_info!(
+		messages,
+		"Parsed {} imagery sources. Took: {:?}",
+		parsed.entries.len(),
+		start.elapsed()
+	);
+	*imageries.lock().unwrap() = parsed;
 }
 
 pub fn esri_imagery() -> Imagery {
 	Imagery {
+		id: "esri".into(),
 		name: vec!["ESRI World Imagery".into()],
 		description: None,
 		imagery_type: ImageryType::Tms,
@@ -90,6 +107,7 @@ pub fn esri_imagery() -> Imagery {
 
 pub fn osm_imagery() -> Imagery {
 	Imagery {
+		id: "osm".into(),
 		name: vec!["OpenStreetMap Carto".into()],
 		description: None,
 		imagery_type: ImageryType::Tms,
@@ -114,6 +132,7 @@ impl From<&str> for Name {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Imagery {
+	pub id: ImageryId,
 	pub name: Vec<Name>,
 	pub description: Option<Vec<Description>>,
 	#[serde(rename = "type")]
@@ -170,9 +189,23 @@ pub struct Imageries {
 	#[serde(rename = "entry")]
 	pub entries: Vec<Imagery>,
 }
+
 impl Imageries {
-	pub(crate) fn new() -> Self {
+	pub fn new() -> Self {
 		Self { entries: Vec::new() }
+	}
+	/* pub fn local_or_empty() -> Self {
+		let local_xml = std::fs::read()
+		Self { entries: Vec::new() }
+	}*/
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ImageryId(String);
+
+impl From<&str> for ImageryId {
+	fn from(value: &str) -> Self {
+		Self(value.to_string())
 	}
 }
 
@@ -234,7 +267,7 @@ impl Imagery {
 
 #[cfg(test)]
 mod tests {
-	use log::error;
+	use log::{error, info};
 
 	use super::*;
 

@@ -1,10 +1,11 @@
+use super::imagery_widget::ImageriesWidget;
 use super::key_value_table::KeyValueTable;
 use super::map_widget::css::Styles;
 use super::map_widget::render::DetailedElement;
 use super::map_widget::MapWidget;
 use super::messages::Messages;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
-use crate::imagery::{esri_imagery, Imageries, JOSM_FILE};
+use crate::imagery::{esri_imagery, get_imagery, Imageries, JOSM_FILE};
 use crate::map::api::get_data;
 use crate::map::map_data::{latlon, Bounds, LatLon, MapData};
 use crate::ui::debug_text::DebugText;
@@ -51,6 +52,7 @@ pub struct MyApp {
 	#[cfg(not(target_arch = "wasm32"))]
 	storage_dir: PathBuf,
 	messages: Messages,
+	imagery_settings: bool,
 }
 
 impl MyApp {
@@ -114,7 +116,14 @@ impl MyApp {
 			#[cfg(not(target_arch = "wasm32"))]
 			storage_dir,
 			messages: Messages::new(),
+			imagery_settings: false,
 		};
+
+		get_imagery(
+			Path::new(&app.storage_dir).join(JOSM_FILE).to_path_buf(),
+			app.messages.clone(),
+			app.imageries.clone(),
+		);
 
 		let map_data = app.map_data.clone();
 
@@ -198,6 +207,10 @@ impl eframe::App for MyApp {
 					}
 				});
 				ui.menu_button("Imagery", |ui| {
+					if ui.button("Imagery Settings").clicked() {
+						ui.close_menu();
+						self.imagery_settings = !self.imagery_settings;
+					}
 					if ui.button("Fetch JOSM imagery").clicked() {
 						ui.close_menu();
 						crate::imagery::update_josm_imagery(
@@ -273,10 +286,21 @@ impl eframe::App for MyApp {
 			ui.put(rect, self.messages.clone());
 		});
 
+		// TODO: Use native window
 		Window::new("Egui Inpector")
 			.open(&mut self.inspection)
 			.vscroll(true)
 			.show(ctx, |ui| ctx.inspection_ui(ui));
+
+		// TODO use native window with proper positioning.
+		/* show_as_window(ctx, "Imagery Settings", &mut self.imagery_settings, |ui| {
+			ui.add(ImageriesWidget::new(&self.imageries.lock().unwrap()))
+		});*/
+
+		Window::new("Imagery Settings")
+			.open(&mut self.imagery_settings)
+			.resizable(true)
+			.show(ctx, |ui| ui.add(ImageriesWidget::new(&self.imageries.lock().unwrap())));
 
 		ctx.input(|i| {
 			if i.modifiers == Modifiers::CTRL | Modifiers::COMMAND {

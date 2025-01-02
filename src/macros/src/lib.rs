@@ -11,9 +11,9 @@ pub fn memory_derive(input: TokenStream) -> TokenStream {
 
 	let expanded = quote! {
 		use egui::{Context, Id};
-		impl<'a> Memory<'a> for #name {
+		impl Memory for #name {
 			fn load_or_default(ctx: &Context, id: Id) -> Self {
-				ctx.data_mut(|d| *d.get_persisted_mut_or(id, Self::default()))
+				ctx.data_mut(|d| d.get_persisted_mut_or(id, Self::default()).clone())
 			}
 
 			fn load(ctx: &Context, id: Id) -> Option<Self> {
