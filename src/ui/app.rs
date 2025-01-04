@@ -11,7 +11,7 @@ use crate::map::map_data::{latlon, Bounds, LatLon, MapData};
 use crate::ui::debug_text::DebugText;
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
-use crate::unreachable_log;
+use crate::{dbgtxt, unreachable_log};
 use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use instant::Instant;
 use log::{error, info};
@@ -175,15 +175,17 @@ impl eframe::App for MyApp {
 			}
 		});
 
-		self.debug_text.add(format!(
+		dbgtxt!(
+			self.debug_text,
 			"History count: {}",
 			self.map_data.lock().unwrap().history_len()
-		));
+		);
 
-		self.debug_text.add(format!(
+		dbgtxt!(
+			self.debug_text,
 			"Loaded imageries: {}",
 			self.imageries.lock().unwrap().entries.len()
-		));
+		);
 
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
 			egui::menu::bar(ui, |ui| {
@@ -278,8 +280,9 @@ impl eframe::App for MyApp {
 					&mut self.styles,
 					self.imagery_fetcher.clone(),
 					self.map_widget_id,
-					&mut self.debug_text,
+					Some(&mut self.debug_text),
 					&mut self.map_memory,
+					true,
 				))
 				.rect;
 			rect.min += egui::Vec2::new(5.0, 5.0);
@@ -351,13 +354,14 @@ impl eframe::App for MyApp {
 			.unwrap_or(Duration::ZERO)
 			.as_micros() as f32
 			/ 1000.0;
-		self.debug_text.add(format!(
+		dbgtxt!(
+			self.debug_text,
 			"Frame Time: {:.1}ms\nAverage: {:.1}ms ({:.1} FPS)\nWorst: {:.1}ms",
 			last_frame_ms,
 			average_ms,
 			1000.0 / average_ms,
 			worst_ms
-		));
+		);
 		puffin::GlobalProfiler::lock().new_frame();
 		self.last_update = Instant::now();
 	}

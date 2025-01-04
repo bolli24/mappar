@@ -5,6 +5,7 @@ mod polygon;
 pub mod render;
 mod style;
 
+use crate::dbgtxt;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::map::map_data::{latlon, Element, LatLon, MapData, CIRCUMFERENCE_EARTH};
 use crate::ui::debug_text::DebugText;
@@ -34,7 +35,7 @@ pub struct MapWidget<'a> {
 	styles: &'a mut Option<Styles>,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	id: Id,
-	debug_text: &'a mut DebugText,
+	debug_text: Option<&'a mut DebugText>,
 	mem: &'a mut MapMemory,
 }
 
@@ -58,7 +59,7 @@ impl<'a> MapWidget<'a> {
 		styles: &'a mut Option<Styles>,
 		imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 		id: Id,
-		debug_text: &'a mut DebugText,
+		debug_text: Option<&'a mut DebugText>,
 		mem: &'a mut MapMemory,
 	) -> Self {
 		Self {
@@ -81,7 +82,7 @@ pub enum MapState {
 
 impl Widget for MapWidget<'_> {
 	#[allow(clippy::too_many_lines)]
-	fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+	fn ui(mut self, ui: &mut egui::Ui) -> egui::Response {
 		ScrollArea::neither()
 			.show(ui, |ui| {
 				Frame::canvas(ui.style()).show(ui, |ui| {
@@ -90,9 +91,9 @@ impl Widget for MapWidget<'_> {
 					let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 					ui.ctx().request_repaint();
 					let clip_rect = ui.clip_rect();
-					self.debug_text.add(format!("Clip Rect: {clip_rect:?}"));
+					dbgtxt!(self.debug_text, "Clip Rect: {clip_rect:?}");
 					let viewport = response.interact_rect;
-					self.debug_text.add(format!("Viewport: {viewport:?}"));
+					dbgtxt!(self.debug_text, "Viewport: {viewport:?}");
 
 					let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y as f64;
 					if zoom != 0.0 && response.contains_pointer() {
@@ -120,10 +121,10 @@ impl Widget for MapWidget<'_> {
 						self.mem.camera_pos -= delta;
 					}
 
-					self.debug_text.add(format!("Camera: {:?}", self.mem.camera_pos));
-					self.debug_text.add(format!("Zoom: {}", self.mem.zoom_level));
-					self.debug_text.add(format!("Scale: {scale}"));
-					self.debug_text.add(format!("UI Scale: {ui_scale}"));
+					dbgtxt!(self.debug_text, "Camera: {:?}", self.mem.camera_pos);
+					dbgtxt!(self.debug_text, "Zoom: {}", self.mem.zoom_level);
+					dbgtxt!(self.debug_text, "Scale: {scale}");
+					dbgtxt!(self.debug_text, "UI Scale: {ui_scale}");
 
 					let camera_rect = viewport.translate(-viewport.size() / 2.0) * scale as f32;
 					let transform = RectTransform::from_to(camera_rect, viewport);
@@ -131,11 +132,12 @@ impl Widget for MapWidget<'_> {
 					let world_view_rect = Rect::from_two_pos(world_corners.0.to_pos2(), world_corners.1.to_pos2());
 					let pointer_world_pos = pointer_world_pos(self.mem.camera_pos, &response, viewport, scale); // We get this here again to reduce latency
 
-					self.debug_text.add(format!("World View Rect: {:?}", world_view_rect));
-					self.debug_text.add(format!(
+					dbgtxt!(self.debug_text, "World View Rect: {:?}", world_view_rect);
+					dbgtxt!(
+						self.debug_text,
 						"Pointer Pos: {:?}",
 						pointer_world_pos.map(|p| p.round().as_ivec2())
-					));
+					);
 
 					let view = View {
 						transform,
@@ -148,7 +150,7 @@ impl Widget for MapWidget<'_> {
 						pointer_world_pos,
 					};
 
-					draw_tiles(&painter, &self.imagery_fetcher, &view, self.debug_text);
+					draw_tiles(&painter, &self.imagery_fetcher, &view, &mut self.debug_text);
 
 					let mut render_data = Vec::with_capacity(self.map_data.len());
 					let select_threshold = 5.0 * scale;
@@ -182,9 +184,8 @@ impl Widget for MapWidget<'_> {
 						}
 					}
 
-					self.debug_text
-						.add(format!("Closest element: {:?}", hover_element.map(|e| e.id)));
-					self.debug_text.add(format!("Select threshold: {select_threshold:.3}"));
+					dbgtxt!(self.debug_text, "Closest element: {:?}", hover_element.map(|e| e.id));
+					dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");
 
 					let mut shapes = DrawList::new();
 
@@ -201,7 +202,7 @@ impl Widget for MapWidget<'_> {
 						draw_element(element, &mut shapes, &view);
 					}
 
-					self.debug_text.add(format!("Drawn Elements: {}", shapes.count()));
+					dbgtxt!(self.debug_text, "Drawn Elements: {}", shapes.count());
 
 					shapes.draw(&painter);
 
@@ -212,8 +213,6 @@ impl Widget for MapWidget<'_> {
 			.response
 	}
 }
-
-impl<'a> MapWidget<'a> {}
 
 #[inline]
 fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View) {
@@ -271,7 +270,7 @@ fn draw_tiles(
 	painter: &Painter,
 	imagery_fetcher: &Arc<Mutex<ImageryFetcher>>,
 	view: &View,
-	debug_text: &mut DebugText,
+	debug_text: &mut Option<&mut DebugText>,
 ) {
 	puffin::profile_function!();
 	#[cfg(not(target_arch = "wasm32"))]
@@ -281,16 +280,18 @@ fn draw_tiles(
 
 	puffin::profile_function!();
 	let mut imagery_fetcher = imagery_fetcher.lock().unwrap();
-	debug_text.add(format!(
+	dbgtxt!(
+		debug_text,
 		"Local cached tiles: {}",
 		imagery_fetcher.persistent_cached_count()
-	));
-	debug_text.add(format!(
+	);
+	dbgtxt!(
+		debug_text,
 		"Memory cached tiles: {} (≈{}MiB)",
 		imagery_fetcher.memory_cached_count(),
 		imagery_fetcher.vram_used()
-	));
-	debug_text.add(format!("Pending tiles: {}", imagery_fetcher.pending_count(),));
+	);
+	dbgtxt!(debug_text, "Pending tiles: {}", imagery_fetcher.pending_count());
 
 	let corners = get_world_corners(view.viewport, view.camera_pos, view.scale);
 
@@ -305,10 +306,11 @@ fn draw_tiles(
 	let tile_size = ((CIRCUMFERENCE_EARTH) / f64::exp2(tile_zoom_level as f64) / 256.0) * base_tile_size as f64;
 	let (x_tiles, y_tiles) = tiles_in_rect(corners, tile_zoom_level);
 
-	debug_text.add(format!(
+	dbgtxt!(
+		debug_text,
 		"Tiles in View: {}",
 		x_tiles.clone().count() * y_tiles.clone().count()
-	));
+	);
 
 	for (x, y) in x_tiles.cartesian_product(y_tiles) {
 		puffin::profile_scope!("Draw Tile", format!("{x} {y}"));
