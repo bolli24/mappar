@@ -98,7 +98,11 @@ impl Widget for MapWidget<'_> {
 					let viewport = response.interact_rect;
 					dbgtxt!(self.debug_text, "Viewport: {viewport:?}");
 
-					let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y as f64;
+					let zoom = if self.interactive {
+						response.ctx.input(|i| i.smooth_scroll_delta).y as f64
+					} else {
+						0.0
+					};
 					if zoom != 0.0 && response.contains_pointer() {
 						// TODO: fix zoom speed on chrome
 						let zoom_diff = zoom / 1000.0 * ZOOM_SPEED;
@@ -114,9 +118,10 @@ impl Widget for MapWidget<'_> {
 
 					let scale = scale(self.mem.zoom_level);
 
-					if response.dragged_by(PointerButton::Middle)
-						|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
-							&& response.dragged_by(PointerButton::Primary))
+					if self.interactive
+						&& (response.dragged_by(PointerButton::Middle)
+							|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
+								&& response.dragged_by(PointerButton::Primary)))
 					{
 						let delta = response.drag_delta();
 						let delta = delta * scale as f32;
@@ -172,13 +177,13 @@ impl Widget for MapWidget<'_> {
 
 					let hover_element = {
 						puffin::profile_scope!("Get hover element");
-						match pointer_world_pos {
-							Some(_) => closest_element(&render_data, &scale),
-							None => None,
+						match (self.interactive, pointer_world_pos) {
+							(true, Some(_)) => closest_element(&render_data, &scale),
+							_ => None,
 						}
 					};
 
-					if response.clicked() {
+					if self.interactive && response.clicked() {
 						if let Some(hover_element) = hover_element {
 							self.mem.selection.clear(self.map_data);
 							self.mem.selection.selected_elements.insert(hover_element.id);
@@ -193,7 +198,7 @@ impl Widget for MapWidget<'_> {
 					let mut shapes = DrawList::new();
 
 					for element in &render_data {
-						let hovered = hover_element.is_some_and(|e| e.id == element.id);
+						let hovered = self.interactive && hover_element.is_some_and(|e| e.id == element.id);
 						if hovered {
 							draw_element(&element.hovered(), &mut shapes, &view);
 						}
