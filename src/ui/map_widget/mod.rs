@@ -37,6 +37,7 @@ pub struct MapWidget<'a> {
 	id: Id,
 	debug_text: Option<&'a mut DebugText>,
 	mem: &'a mut MapMemory,
+	interactive: bool,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -61,6 +62,7 @@ impl<'a> MapWidget<'a> {
 		id: Id,
 		debug_text: Option<&'a mut DebugText>,
 		mem: &'a mut MapMemory,
+		interactive: bool,
 	) -> Self {
 		Self {
 			map_data,
@@ -69,6 +71,7 @@ impl<'a> MapWidget<'a> {
 			id,
 			debug_text,
 			mem,
+			interactive,
 		}
 	}
 }

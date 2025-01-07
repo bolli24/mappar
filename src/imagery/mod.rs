@@ -2,11 +2,13 @@ use crate::map::api::USER_AGENT;
 use crate::map::map_data::LatLon;
 use crate::ui::messages::Messages;
 use crate::{message_error, message_info};
+use celes::Country;
 use instant::Instant;
 use quick_xml::de::Deserializer;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_inline_default::serde_inline_default;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -98,6 +100,7 @@ pub fn esri_imagery() -> Imagery {
 		imagery_type: ImageryType::Tms,
 		url: "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}"
 			.to_string(),
+		country: None,
 		max_zoom: 22,
 		min_zoom: 0,
 		tile_size: Some(256),
@@ -112,6 +115,7 @@ pub fn osm_imagery() -> Imagery {
 		description: None,
 		imagery_type: ImageryType::Tms,
 		url: "https://tile.openstreetmap.org/{zoom}/{x}/{y}.png".to_string(),
+		country: None,
 		max_zoom: 19,
 		min_zoom: 0,
 		tile_size: Some(256),
@@ -136,14 +140,15 @@ pub struct Imagery {
 	pub name: Vec<Name>,
 	pub description: Option<Vec<Description>>,
 	#[serde(rename = "type")]
-	imagery_type: ImageryType,
-	url: String,
+	pub imagery_type: ImageryType,
+	pub url: String,
+	pub country: Option<Country>,
 	#[serde_inline_default(20)]
-	max_zoom: u32,
+	pub max_zoom: u32,
 	#[serde_inline_default(0)]
-	min_zoom: u32,
-	tile_size: Option<u32>,
-	bounds: Option<ImageryBounds>,
+	pub min_zoom: u32,
+	pub tile_size: Option<u32>,
+	pub bounds: Option<ImageryBounds>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -186,18 +191,42 @@ pub enum ImageryType {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Imageries {
-	#[serde(rename = "entry")]
-	pub entries: Vec<Imagery>,
+	#[serde(
+		rename = "entry",
+		serialize_with = "serialize_map",
+		deserialize_with = "deserialize_vec_to_map"
+	)]
+	pub entries: HashMap<ImageryId, Imagery>,
 }
 
 impl Imageries {
 	pub fn new() -> Self {
-		Self { entries: Vec::new() }
+		Self {
+			entries: HashMap::new(),
+		}
 	}
-	/* pub fn local_or_empty() -> Self {
-		let local_xml = std::fs::read()
-		Self { entries: Vec::new() }
-	}*/
+}
+
+impl Default for Imageries {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+fn serialize_map<S>(map: &HashMap<ImageryId, Imagery>, serializer: S) -> Result<S::Ok, S::Error>
+where
+	S: serde::Serializer,
+{
+	let vec: Vec<&Imagery> = map.values().collect();
+	vec.serialize(serializer)
+}
+
+fn deserialize_vec_to_map<'de, D>(deserializer: D) -> Result<HashMap<ImageryId, Imagery>, D::Error>
+where
+	D: serde::Deserializer<'de>,
+{
+	let vec: Vec<Imagery> = Vec::deserialize(deserializer)?;
+	Ok(vec.into_iter().map(|imagery| (imagery.id.clone(), imagery)).collect())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
