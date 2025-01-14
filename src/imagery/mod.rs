@@ -31,7 +31,7 @@ pub const JOSM_FILE: &str = "josm_imagery.xml";
 pub fn get_imagery(josm_xml_path: PathBuf, mut messages: Messages, imageries: Arc<Mutex<Imageries>>) {
 	crate::spawn_task!(async move {
 		if let Ok(xml) = tokio::fs::read_to_string(&josm_xml_path).await {
-			message_info!(messages, "Found local iamgery info.");
+			message_info!(messages, "Found local imagery info.");
 			imageries_from_str(&xml, messages, imageries).await;
 		} else {
 			message_info!(messages, "Could not find local iamgery info. Fetching...");
