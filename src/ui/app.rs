@@ -268,10 +268,10 @@ impl eframe::App for MyApp {
 					ui.separator();
 					ScrollArea::vertical().show(ui, |ui| {
 						ui.add(self.debug_text.clone());
-						self.debug_text.clear();
 					})
 				});
 		}
+		self.debug_text.clear();
 
 		egui::CentralPanel::default().show(ctx, |ui| {
 			let mut rect = ui
