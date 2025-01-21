@@ -275,13 +275,29 @@ impl MapElement {
 			}
 		}
 	}
+
 	fn has_multipolygon_tag(&self) -> bool {
 		self.tags.iter().any(|t| t.0 == "type" && t.1 == "multipolygon")
 	}
+
 	fn has_area_tag(&self) -> bool {
 		self.tags
 			.iter()
-			.any(|t| (t.0 == "area" && t.1 == "yes") || is_area_tag(&t.0, &t.1))
+			.any(|t| (t.0 == "area" && t.1 == "yes") || is_area_tag(t.0, t.1))
+	}
+
+	pub fn get_tag_with_new(&self, key: &str) -> Option<&String> {
+		self.tags.get(key).or_else(|| {
+			self.new_tag.as_ref().and_then(
+				|(new_key, new_value)| {
+					if new_key == key {
+						Some(new_value)
+					} else {
+						None
+					}
+				},
+			)
+		})
 	}
 }
 pub fn is_closed(nodes: &[ElementId]) -> bool {

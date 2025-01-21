@@ -415,7 +415,7 @@ fn matches_object(object: &Object, element: &MapElement) -> bool {
 fn matches_conditions(conditions: &[Condition], element: &MapElement) -> bool {
 	conditions.iter().all(|condition| match condition {
 		Condition::Binary(tag_key, BinaryOp::Eq, Expression::Identifier(tag_value)) => {
-			element.tags.get(tag_key) == Some(tag_value)
+			element.get_tag_with_new(tag_key) == Some(tag_value)
 		}
 		_ => false,
 	})
