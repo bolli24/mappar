@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 chumsky = { version = "1.0.0-alpha.7", features = ["label"] }
-logos = "0.14"
+logos = "0.15"
 ecolor = "0.30.0"
 ariadne = "0.5"
 phf = { version = "0.11", features = ["macros"] }
