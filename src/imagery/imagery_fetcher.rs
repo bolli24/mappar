@@ -74,6 +74,7 @@ impl ImageryFetcher {
 	) -> Self {
 		let memory_cache = Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(4192).unwrap())));
 
+		// TODO: load local images after startup
 		let fetcher = Self {
 			imagery: Arc::new(Mutex::new(imagery)),
 			pending: Arc::new(Mutex::new(HashSet::new())),

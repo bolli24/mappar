@@ -120,7 +120,7 @@ impl MyApp {
 
 		get_imagery(
 			#[cfg(not(target_arch = "wasm32"))]
-			Path::new(&app.storage_dir).join(JOSM_FILE).to_path_buf(),
+			std::path::Path::new(&app.storage_dir).join(JOSM_FILE).to_path_buf(),
 			app.messages.clone(),
 			app.imageries.clone(),
 		);
@@ -217,7 +217,7 @@ impl eframe::App for MyApp {
 						ui.close_menu();
 						crate::imagery::update_josm_imagery(
 							#[cfg(not(target_arch = "wasm32"))]
-							Path::new(&self.storage_dir).join(JOSM_FILE).to_path_buf(),
+							std::path::Path::new(&self.storage_dir).join(JOSM_FILE).to_path_buf(),
 							self.messages.clone(),
 							self.imageries.clone(),
 						);
