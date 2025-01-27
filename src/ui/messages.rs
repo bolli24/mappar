@@ -1,7 +1,7 @@
 use crate::util::history::History;
 use egui::{Frame, Style, Widget};
-use instant::Instant;
 use std::sync::{Arc, Mutex};
+use web_time::Instant;
 
 #[derive(Clone)]
 pub struct Messages {

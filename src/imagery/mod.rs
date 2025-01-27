@@ -3,7 +3,6 @@ use crate::map::map_data::LatLon;
 use crate::ui::messages::Messages;
 use crate::{message_error, message_info};
 use celes::Country;
-use instant::Instant;
 use quick_xml::de::Deserializer;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -12,6 +11,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
+use web_time::Instant;
 
 mod cache;
 #[cfg(target_arch = "wasm32")]

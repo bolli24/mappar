@@ -893,7 +893,7 @@ mod tests {
 		for (src, file_name) in test_files {
 			println!("Parsing {file_name:?}");
 
-			let start = instant::Instant::now();
+			let start = web_time::Instant::now();
 			if parse_str(src, file_name).is_none() {
 				erorred = false;
 			}

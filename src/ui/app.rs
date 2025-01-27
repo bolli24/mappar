@@ -13,13 +13,13 @@ use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
 use crate::{dbgtxt, unreachable_log};
 use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
-use instant::Instant;
 use log::{error, info};
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::watch::{channel, Receiver, Sender};
+use web_time::Instant;
 
 pub struct Channel<T> {
 	sender: Sender<T>,

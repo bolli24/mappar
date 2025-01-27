@@ -9,7 +9,7 @@ use mappar::MyApp;
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
-	let start = instant::Instant::now();
+	let start = web_time::Instant::now();
 	init_logger();
 	info!("Logger initialized in {:?}", start.elapsed());
 

@@ -41,7 +41,7 @@ bytes = "1.9"
 bytemuck = "1.19"
 
 chrono = { version = "0.4", features = ["wasmbind"] }
-instant = "0.1"
+web-time = "1.1.0"
 
 lru = "0.12"
 indexmap = "2.7"
