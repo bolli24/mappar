@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-chumsky = { version = "1.0.0-alpha.7", features = ["label"] }
+chumsky = { version = "1.0.0-alpha.8" }
 logos = "0.15"
 ecolor = "0.30.0"
 ariadne = "0.5"
