@@ -5,7 +5,7 @@ use super::map_widget::render::DetailedElement;
 use super::map_widget::MapWidget;
 use super::messages::Messages;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
-use crate::imagery::{esri_imagery, get_imagery, Imageries, JOSM_FILE};
+use crate::imagery::{esri_imagery, get_imagery, Imageries};
 use crate::map::api::get_data;
 use crate::map::map_data::{latlon, Bounds, LatLon, MapData};
 use crate::ui::debug_text::DebugText;
@@ -81,6 +81,8 @@ impl MyApp {
 		#[cfg(not(target_arch = "wasm32"))]
 		let storage_dir = eframe::storage_dir(Self::APP_NAME).expect("Failed to get storage dir");
 
+		let messages = Messages::new();
+
 		#[cfg(not(target_arch = "wasm32"))]
 		let imagery_fetcher = {
 			let mut cache_path = storage_dir.clone();
@@ -89,6 +91,7 @@ impl MyApp {
 				esri_imagery(),
 				cc.egui_ctx.tex_manager(),
 				cache_path,
+				messages.clone(),
 			)))
 		};
 
@@ -96,6 +99,7 @@ impl MyApp {
 		let imagery_fetcher = Arc::new(Mutex::new(ImageryFetcher::new(
 			esri_imagery(),
 			cc.egui_ctx.tex_manager(),
+			messages.clone(),
 		)));
 
 		let app = Self {
@@ -110,17 +114,17 @@ impl MyApp {
 			last_update: Instant::now(),
 			recent_frame_times: egui::util::History::new(10..MAX_RECENT_FRAME_COUNT, 1.0),
 			inspection: false,
-			debug_panel: false,
+			debug_panel: true,
 			map_memory,
 			#[cfg(not(target_arch = "wasm32"))]
 			storage_dir,
-			messages: Messages::new(),
+			messages,
 			imagery_settings: false,
 		};
 
 		get_imagery(
 			#[cfg(not(target_arch = "wasm32"))]
-			std::path::Path::new(&app.storage_dir).join(JOSM_FILE).to_path_buf(),
+			std::path::Path::new(&app.storage_dir).join(crate::imagery::JOSM_FILE).to_path_buf(),
 			app.messages.clone(),
 			app.imageries.clone(),
 		);
@@ -217,7 +221,7 @@ impl eframe::App for MyApp {
 						ui.close_menu();
 						crate::imagery::update_josm_imagery(
 							#[cfg(not(target_arch = "wasm32"))]
-							std::path::Path::new(&self.storage_dir).join(JOSM_FILE).to_path_buf(),
+							std::path::Path::new(&self.storage_dir).join(crate::imagery::JOSM_FILE).to_path_buf(),
 							self.messages.clone(),
 							self.imageries.clone(),
 						);

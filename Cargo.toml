@@ -49,6 +49,7 @@ itertools = "0.14"
 regex = "1.11"
 undo = "0.51"
 
+
 puffin = "0.19"
 puffin_http = "0.16"
 
@@ -69,6 +70,7 @@ tokio = { version = "1.43", features = [
     "rt-multi-thread",
     "fs",
 ] }
+tokio-stream = { version = "0.1.17", features = ["fs"] }
 flate2 = "1.0"
 tar = "0.4"
 open = "5.3"

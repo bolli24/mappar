@@ -19,7 +19,6 @@ use tokio::task::JoinSet;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::time;
 
-use crate::imagery::cache::Cache;
 #[cfg(target_arch = "wasm32")]
 use crate::imagery::image_worker::ImageWorker;
 #[cfg(not(target_arch = "wasm32"))]
@@ -28,18 +27,20 @@ use crate::imagery::local_cache;
 use crate::imagery::web_cache;
 use crate::imagery::Imagery;
 use crate::map::api::USER_AGENT;
+use crate::ui::messages::Messages;
 #[cfg(target_arch = "wasm32")]
 use crate::util::sleep::timer;
+
+#[cfg(not(target_arch = "wasm32"))]
+type PersistentCache = local_cache::LocalCache;
+#[cfg(target_arch = "wasm32")]
+type PersistentCache = web_cache::WebCache;
 
 pub struct ImageryFetcher {
 	memory_cache: MemoryCache,
 	imagery: Arc<Mutex<Imagery>>,
 	pending: Arc<Mutex<HashSet<Tile>>>,
-	#[cfg(not(target_arch = "wasm32"))]
-	persistent_cache: Arc<tokio::sync::Mutex<local_cache::LocalCache>>,
-	#[cfg(target_arch = "wasm32")]
-	persistent_cache: Arc<tokio::sync::Mutex<web_cache::WebCache>>,
-	last_persistant_cache_count: usize,
+	persistent_cache: PersistentCache,
 	#[cfg(target_arch = "wasm32")]
 	worker_bridge: Arc<Mutex<WorkerBridge<ImageWorker>>>,
 }
@@ -61,28 +62,23 @@ pub enum Error {
 }
 
 type MemoryCache = Arc<Mutex<LruCache<Tile, Option<TextureId>>>>;
-#[cfg(not(target_arch = "wasm32"))]
-type PersistentCache = Arc<tokio::sync::Mutex<local_cache::LocalCache>>;
-#[cfg(target_arch = "wasm32")]
-type PersistentCache = Arc<tokio::sync::Mutex<web_cache::WebCache>>;
 
 impl ImageryFetcher {
 	pub fn new(
 		imagery: Imagery,
 		texture_manager: Arc<RwLock<TextureManager>>,
 		#[cfg(not(target_arch = "wasm32"))] cache_directory: PathBuf,
+		messages: Messages,
 	) -> Self {
 		let memory_cache = Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(4192).unwrap())));
 
-		// TODO: load local images after startup
 		let fetcher = Self {
 			imagery: Arc::new(Mutex::new(imagery)),
 			pending: Arc::new(Mutex::new(HashSet::new())),
 			#[cfg(not(target_arch = "wasm32"))]
-			persistent_cache: Arc::new(tokio::sync::Mutex::new(local_cache::LocalCache::new(cache_directory))),
+			persistent_cache: local_cache::LocalCache::new(cache_directory, messages),
 			#[cfg(target_arch = "wasm32")]
-			persistent_cache: Arc::new(tokio::sync::Mutex::new(web_cache::WebCache::new())),
-			last_persistant_cache_count: 0,
+			persistent_cache: web_cache::WebCache::new(),
 			#[cfg(target_arch = "wasm32")]
 			worker_bridge: Self::get_worker_bridge(texture_manager.clone(), memory_cache.clone()),
 			memory_cache,
@@ -259,10 +255,10 @@ impl ImageryFetcher {
 	async fn fetch_tile(
 		texture_manager: &Arc<RwLock<TextureManager>>,
 		imagery: Arc<Mutex<Imagery>>,
-		persistent_cache: Arc<tokio::sync::Mutex<local_cache::LocalCache>>,
+		mut persistent_cache: local_cache::LocalCache,
 		tile: Tile,
 	) -> Result<TextureId, Error> {
-		if let Some(image_data) = persistent_cache.lock().await.get_image(tile).await {
+		if let Some(image_data) = persistent_cache.get_image(tile).await {
 			return Self::create_texture(texture_manager, tile_to_string(&tile), &image_data);
 		}
 
@@ -277,12 +273,7 @@ impl ImageryFetcher {
 			Ok(response) => {
 				let bytes = response.bytes().await?;
 				let image_format = image::guess_format(&bytes)?;
-				persistent_cache
-					.lock()
-					.await
-					.save_image(tile, &bytes, image_format)
-					.await; // TODO: Maybe do this on a separate thread
-
+				persistent_cache.save_image(tile, &bytes, image_format).await; // TODO: Maybe do this on a separate thread
 				Self::create_texture(texture_manager, tile_to_string(&tile), &bytes)
 			}
 		}
@@ -292,12 +283,12 @@ impl ImageryFetcher {
 	async fn fetch_tile(
 		worker_bridge: Arc<Mutex<WorkerBridge<ImageWorker>>>,
 		imagery: Arc<Mutex<Imagery>>,
-		persistent_cache: Arc<tokio::sync::Mutex<web_cache::WebCache>>,
+		persistent_cache: web_cache::WebCache,
 		tile: Tile,
 	) -> Result<(), Error> {
 		use crate::imagery::image_worker::Input;
 		//	let file_format = imagery.lock().unwrap().file_format();
-		if let Some(image_data) = persistent_cache.lock().await.get_image(tile).await {
+		if let Some(image_data) = persistent_cache.get_image(tile).await {
 			worker_bridge.lock().unwrap().send(Input(tile, image_data.to_vec()));
 		}
 
@@ -315,8 +306,6 @@ impl ImageryFetcher {
 				let bytes = response.bytes().await?;
 				// TODO:
 				// persistent_cache
-				// 	.lock()
-				// 	.await
 				// 	.save_image(tile, &bytes, file_format)
 				// 	.await;
 
@@ -387,16 +376,7 @@ impl ImageryFetcher {
 	}
 
 	pub fn persistent_cached_count(&mut self) -> usize {
-		let count = self
-			.persistent_cache
-			.try_lock()
-			.ok()
-			.map(|persistent_cache| persistent_cache.cached_count());
-
-		count.map_or(self.last_persistant_cache_count, |count| {
-			self.last_persistant_cache_count = count;
-			count
-		})
+		self.persistent_cache.cached_count()
 	}
 
 	pub fn get_closest_tile(&self, tile: Tile) -> Option<Tile> {

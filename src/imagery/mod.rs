@@ -13,7 +13,6 @@ use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use web_time::Instant;
 
-mod cache;
 #[cfg(target_arch = "wasm32")]
 pub mod image_worker;
 pub mod imagery_fetcher;
