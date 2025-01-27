@@ -15,7 +15,6 @@ use crate::{dbgtxt, unreachable_log};
 use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use instant::Instant;
 use log::{error, info};
-use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -120,6 +119,7 @@ impl MyApp {
 		};
 
 		get_imagery(
+			#[cfg(not(target_arch = "wasm32"))]
 			Path::new(&app.storage_dir).join(JOSM_FILE).to_path_buf(),
 			app.messages.clone(),
 			app.imageries.clone(),
@@ -216,6 +216,7 @@ impl eframe::App for MyApp {
 					if ui.button("Fetch JOSM imagery").clicked() {
 						ui.close_menu();
 						crate::imagery::update_josm_imagery(
+							#[cfg(not(target_arch = "wasm32"))]
 							Path::new(&self.storage_dir).join(JOSM_FILE).to_path_buf(),
 							self.messages.clone(),
 							self.imageries.clone(),

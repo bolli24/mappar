@@ -4,14 +4,14 @@ use bytes::Bytes;
 use image::ImageFormat;
 use js_sys::Reflect;
 use log::{error, info};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::IdbFactory;
 
 pub struct WebCache {
-	cached_images: HashSet<(Tile, FileFormat)>,
+	cached_images: HashMap<Tile, ImageFormat>,
 	estimate: Arc<Mutex<(f64, f64)>>,
 }
 
@@ -32,7 +32,7 @@ impl WebCache {
 			}
 		});
 
-		let cached_images = HashSet::new();
+		let cached_images = HashMap::new();
 
 		Self {
 			cached_images,
@@ -97,7 +97,7 @@ impl Cache for WebCache {
 		None
 	}
 
-	async fn get_image(&self, _tile: Tile, _image_format: ImageFormat) -> Option<Bytes> {
+	async fn get_image(&self, _tile: Tile) -> Option<Bytes> {
 		None
 	}
 }

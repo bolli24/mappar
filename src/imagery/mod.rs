@@ -11,7 +11,6 @@ use serde_inline_default::serde_inline_default;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::num::NonZeroUsize;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 mod cache;
@@ -28,28 +27,56 @@ mod schema;
 pub const JOSM_URL: &str = "https://josm.openstreetmap.de/maps";
 pub const JOSM_FILE: &str = "josm_imagery.xml";
 
-pub fn get_imagery(josm_xml_path: PathBuf, mut messages: Messages, imageries: Arc<Mutex<Imageries>>) {
+pub fn get_imagery(
+	#[cfg(not(target_arch = "wasm32"))] josm_xml_path: std::path::PathBuf,
+	mut messages: Messages,
+	imageries: Arc<Mutex<Imageries>>,
+) {
 	crate::spawn_task!(async move {
-		if let Ok(xml) = tokio::fs::read_to_string(&josm_xml_path).await {
+		if let Ok(xml) = get_local_xml(
+			#[cfg(not(target_arch = "wasm32"))]
+			josm_xml_path.clone(),
+		)
+		.await
+		{
 			message_info!(messages, "Found local imagery info.");
 			imageries_from_str(&xml, messages, imageries).await;
 		} else {
 			message_info!(messages, "Could not find local iamgery info. Fetching...");
-			update_josm_imagery(josm_xml_path, messages, imageries);
+			update_josm_imagery(
+				#[cfg(not(target_arch = "wasm32"))]
+				josm_xml_path,
+				messages,
+				imageries,
+			);
 		}
 	});
 }
 
-pub fn update_josm_imagery(josm_xml_path: PathBuf, mut messages: Messages, imageries: Arc<Mutex<Imageries>>) {
-	async fn get_xml() -> Result<String, crate::map::api::Error> {
-		let client = Client::new();
-		let request = client.get(JOSM_URL).header("User-Agent", USER_AGENT).build()?;
-		let xml = client.execute(request).await?.error_for_status()?.text().await?;
-		Ok(xml)
-	}
+#[cfg(not(target_arch = "wasm32"))]
+async fn get_local_xml(josm_xml_path: std::path::PathBuf) -> std::io::Result<String> {
+	tokio::fs::read_to_string(&josm_xml_path).await
+}
 
+#[cfg(target_arch = "wasm32")]
+async fn get_local_xml() -> Result<String, ()> {
+	return Err(());
+}
+
+async fn fetch_josm_xml() -> Result<String, crate::map::api::Error> {
+	let client = Client::new();
+	let request = client.get(JOSM_URL).header("User-Agent", USER_AGENT).build()?;
+	let xml = client.execute(request).await?.error_for_status()?.text().await?;
+	Ok(xml)
+}
+
+pub fn update_josm_imagery(
+	#[cfg(not(target_arch = "wasm32"))] josm_xml_path: std::path::PathBuf,
+	mut messages: Messages,
+	imageries: Arc<Mutex<Imageries>>,
+) {
 	crate::spawn_task!(async move {
-		let xml = match get_xml().await {
+		let xml = match fetch_josm_xml().await {
 			Ok(xml) => xml,
 			Err(err) => {
 				message_error!(messages, "Unable to fetch JOSM imagery data: {err}");
@@ -58,10 +85,14 @@ pub fn update_josm_imagery(josm_xml_path: PathBuf, mut messages: Messages, image
 		};
 
 		// FIXME: Wasm32
+		#[cfg(not(target_arch = "wasm32"))]
 		if let Err(err) = std::fs::write(josm_xml_path, &xml) {
 			message_error!(messages, "Unable to write JOSM imagery data to file: {err}");
 			return;
 		};
+
+		#[cfg(target_arch = "wasm32")]
+		todo!("Cache JOSM XML locally.");
 
 		imageries_from_str(&xml, messages, imageries).await;
 	});

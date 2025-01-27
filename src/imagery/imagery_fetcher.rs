@@ -295,8 +295,8 @@ impl ImageryFetcher {
 		tile: Tile,
 	) -> Result<(), Error> {
 		use crate::imagery::image_worker::Input;
-		let file_format = imagery.lock().unwrap().file_format();
-		if let Some(image_data) = persistent_cache.lock().await.get_image(tile, file_format).await {
+		//	let file_format = imagery.lock().unwrap().file_format();
+		if let Some(image_data) = persistent_cache.lock().await.get_image(tile).await {
 			worker_bridge.lock().unwrap().send(Input(tile, image_data.to_vec()));
 		}
 
