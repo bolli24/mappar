@@ -14,6 +14,8 @@ use gloo_worker::{Spawnable, WorkerBridge};
 use image::{EncodableLayout, ImageFormat};
 use log::error;
 use lru::LruCache;
+use reqwest::Client;
+use reqwest::ClientBuilder;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::task::JoinSet;
 #[cfg(not(target_arch = "wasm32"))]
@@ -26,7 +28,6 @@ use crate::imagery::local_cache;
 #[cfg(target_arch = "wasm32")]
 use crate::imagery::web_cache;
 use crate::imagery::Imagery;
-use crate::map::api::USER_AGENT;
 use crate::ui::messages::Messages;
 #[cfg(target_arch = "wasm32")]
 use crate::util::sleep::timer;
@@ -221,11 +222,28 @@ impl ImageryFetcher {
 			let concurrent_clone = concurrent.clone();
 			#[cfg(target_arch = "wasm32")]
 			let worker_bridge = worker_bridge.clone();
+			#[cfg(not(target_arch = "wasm32"))]
+			let client = ClientBuilder::new()
+				.user_agent(crate::map::api::USER_AGENT)
+				.build()
+				.unwrap();
+			// Don't add user-agent on browser because of cors preflight shenanigans:
+			// https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#examples_of_access_control_scenarios
+			#[cfg(target_arch = "wasm32")]
+			let client = ClientBuilder::new().build().unwrap();
+
 			let closure = async move {
 				#[cfg(not(target_arch = "wasm32"))]
-				let result = Self::fetch_tile(&texture_manager, imagery, persistent_cache.clone(), tile).await;
+				let result = Self::fetch_tile(
+					&texture_manager,
+					imagery,
+					persistent_cache.clone(),
+					tile,
+					client.clone(),
+				)
+				.await;
 				#[cfg(target_arch = "wasm32")]
-				let result = Self::fetch_tile(worker_bridge, imagery, persistent_cache, tile).await;
+				let result = Self::fetch_tile(worker_bridge, imagery, persistent_cache, tile, client.clone()).await;
 
 				match result {
 					#[allow(unused_variables)]
@@ -257,17 +275,14 @@ impl ImageryFetcher {
 		imagery: Arc<Mutex<Imagery>>,
 		mut persistent_cache: local_cache::LocalCache,
 		tile: Tile,
+		client: Client,
 	) -> Result<TextureId, Error> {
 		if let Some(image_data) = persistent_cache.get_image(tile).await {
 			return Self::create_texture(texture_manager, tile_to_string(&tile), &image_data);
 		}
 
 		let url = imagery.lock().unwrap().tile_url(tile.0, tile.1, tile.2);
-		let response = reqwest::Client::new()
-			.get(url.clone())
-			.header("User-Agent", USER_AGENT)
-			.send()
-			.await?;
+		let response = client.get(url.clone()).send().await?;
 		match response.error_for_status() {
 			Err(err) => Err(Error::Reqwest(err)),
 			Ok(response) => {
@@ -285,6 +300,7 @@ impl ImageryFetcher {
 		imagery: Arc<Mutex<Imagery>>,
 		persistent_cache: web_cache::WebCache,
 		tile: Tile,
+		client: Client,
 	) -> Result<(), Error> {
 		use crate::imagery::image_worker::Input;
 		//	let file_format = imagery.lock().unwrap().file_format();
@@ -294,11 +310,7 @@ impl ImageryFetcher {
 
 		let url = imagery.lock().unwrap().tile_url(tile.0, tile.1, tile.2);
 
-		let response = reqwest::Client::new()
-			.get(url.clone())
-			.header("User-Agent", USER_AGENT)
-			.send()
-			.await?;
+		let response = client.get(url.clone()).send().await?;
 
 		match response.error_for_status() {
 			Err(err) => Err(Error::Reqwest(err)),

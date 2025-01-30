@@ -1,4 +1,3 @@
-use crate::map::api::USER_AGENT;
 use crate::map::map_data::LatLon;
 use crate::ui::messages::Messages;
 use crate::{message_error, message_info};
@@ -64,7 +63,13 @@ async fn get_local_xml() -> Result<String, ()> {
 
 async fn fetch_josm_xml() -> Result<String, crate::map::api::Error> {
 	let client = Client::new();
-	let request = client.get(JOSM_URL).header("User-Agent", USER_AGENT).build()?;
+	#[cfg(not(target_arch = "wasm32"))]
+	let request = client
+		.get(JOSM_URL)
+		.header("User-Agent", crate::map::api::USER_AGENT)
+		.build()?;
+	#[cfg(target_arch = "wasm32")]
+	let request = client.get(JOSM_URL).build()?;
 	let xml = client.execute(request).await?.error_for_status()?.text().await?;
 	Ok(xml)
 }
