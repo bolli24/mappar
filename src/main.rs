@@ -96,8 +96,8 @@ fn init_logger() {
 	use simplelog::{ColorChoice, CombinedLogger, LevelFilter, TermLogger, TerminalMode, WriteLogger};
 	use std::fs::File;
 
-	let storage_path = eframe::storage_dir(MyApp::APP_NAME).expect("Failed to get storage dir");
-	let storage_path = storage_path.join("logs");
+	let project_dirs = MyApp::project_dirs();
+	let storage_path = project_dirs.data_local_dir().join("logs");
 	std::fs::create_dir_all(&storage_path).expect("Failed to create log directory");
 	let latest = storage_path.join("latest.log");
 

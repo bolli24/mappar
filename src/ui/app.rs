@@ -11,15 +11,16 @@ use crate::map::map_data::{latlon, Bounds, LatLon, MapData};
 use crate::ui::debug_text::DebugText;
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
-use crate::{dbgtxt, unreachable_log};
+use crate::{dbgtxt, message_error, unreachable_log};
 use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::watch::{channel, Receiver, Sender};
 use web_time::Instant;
+
+#[cfg(not(target_arch = "wasm32"))]
+use directories::ProjectDirs;
 
 pub struct Channel<T> {
 	sender: Sender<T>,
@@ -48,10 +49,10 @@ pub struct MyApp {
 	inspection: bool,
 	debug_panel: bool,
 	map_memory: MapMemory,
-	#[cfg(not(target_arch = "wasm32"))]
-	storage_dir: PathBuf,
 	messages: Messages,
 	imagery_settings: bool,
+	#[cfg(not(target_arch = "wasm32"))]
+	project_dirs: ProjectDirs,
 }
 
 impl MyApp {
@@ -78,19 +79,18 @@ impl MyApp {
 			zoom_level: 15.0,
 			..Default::default()
 		};
-		#[cfg(not(target_arch = "wasm32"))]
-		let storage_dir = eframe::storage_dir(Self::APP_NAME).expect("Failed to get storage dir");
 
 		let messages = Messages::new();
 
 		#[cfg(not(target_arch = "wasm32"))]
+		let project_dirs = Self::project_dirs();
+
+		#[cfg(not(target_arch = "wasm32"))]
 		let imagery_fetcher = {
-			let mut cache_path = storage_dir.clone();
-			cache_path.push("cache");
 			Arc::new(Mutex::new(ImageryFetcher::new(
 				esri_imagery(),
 				cc.egui_ctx.tex_manager(),
-				cache_path,
+				project_dirs.cache_dir().to_path_buf(),
 				messages.clone(),
 			)))
 		};
@@ -102,7 +102,7 @@ impl MyApp {
 			messages.clone(),
 		)));
 
-		let app = Self {
+		let mut app = Self {
 			map_data: Arc::new(Mutex::new(MapData::new())),
 			styles: get_default_styles(cc.egui_ctx.tex_manager().clone()),
 			render_data: channel(Vec::new()).into(),
@@ -116,15 +116,31 @@ impl MyApp {
 			inspection: false,
 			debug_panel: true,
 			map_memory,
-			#[cfg(not(target_arch = "wasm32"))]
-			storage_dir,
 			messages,
 			imagery_settings: false,
+			#[cfg(not(target_arch = "wasm32"))]
+			project_dirs,
 		};
+
+		#[cfg(not(target_arch = "wasm32"))]
+		{
+			use std::fs::create_dir_all;
+			create_dir_all(app.project_dirs.config_dir())
+				.unwrap_or_else(|e| message_error!(app.messages, "Couldn't create config directory: {e}"));
+			create_dir_all(app.project_dirs.data_dir())
+				.unwrap_or_else(|e| message_error!(app.messages, "Couldn't create data directory: {e}"));
+			create_dir_all(app.project_dirs.cache_dir())
+				.unwrap_or_else(|e| message_error!(app.messages, "Couldn't create cache directory: {e}"));
+			create_dir_all(app.project_dirs.data_local_dir())
+				.unwrap_or_else(|e| message_error!(app.messages, "Couldn't create local data directory: {e}"));
+		}
 
 		get_imagery(
 			#[cfg(not(target_arch = "wasm32"))]
-			std::path::Path::new(&app.storage_dir).join(crate::imagery::JOSM_FILE).to_path_buf(),
+			app.project_dirs
+				.data_dir()
+				.join(crate::imagery::JOSM_FILE)
+				.to_path_buf(),
 			app.messages.clone(),
 			app.imageries.clone(),
 		);
@@ -146,6 +162,16 @@ impl MyApp {
 		});
 
 		app
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	pub fn project_dirs() -> ProjectDirs {
+		let Some(project_dirs) = ProjectDirs::from("", "", Self::APP_NAME) else {
+			error!("Unable to get project directories.");
+			std::process::exit(1);
+		};
+
+		project_dirs
 	}
 }
 
@@ -202,10 +228,20 @@ impl eframe::App for MyApp {
 							ui.close_menu();
 							reload_styles = true
 						}
-						if ui.button("Open Config Folder").clicked() {
+						if ui.button("Open Config Directory").clicked() {
 							ui.close_menu();
-							open::that(&self.storage_dir)
-								.unwrap_or_else(|e| error!("Couldn't open config folder: {e}"));
+							open::that(self.project_dirs.config_dir())
+								.unwrap_or_else(|e| error!("Couldn't open config directory: {e}"));
+						}
+						if ui.button("Open Data Directory").clicked() {
+							ui.close_menu();
+							open::that(self.project_dirs.data_dir())
+								.unwrap_or_else(|e| error!("Couldn't open data directory: {e}"));
+						}
+						if ui.button("Open Cache Directory").clicked() {
+							ui.close_menu();
+							open::that(self.project_dirs.cache_dir())
+								.unwrap_or_else(|e| error!("Couldn't open config directory: {e}"));
 						}
 						if ui.button("Quit").clicked() {
 							ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -221,7 +257,10 @@ impl eframe::App for MyApp {
 						ui.close_menu();
 						crate::imagery::update_josm_imagery(
 							#[cfg(not(target_arch = "wasm32"))]
-							std::path::Path::new(&self.storage_dir).join(crate::imagery::JOSM_FILE).to_path_buf(),
+							self.project_dirs
+								.data_dir()
+								.join(crate::imagery::JOSM_FILE)
+								.to_path_buf(),
 							self.messages.clone(),
 							self.imageries.clone(),
 						);

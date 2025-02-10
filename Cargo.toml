@@ -49,7 +49,6 @@ itertools = "0.14"
 regex = "1.11"
 undo = "0.51"
 
-
 puffin = "0.19"
 puffin_http = "0.16"
 
@@ -74,6 +73,7 @@ tokio-stream = { version = "0.1.17", features = ["fs"] }
 flate2 = "1.0"
 tar = "0.4"
 open = "5.3"
+directories = "6.0"
 
 # web:
 [target.'cfg(target_family = "wasm")'.dependencies]
@@ -113,10 +113,16 @@ proc-macro = false
 harness = false
 
 [profile.dev]
-opt-level = 1 # this should not be 0 for the performance of the web worker to not suck
-# but it messes with debugging
+# opt-level = 1     # this should not be 0 for the performance of the web worker to not suck
 
-[profile.dev.package."*"]
+# Optimize just some dependencies to improve performance but keep debug build compile time low
+[profile.dev.package."image"]
+opt-level = 2
+
+[profile.dev.package."bincode"]
+opt-level = 2
+
+[profile.dev.package."serde"]
 opt-level = 2
 
 [profile.release]
@@ -127,6 +133,13 @@ opt-level = 2 # fast and small wasm
 #    0      8
 #    1      8
 #    2      5.7
+#    3      5.9
+#    s      5.0
+#    z      4.7
+#    2      5.7
+#    3      5.9
+#    s      5.0
+#    z      4.7
 #    3      5.9
 #    s      5.0
 #    z      4.7
