@@ -17,7 +17,7 @@ use egui::{
 	pos2, vec2, Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, Response, ScrollArea, Sense, Vec2,
 	Widget,
 };
-use epaint::{PathShape, PathStroke, Rounding, Shape};
+use epaint::{CornerRadius, PathShape, PathStroke, Shape};
 use glam::{dvec2, uvec2, DVec2, UVec2};
 use itertools::Itertools;
 use map_memory::MapMemory;
@@ -236,7 +236,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View) {
 			if let Some(icon) = element.style.icon {
 				shapes.images.push(Shape::image(icon.0, rect, UV, Color32::WHITE))
 			} else {
-				shapes.nodes.push(Shape::rect_filled(rect, Rounding::ZERO, color));
+				shapes.nodes.push(Shape::rect_filled(rect, CornerRadius::ZERO, color));
 			}
 		}
 		RenderElement::Path(nodes, is_closed) => {

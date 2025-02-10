@@ -41,7 +41,7 @@ impl Widget for KeyValueTable<'_> {
 		let element = id.and_then(|id| map_data.get(id));
 		let mut edit = None;
 
-		let response = Frame::none()
+		let response = Frame::NONE
 			.show(ui, |ui| {
 				TableBuilder::new(ui)
 					.id_salt("key_value_table")
@@ -127,5 +127,5 @@ impl Widget for KeyValueTable<'_> {
 }
 
 fn table_field(value: &mut dyn TextBuffer, ui: &mut Ui) -> TextEditOutput {
-	TextEdit::singleline(value).margin(Margin::same(1.0)).show(ui)
+	TextEdit::singleline(value).margin(Margin::same(1)).show(ui)
 }

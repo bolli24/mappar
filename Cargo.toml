@@ -13,9 +13,9 @@ members = ["src/macros", "css"]
 mappar-macros = { path = "src/macros" }
 mappar-css = { path = "css" }
 
-egui = "0.30.0"
-epaint = "0.30.0"
-egui_extras = "0.30.0"
+egui = "0.31.0"
+epaint = "0.31.0"
+egui_extras = "0.31.0"
 image = { version = "0.25", default-features = false, features = [
     "jpeg",
     "png",
@@ -55,7 +55,7 @@ puffin_http = "0.16"
 celes = "2.5"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-eframe = { version = "0.30.0", default-features = false, features = [
+eframe = { version = "0.31.0", default-features = false, features = [
     # "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts",
     "wgpu",
@@ -77,7 +77,7 @@ directories = "6.0"
 
 # web:
 [target.'cfg(target_family = "wasm")'.dependencies]
-eframe = { version = "0.30.0", default-features = false, features = [
+eframe = { version = "0.31.0", default-features = false, features = [
     "default_fonts",
     "glow",          # Use instead of wgpu because eframe does not support webgl with wgpu by default
     "persistence",
