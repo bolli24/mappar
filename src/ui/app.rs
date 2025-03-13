@@ -1,5 +1,6 @@
 use super::imagery_widget::ImageriesWidget;
 use super::key_value_table::KeyValueTable;
+use super::layer_list::Layers;
 use super::map_widget::css::Styles;
 use super::map_widget::render::DetailedElement;
 use super::map_widget::MapWidget;
@@ -9,6 +10,7 @@ use crate::imagery::{esri_imagery, get_imagery, Imageries};
 use crate::map::api::get_data;
 use crate::map::map_data::{latlon, Bounds, LatLon, MapData};
 use crate::ui::debug_text::DebugText;
+use crate::ui::layer_list::{Layer, LayerList};
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
 use crate::{dbgtxt, message_error, unreachable_log};
@@ -42,6 +44,7 @@ pub struct MyApp {
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	imageries: Arc<Mutex<Imageries>>,
+	layers: Layers,
 	debug_text: DebugText,
 	startup_time: Instant,
 	last_update: Instant,
@@ -85,10 +88,12 @@ impl MyApp {
 		#[cfg(not(target_arch = "wasm32"))]
 		let project_dirs = Self::project_dirs();
 
+		let imageries = Arc::new(Mutex::new(Imageries::new()));
+
 		#[cfg(not(target_arch = "wasm32"))]
 		let imagery_fetcher = {
 			Arc::new(Mutex::new(ImageryFetcher::new(
-				esri_imagery(),
+				imageries.clone(),
 				cc.egui_ctx.tex_manager(),
 				project_dirs.cache_dir().to_path_buf(),
 				messages.clone(),
@@ -107,7 +112,8 @@ impl MyApp {
 			styles: get_default_styles(cc.egui_ctx.tex_manager().clone()),
 			render_data: channel(Vec::new()).into(),
 			imagery_fetcher,
-			imageries: Arc::new(Mutex::new(Imageries::new())),
+			imageries,
+			layers: Layers::new(),
 			map_widget_id,
 			debug_text: DebugText::new(),
 			startup_time: Instant::now(),
@@ -121,6 +127,9 @@ impl MyApp {
 			#[cfg(not(target_arch = "wasm32"))]
 			project_dirs,
 		};
+
+		app.layers.0.push_back(Layer("EsriWorldImagery".into(), true));
+		app.layers.0.push_back(Layer("standard".into(), true));
 
 		#[cfg(not(target_arch = "wasm32"))]
 		{
@@ -295,6 +304,8 @@ impl eframe::App for MyApp {
 		egui::SidePanel::right("edit_panel")
 			.width_range(80.0..=800.0)
 			.show(ctx, |ui| {
+				LayerList::new(&mut self.layers, &self.imageries.lock().unwrap()).ui(ui);
+				ui.separator();
 				KeyValueTable::new(
 					self.map_data.clone(),
 					&mut self.map_memory.selection,
@@ -327,6 +338,7 @@ impl eframe::App for MyApp {
 					Some(&mut self.debug_text),
 					&mut self.map_memory,
 					true,
+					self.layers.get_active_imagery(),
 				))
 				.rect;
 			rect.min += egui::Vec2::new(5.0, 5.0);

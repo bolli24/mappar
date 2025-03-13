@@ -1966,6 +1966,7 @@ dependencies = [
  "bytes",
  "celes",
  "chrono",
+ "chumsky",
  "directories",
  "eframe",
  "egui",

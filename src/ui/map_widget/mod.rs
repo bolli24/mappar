@@ -6,7 +6,8 @@ pub mod render;
 mod style;
 
 use crate::dbgtxt;
-use crate::imagery::imagery_fetcher::ImageryFetcher;
+use crate::imagery::imagery_fetcher::{ImageryFetcher, Tile};
+use crate::imagery::ImageryId;
 use crate::map::map_data::{latlon, Element, LatLon, MapData, CIRCUMFERENCE_EARTH};
 use crate::ui::debug_text::DebugText;
 use crate::util::convert::{ToDVec2, ToPos2};
@@ -38,6 +39,7 @@ pub struct MapWidget<'a> {
 	debug_text: Option<&'a mut DebugText>,
 	mem: &'a mut MapMemory,
 	interactive: bool,
+	active_imagery_id: Option<ImageryId>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -63,6 +65,7 @@ impl<'a> MapWidget<'a> {
 		debug_text: Option<&'a mut DebugText>,
 		mem: &'a mut MapMemory,
 		interactive: bool,
+		active_imagery_id: Option<ImageryId>,
 	) -> Self {
 		Self {
 			map_data,
@@ -72,6 +75,7 @@ impl<'a> MapWidget<'a> {
 			debug_text,
 			mem,
 			interactive,
+			active_imagery_id,
 		}
 	}
 }
@@ -158,7 +162,26 @@ impl Widget for MapWidget<'_> {
 						pointer_world_pos,
 					};
 
-					draw_tiles(&painter, &self.imagery_fetcher, &view, &mut self.debug_text);
+					if let Some(active_imagery_id) = self.active_imagery_id {
+						if self
+							.imagery_fetcher
+							.lock()
+							.unwrap()
+							.imageries()
+							.lock()
+							.unwrap()
+							.entries
+							.contains_key(&active_imagery_id)
+						{
+							draw_tiles(
+								&painter,
+								active_imagery_id,
+								&self.imagery_fetcher,
+								&view,
+								&mut self.debug_text,
+							);
+						}
+					}
 
 					let mut render_data = Vec::with_capacity(self.map_data.len());
 					let select_threshold = 5.0 * scale;
@@ -276,6 +299,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View) {
 
 fn draw_tiles(
 	painter: &Painter,
+	imagery_id: ImageryId,
 	imagery_fetcher: &Arc<Mutex<ImageryFetcher>>,
 	view: &View,
 	debug_text: &mut Option<&mut DebugText>,
@@ -303,8 +327,11 @@ fn draw_tiles(
 
 	let corners = get_world_corners(view.viewport, view.camera_pos, view.scale);
 
-	let base_tile_size = imagery_fetcher.imagery().lock().unwrap().tile_size().unwrap();
-	let max_zoom = imagery_fetcher.imagery().lock().unwrap().max_zoom();
+	let base_tile_size = imagery_fetcher.imageries().lock().unwrap().entries[&imagery_id]
+		.tile_size()
+		.unwrap_or(256);
+
+	let max_zoom = imagery_fetcher.imageries().lock().unwrap().entries[&imagery_id].max_zoom();
 
 	let tile_zoom_level = u32::min(
 		(view.zoom_level + (view.ui_scale as f64 - 1.0) + ZOOM_ADJUST).round() as u32,
@@ -323,8 +350,9 @@ fn draw_tiles(
 	for (x, y) in x_tiles.cartesian_product(y_tiles) {
 		puffin::profile_scope!("Draw Tile", format!("{x} {y}"));
 		// TODO: don't fetch new tiles when moving fast
-		let tile = imagery_fetcher.get_tile(x, y, tile_zoom_level, true);
-		if let Some(image) = tile {
+		let tile = Tile::new(imagery_id.clone(), (x, y, tile_zoom_level));
+		let tile_texture = imagery_fetcher.get_tile(&tile, true);
+		if let Some(image) = tile_texture {
 			let coords = get_tile_pos(x, y, tile_zoom_level);
 			let coords = (coords - (view.camera_pos * dvec2(1.0, -1.0))).to_pos2();
 			let rect = Rect::from_min_size(coords, vec2(tile_size as f32, tile_size as f32)) / view.scale as f32;

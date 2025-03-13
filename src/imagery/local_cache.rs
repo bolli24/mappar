@@ -34,7 +34,9 @@ impl LocalCache {
 			last_count: 0,
 		};
 
-		crate::spawn_task!(async move {
+		// FIXME:
+
+		/* crate::spawn_task!(async move {
 			let start = Instant::now();
 			std::fs::DirBuilder::new()
 				.recursive(true)
@@ -62,17 +64,17 @@ impl LocalCache {
 				cached_images.lock().await.len(),
 				start.elapsed().as_millis()
 			);
-		});
+		}); */
 
 		new
 	}
 
-	fn file_path(&self, tile: Tile, image_format: ImageFormat) -> PathBuf {
-		self.file_path.join(format!(
+	fn file_path(&self, tile: &Tile, image_format: ImageFormat) -> PathBuf {
+		self.file_path.join(&tile.imagery_id.0).join(format!(
 			"{}_{}_{}.{}",
-			tile.2,
-			tile.0,
-			tile.1,
+			tile.coords.2,
+			tile.coords.0,
+			tile.coords.1,
 			image_format.extensions_str()[0]
 		))
 	}
@@ -82,15 +84,18 @@ impl LocalCache {
 		self.last_count
 	}
 
-	pub async fn save_image(&mut self, tile: Tile, image_data: &Bytes, image_format: ImageFormat) -> Option<()> {
+	pub async fn save_image(&mut self, tile: &Tile, image_data: &Bytes, image_format: ImageFormat) -> Option<()> {
 		let file_path = self.file_path(tile, image_format);
 		let mut file = File::create(file_path).await.ok()?;
 		file.write_all(image_data).await.ok()?;
-		self.cached_images.lock().await.insert(tile, image_format);
+		self.cached_images.lock().await.insert(tile.clone(), image_format);
 		Some(())
 	}
 
-	pub async fn get_image(&self, tile: Tile) -> Option<Bytes> {
+	pub async fn get_image(&self, tile: &Tile) -> Option<Bytes> {
+		// FIXME:
+		return None;
+
 		let &image_format = self.cached_images.lock().await.get(&tile)?;
 
 		let file_path = self.file_path(tile, image_format);
@@ -106,7 +111,10 @@ impl LocalCache {
 }
 
 // TODO: Maybe better error handling
-fn try_get_file(file: Result<tokio::fs::DirEntry, std::io::Error>, file_regex: &Regex) -> Option<(Tile, ImageFormat)> {
+fn try_get_file(
+	file: Result<tokio::fs::DirEntry, std::io::Error>,
+	file_regex: &Regex,
+) -> Option<((u32, u32, u32), ImageFormat)> {
 	puffin::profile_function!();
 	let file = file.ok()?;
 	let file_path = file.path();

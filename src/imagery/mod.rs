@@ -2,6 +2,8 @@ use crate::map::map_data::LatLon;
 use crate::ui::messages::Messages;
 use crate::{message_error, message_info};
 use celes::Country;
+use chumsky::Parser;
+use log::error;
 use quick_xml::de::Deserializer;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -40,7 +42,7 @@ pub fn get_imagery(
 			message_info!(messages, "Found local imagery info.");
 			imageries_from_str(&xml, messages, imageries).await;
 		} else {
-			message_info!(messages, "Could not find local iamgery info. Fetching...");
+			message_info!(messages, "Could not find local imagery info. Fetching...");
 			update_josm_imagery(
 				#[cfg(not(target_arch = "wasm32"))]
 				josm_xml_path,
@@ -133,8 +135,10 @@ pub fn esri_imagery() -> Imagery {
 		name: vec!["ESRI World Imagery".into()],
 		description: None,
 		imagery_type: ImageryType::Tms,
-		url: "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}"
-			.to_string(),
+		url: ImageryUrl::try_from(
+			"https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}",
+		)
+		.unwrap(),
 		country: None,
 		max_zoom: 22,
 		min_zoom: 0,
@@ -149,7 +153,7 @@ pub fn osm_imagery() -> Imagery {
 		name: vec!["OpenStreetMap Carto".into()],
 		description: None,
 		imagery_type: ImageryType::Tms,
-		url: "https://tile.openstreetmap.org/{zoom}/{x}/{y}.png".to_string(),
+		url: ImageryUrl::try_from("https://tile.openstreetmap.org/{zoom}/{x}/{y}.png").unwrap(),
 		country: None,
 		max_zoom: 19,
 		min_zoom: 0,
@@ -176,7 +180,7 @@ pub struct Imagery {
 	pub description: Option<Vec<Description>>,
 	#[serde(rename = "type")]
 	pub imagery_type: ImageryType,
-	pub url: String,
+	pub url: ImageryUrl,
 	pub country: Option<Country>,
 	#[serde_inline_default(20)]
 	pub max_zoom: u32,
@@ -318,14 +322,189 @@ impl Imagery {
 	}
 
 	pub fn tile_url(&self, x: u32, y: u32, zoom: u32) -> String {
-		self.url
-			.replace("{x}", &x.to_string())
-			.replace("{y}", &y.to_string())
-			.replace("{zoom}", &zoom.to_string())
+		let mut url = String::new();
+		for segment in &self.url.0 {
+			match segment {
+				UrlSegment::String(s) => url.push_str(s),
+				UrlSegment::Switch(options) => {
+					let selected = &options[(x + y + zoom) as usize % options.len()];
+					url.push_str(selected);
+				}
+				UrlSegment::Placeholder(placeholder) => match placeholder {
+					Placeholder::X => url.push_str(&x.to_string()),
+					Placeholder::Y => url.push_str(&y.to_string()),
+					Placeholder::Zoom(offset) => url.push_str(&(zoom as i8 + offset).to_string()),
+					_ => todo!(),
+				},
+			}
+		}
+		url
 	}
 
 	pub fn name(&self) -> &str {
 		&self.name[0].text
+	}
+}
+
+#[derive(Debug, Clone)]
+enum Placeholder {
+	X,
+	Y,
+	BangY,
+	MinusY,
+	Zoom(i8),
+	Projection,
+	Width,
+	Height,
+	BoundingBox,
+	ApiKey,
+	Time,
+	/*W,
+	S,
+	N,
+	E,*/
+	WkId,
+}
+
+#[derive(Debug, Clone)]
+enum UrlSegment {
+	String(String),
+	Switch(Vec<String>),
+	Placeholder(Placeholder),
+}
+
+#[derive(Debug, Clone)]
+pub struct ImageryUrl(Vec<UrlSegment>);
+
+fn imagery_url_parser<'a>() -> impl Parser<'a, &'a str, ImageryUrl, chumsky::extra::Err<chumsky::error::Rich<'a, char>>>
+{
+	use chumsky::prelude::*;
+
+	let url_string = any()
+		.filter(|c| *c != '{' && *c != '}')
+		.repeated()
+		.at_least(1)
+		.collect::<String>();
+
+	let string = any()
+		.filter(|c| *c != '{' && *c != '}' && *c != ':' && *c != ',')
+		.repeated()
+		.at_least(1)
+		.collect::<String>();
+
+	let number = text::digits(10)
+		.at_most(2)
+		.collect::<String>()
+		.map(|n| n.parse::<i8>().unwrap());
+
+	let zoom_offset = (just('+').or(just('-')).then(number)).or(empty().map(|()| ('+', 0)));
+	let zoom = just("zoom").ignore_then(zoom_offset).map(|(sign, mut number)| {
+		if sign == '-' {
+			number = -number;
+		}
+		Placeholder::Zoom(number)
+	});
+
+	let placeholder = string
+		.try_map(|placeholder, span| {
+			let p = match placeholder.as_str() {
+				"x" => Placeholder::X,
+				"y" => Placeholder::Y,
+				"!y" => Placeholder::BangY,
+				"-y" => Placeholder::MinusY,
+				"proj" => Placeholder::Projection,
+				"width" => Placeholder::Width,
+				"height" => Placeholder::Height,
+				"bbox" => Placeholder::BoundingBox,
+				"apikey" => Placeholder::ApiKey,
+				"wkid" => Placeholder::WkId,
+				"time" => Placeholder::Time,
+				_ => return Err(Rich::custom(span, format!("Invalid placeholder: {placeholder}"))),
+			};
+			Ok(UrlSegment::Placeholder(p))
+		})
+		.or(zoom.map(UrlSegment::Placeholder))
+		.delimited_by(just('{'), just('}'));
+
+	let switch_options = string // Can be replaced with 'text::ascii::ident()' once chumsky updates past
+		.map(String::from)
+		.or(empty().map(|()| "".to_string()))
+		.separated_by(just(','))
+		.at_least(1)
+		.collect::<Vec<String>>();
+	let switch = just("switch:")
+		.ignore_then(switch_options)
+		.delimited_by(just('{'), just('}'))
+		.map(UrlSegment::Switch);
+
+	let segment = choice((switch, placeholder, url_string.map(UrlSegment::String)));
+
+	segment.repeated().collect().map(ImageryUrl)
+}
+
+impl Serialize for ImageryUrl {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		let url_str = self.to_string();
+		serializer.serialize_str(&url_str)
+	}
+}
+
+impl<'de> Deserialize<'de> for ImageryUrl {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		let url_str = String::deserialize(deserializer)?;
+		let parse_result = imagery_url_parser().parse(&url_str);
+
+		match parse_result.into_result() {
+			Ok(url) => Ok(url),
+			Err(err) => {
+				error!("Failed to parse imagery URL '{url_str}': \n{:?}", err);
+				Ok(ImageryUrl(vec![UrlSegment::String(url_str.to_string())]))
+			}
+		}
+	}
+}
+impl Display for ImageryUrl {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		for segment in &self.0 {
+			match segment {
+				UrlSegment::String(s) => write!(f, "{}", s)?,
+				UrlSegment::Placeholder(p) => {
+					let p_str = match p {
+						Placeholder::X => "x",
+						Placeholder::Y => "y",
+						Placeholder::BangY => "!y",
+						Placeholder::MinusY => "-y",
+						Placeholder::Zoom(number) if *number == 0 => "zoom",
+						Placeholder::Zoom(number) if *number < 0 => &format!("zoom{number}"),
+						Placeholder::Zoom(number) => &format!("zoom+{number}"),
+						Placeholder::Projection => "proj",
+						Placeholder::Width => "width",
+						Placeholder::Height => "height",
+						Placeholder::BoundingBox => "bbox",
+						Placeholder::ApiKey => "apikey",
+						Placeholder::WkId => "wkid",
+						Placeholder::Time => "time",
+					};
+					write!(f, "{{{}}}", p_str)?
+				}
+				UrlSegment::Switch(options) => write!(f, "{{switch:{}}}", options.join(","))?,
+			}
+		}
+		Ok(())
+	}
+}
+
+impl<'a> TryFrom<&'a str> for ImageryUrl {
+	type Error = Vec<chumsky::error::Rich<'a, char>>;
+
+	fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+		imagery_url_parser().parse(value).into_result()
 	}
 }
 
@@ -338,7 +517,7 @@ mod tests {
 	#[test]
 	pub fn xml_parsing() {
 		crate::init_test_logger();
-		let xml = include_str!("../../josm_imagery_test.xml");
+		let xml = include_str!("../../test/josm_imagery_test.xml");
 		// let xml = include_str!("../../imagery_small.xml");
 		let mut de = Deserializer::from_str(xml);
 		let result: Result<Imageries, _> = serde_path_to_error::deserialize(&mut de);
@@ -352,5 +531,17 @@ mod tests {
 				error!("Unable to parse JOSM imagery data: <{path}> - {err}");
 			}
 		};
+	}
+
+	#[test]
+	pub fn url_parsing() {
+		crate::init_test_logger();
+
+		let url = "https://{switch:,ab1,b}.tile-cyclosm.openstreetmap.fr/cyclosm/{zoom-16}{x}/{y}.png";
+		let result = imagery_url_parser().parse(url);
+
+		info!("{result:?}");
+
+		assert!(result.into_result().is_ok());
 	}
 }
