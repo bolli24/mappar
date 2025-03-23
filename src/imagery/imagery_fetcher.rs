@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
+use derive_new::new;
 use epaint::mutex::RwLock;
 use epaint::textures::TextureOptions;
 use epaint::{ColorImage, ImageData, TextureId, TextureManager};
@@ -21,13 +22,13 @@ use tokio::task::JoinSet;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::time;
 
+use crate::imagery::Imagery;
 #[cfg(target_arch = "wasm32")]
 use crate::imagery::image_worker::ImageWorker;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::imagery::local_cache;
 #[cfg(target_arch = "wasm32")]
 use crate::imagery::web_cache;
-use crate::imagery::Imagery;
 use crate::ui::messages::Messages;
 #[cfg(target_arch = "wasm32")]
 use crate::util::sleep::timer;
@@ -48,17 +49,11 @@ pub struct ImageryFetcher {
 	worker_bridge: Arc<Mutex<WorkerBridge<ImageWorker>>>,
 }
 
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone, new)]
 pub struct Tile {
 	pub imagery_id: ImageryId,
 	// (x, y, zoom)
 	pub coords: (u32, u32, u32),
-}
-
-impl Tile {
-	pub fn new(imagery_id: ImageryId, coords: (u32, u32, u32)) -> Self {
-		Self { imagery_id, coords }
-	}
 }
 
 fn tile_to_string(tile: &Tile) -> String {

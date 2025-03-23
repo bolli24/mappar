@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use derive_new::new;
 use egui::{FontId, Frame, RichText, ScrollArea, Widget};
 
 use crate::imagery::{Imageries, ImageryId};
@@ -16,14 +17,10 @@ impl Layers {
 	}
 }
 
+#[derive(new)]
 pub struct LayerList<'a> {
 	layers: &'a mut Layers,
 	imageries: &'a Imageries,
-}
-impl<'a> LayerList<'a> {
-	pub fn new(layers: &'a mut Layers, imageries: &'a Imageries) -> Self {
-		Self { layers, imageries }
-	}
 }
 
 pub struct Layer(pub ImageryId, pub bool);

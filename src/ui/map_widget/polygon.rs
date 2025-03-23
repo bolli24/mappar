@@ -1,6 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::fmt::Debug;
 
+use derive_new::new;
 use egui::{Pos2, Rect};
 use glam::DVec2;
 use itertools::Itertools;
@@ -8,10 +9,10 @@ use itertools::Itertools;
 /// **Adapted From** <https://github.com/ivanfratric/polypartition/> (MIT Licence)
 // TODO: Maybe make code more rusty
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, new)]
 pub struct Polygon {
-	pub is_hole: bool,
 	pub points: Vec<DVec2>,
+	pub is_hole: bool,
 }
 
 #[derive(Clone)]
@@ -68,6 +69,7 @@ impl Default for PartitionVertex<'_> {
 		}
 	}
 }
+
 impl From<Triangle> for Polygon {
 	fn from(t: Triangle) -> Self {
 		Polygon::new(vec![t.0, t.1, t.2], false)
@@ -82,10 +84,6 @@ pub enum Orientation {
 }
 
 impl Polygon {
-	pub const fn new(points: Vec<DVec2>, is_hole: bool) -> Self {
-		Self { points, is_hole }
-	}
-
 	pub fn bounding_box(&self) -> Rect {
 		let min_max_x = self.points.iter().map(|n| n.x as f32).minmax().into_option().unwrap();
 		let min_max_y = self.points.iter().map(|n| n.y as f32).minmax().into_option().unwrap();

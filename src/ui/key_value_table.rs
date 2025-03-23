@@ -1,31 +1,17 @@
 use super::{debug_text::DebugText, map_widget::map_memory::Selection, messages::Messages};
 use crate::map::map_data::{MapData, MapElement};
-use egui::{text_edit::TextEditOutput, Frame, Key, Margin, TextBuffer, TextEdit, Ui, Widget};
+use derive_new::new;
+use egui::{Frame, Key, Margin, TextBuffer, TextEdit, Ui, Widget, text_edit::TextEditOutput};
 use egui_extras::{Column, TableBuilder};
 use log::info;
 use std::sync::{Arc, Mutex};
 
+#[derive(new)]
 pub struct KeyValueTable<'a> {
 	map_data: Arc<Mutex<MapData>>,
 	selection: &'a mut Selection,
 	messages: &'a mut Messages,
 	debug_text: &'a mut DebugText,
-}
-
-impl<'a> KeyValueTable<'a> {
-	pub fn new(
-		map_data: Arc<Mutex<MapData>>,
-		selection: &'a mut Selection,
-		messages: &'a mut Messages,
-		debug_text: &'a mut DebugText,
-	) -> Self {
-		Self {
-			map_data,
-			selection,
-			messages,
-			debug_text,
-		}
-	}
 }
 
 impl Widget for KeyValueTable<'_> {

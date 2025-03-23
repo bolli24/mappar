@@ -6,20 +6,21 @@ pub mod render;
 mod style;
 
 use crate::dbgtxt;
-use crate::imagery::imagery_fetcher::{ImageryFetcher, Tile};
 use crate::imagery::ImageryId;
-use crate::map::map_data::{latlon, Element, LatLon, MapData, CIRCUMFERENCE_EARTH};
+use crate::imagery::imagery_fetcher::{ImageryFetcher, Tile};
+use crate::map::map_data::{CIRCUMFERENCE_EARTH, Element, LatLon, MapData, latlon};
 use crate::ui::debug_text::DebugText;
 use crate::util::convert::{ToDVec2, ToPos2};
 use css::Styles;
+use derive_new::new;
 use draw_list::DrawList;
 use eframe::emath::RectTransform;
 use egui::{
-	pos2, vec2, Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, Response, ScrollArea, Sense, Vec2,
-	Widget,
+	Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, Response, ScrollArea, Sense, Vec2, Widget, pos2,
+	vec2,
 };
 use epaint::{CornerRadius, PathShape, PathStroke, Shape};
-use glam::{dvec2, uvec2, DVec2, UVec2};
+use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
 use map_memory::MapMemory;
 use render::{DetailedElement, RenderElement};
@@ -31,6 +32,7 @@ use std::sync::{Arc, Mutex};
 
 const ZOOM_SPEED: f64 = 5.0;
 
+#[derive(new)]
 pub struct MapWidget<'a> {
 	map_data: &'a mut MapData,
 	styles: &'a mut Option<Styles>,
@@ -55,30 +57,6 @@ pub struct View {
 }
 
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
-
-impl<'a> MapWidget<'a> {
-	pub fn new(
-		map_data: &'a mut MapData,
-		styles: &'a mut Option<Styles>,
-		imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
-		id: Id,
-		debug_text: Option<&'a mut DebugText>,
-		mem: &'a mut MapMemory,
-		interactive: bool,
-		active_imagery_id: Option<ImageryId>,
-	) -> Self {
-		Self {
-			map_data,
-			styles,
-			imagery_fetcher,
-			id,
-			debug_text,
-			mem,
-			interactive,
-			active_imagery_id,
-		}
-	}
-}
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub enum MapState {

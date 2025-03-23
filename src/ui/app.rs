@@ -1,14 +1,14 @@
 use super::imagery_widget::ImageriesWidget;
 use super::key_value_table::KeyValueTable;
 use super::layer_list::Layers;
+use super::map_widget::MapWidget;
 use super::map_widget::css::Styles;
 use super::map_widget::render::DetailedElement;
-use super::map_widget::MapWidget;
 use super::messages::Messages;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
-use crate::imagery::{esri_imagery, get_imagery, Imageries};
+use crate::imagery::{Imageries, esri_imagery, get_imagery};
 use crate::map::api::get_data;
-use crate::map::map_data::{latlon, Bounds, LatLon, MapData};
+use crate::map::map_data::{Bounds, LatLon, MapData, latlon};
 use crate::ui::debug_text::DebugText;
 use crate::ui::layer_list::{Layer, LayerList};
 use crate::ui::map_widget::css::get_default_styles;
@@ -18,7 +18,7 @@ use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::watch::{channel, Receiver, Sender};
+use tokio::sync::watch::{Receiver, Sender, channel};
 use web_time::Instant;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -262,7 +262,7 @@ impl eframe::App for MyApp {
 						ui.close_menu();
 						self.imagery_settings = !self.imagery_settings;
 					}
-					if ui.button("Fetch JOSM imagery").clicked() {
+					if ui.button("Update JOSM imagery").clicked() {
 						ui.close_menu();
 						crate::imagery::update_josm_imagery(
 							#[cfg(not(target_arch = "wasm32"))]
@@ -359,7 +359,13 @@ impl eframe::App for MyApp {
 		Window::new("Imagery Settings")
 			.open(&mut self.imagery_settings)
 			.resizable(true)
-			.show(ctx, |ui| ui.add(ImageriesWidget::new(&self.imageries.lock().unwrap())));
+			.show(ctx, |ui| {
+				ui.add(ImageriesWidget::new(
+					self.imageries.clone(),
+					&self.messages,
+					&self.project_dirs,
+				))
+			});
 
 		ctx.input(|i| {
 			if i.modifiers == Modifiers::CTRL | Modifiers::COMMAND {
