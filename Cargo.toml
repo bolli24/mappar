@@ -50,6 +50,8 @@ indexmap = "2.8"
 itertools = "0.14"
 regex = "1.11"
 undo = "0.52"
+string-interner = "0.19"
+
 chumsky = "0.10.0"
 
 puffin = "0.19"

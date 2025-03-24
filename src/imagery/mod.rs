@@ -12,6 +12,9 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
+use string_interner::StringInterner;
+use string_interner::backend::StringBackend;
+use string_interner::symbol::SymbolU32;
 use web_time::Instant;
 
 #[cfg(target_arch = "wasm32")]
@@ -26,6 +29,11 @@ mod schema;
 
 pub const JOSM_URL: &str = "https://josm.openstreetmap.de/maps";
 pub const JOSM_FILE: &str = "josm_imagery.xml";
+
+pub type Interner = StringInterner<StringBackend>;
+
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
+pub struct ImageryRef(SymbolU32);
 
 pub fn get_imagery(
 	#[cfg(not(target_arch = "wasm32"))] josm_xml_path: std::path::PathBuf,
@@ -236,13 +244,30 @@ pub struct Imageries {
 		deserialize_with = "deserialize_vec_to_map"
 	)]
 	pub entries: HashMap<ImageryId, Imagery>,
+
+	#[serde(skip)]
+	pub ids: Interner,
 }
 
 impl Imageries {
 	pub fn new() -> Self {
 		Self {
 			entries: HashMap::new(),
+			ids: Interner::new(),
 		}
+	}
+
+	pub fn get_ref_unchecked(&mut self, id: &ImageryId) -> ImageryRef {
+		ImageryRef(self.ids.get_or_intern(&id.0))
+	}
+
+	pub fn get_ref(&mut self, id: &ImageryId) -> Option<ImageryRef> {
+		self.entries.contains_key(id).then(|| self.get_ref_unchecked(id))
+	}
+
+	pub fn get(&self, reference: ImageryRef) -> Option<&Imagery> {
+		self.entries
+			.get(&ImageryId(self.ids.resolve(reference.0).unwrap().to_string()))
 	}
 }
 
@@ -269,7 +294,7 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ImageryId(String);
+pub struct ImageryId(pub String);
 
 impl From<&str> for ImageryId {
 	fn from(value: &str) -> Self {

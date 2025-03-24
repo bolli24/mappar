@@ -16,15 +16,18 @@ use crate::imagery::imagery_fetcher::Tile;
 use crate::message_info;
 use crate::ui::messages::Messages;
 
+use super::Imageries;
+
 #[derive(Clone)]
 pub struct LocalCache {
 	file_path: PathBuf,
 	cached_images: Arc<tokio::sync::Mutex<HashMap<Tile, ImageFormat>>>,
 	last_count: usize,
+	imageries: Arc<std::sync::Mutex<Imageries>>,
 }
 
 impl LocalCache {
-	pub fn new(file_path: PathBuf, mut messages: Messages) -> Self {
+	pub fn new(file_path: PathBuf, mut messages: Messages, imageries: Arc<std::sync::Mutex<Imageries>>) -> Self {
 		message_info!(messages, "Using cache directory: {}", file_path.to_str().unwrap());
 
 		let cached_images = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
@@ -33,6 +36,7 @@ impl LocalCache {
 			file_path: file_path.clone(),
 			cached_images: cached_images.clone(),
 			last_count: 0,
+			imageries: imageries.clone(),
 		};
 
 		crate::spawn_task!(async move {
@@ -72,10 +76,11 @@ impl LocalCache {
 				);
 
 				let imagery_id = ImageryId(dir_path.file_name().unwrap().to_string_lossy().to_string());
+				let imagery_ref = imageries.lock().unwrap().get_ref_unchecked(&imagery_id);
 
 				while let Some(file) = files.next().await {
 					if let Some((coords, image_format)) = try_get_file(file, &file_regex) {
-						let tile = Tile::new(imagery_id.clone(), coords);
+						let tile = Tile::new(imagery_ref, coords);
 						cached_images.lock().await.insert(tile, image_format);
 					}
 				}
@@ -93,7 +98,16 @@ impl LocalCache {
 	}
 
 	fn file_path(&self, tile: &Tile, image_format: ImageFormat) -> PathBuf {
-		self.file_path.join(&tile.imagery_id.0).join(format!(
+		let imagery_id = self
+			.imageries
+			.lock()
+			.unwrap()
+			.get(tile.imagery_ref)
+			.expect("Iamgery reference should be valid.")
+			.id
+			.clone();
+
+		self.file_path.join(&imagery_id.0).join(format!(
 			"{}_{}_{}.{}",
 			tile.coords.2,
 			tile.coords.0,

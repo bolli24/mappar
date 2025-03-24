@@ -33,7 +33,7 @@ use crate::ui::messages::Messages;
 #[cfg(target_arch = "wasm32")]
 use crate::util::sleep::timer;
 
-use super::{Imageries, ImageryId};
+use super::{Imageries, ImageryId, ImageryRef};
 
 #[cfg(not(target_arch = "wasm32"))]
 type PersistentCache = local_cache::LocalCache;
@@ -49,17 +49,17 @@ pub struct ImageryFetcher {
 	worker_bridge: Arc<Mutex<WorkerBridge<ImageWorker>>>,
 }
 
-#[derive(PartialEq, Eq, Hash, Debug, Clone, new)]
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone, new)]
 pub struct Tile {
-	pub imagery_id: ImageryId,
+	pub imagery_ref: ImageryRef,
 	// (x, y, zoom)
 	pub coords: (u32, u32, u32),
 }
 
 fn tile_to_string(tile: &Tile) -> String {
 	format!(
-		"tile_{}_{}_{}_{}",
-		tile.imagery_id.0, tile.coords.0, tile.coords.1, tile.coords.2
+		"tile_{:?}_{}_{}_{}",
+		tile.imagery_ref.0, tile.coords.0, tile.coords.1, tile.coords.2
 	)
 }
 
@@ -86,14 +86,14 @@ impl ImageryFetcher {
 		// let cache_directory = cache_base_directory.join(&imagery.id.0);
 
 		let fetcher = Self {
-			imageries,
 			pending: Arc::new(Mutex::new(HashSet::new())),
 			#[cfg(not(target_arch = "wasm32"))]
-			persistent_cache: local_cache::LocalCache::new(cache_base_directory, messages),
+			persistent_cache: local_cache::LocalCache::new(cache_base_directory, messages, imageries.clone()),
 			#[cfg(target_arch = "wasm32")]
 			persistent_cache: web_cache::WebCache::new(),
 			#[cfg(target_arch = "wasm32")]
 			worker_bridge: Self::get_worker_bridge(texture_manager.clone(), memory_cache.clone()),
+			imageries,
 			memory_cache,
 		};
 
@@ -297,10 +297,10 @@ impl ImageryFetcher {
 		let url = imageries
 			.lock()
 			.unwrap()
-			.entries
-			.get(&tile.imagery_id)
-			.unwrap()
+			.get(tile.imagery_ref)
+			.expect("Imagery reference should be valid.")
 			.tile_url(tile.coords.0, tile.coords.1, tile.coords.2);
+
 		let response = client.get(url.clone()).send().await?;
 		match response.error_for_status() {
 			Err(err) => Err(Error::Reqwest(err)),

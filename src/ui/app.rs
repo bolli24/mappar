@@ -329,6 +329,11 @@ impl eframe::App for MyApp {
 		self.debug_text.clear();
 
 		egui::CentralPanel::default().show(ctx, |ui| {
+			let active_imagery_ref = self
+				.layers
+				.get_active_imagery()
+				.and_then(|id| self.imageries.lock().unwrap().get_ref(id));
+
 			let mut rect = ui
 				.add(MapWidget::new(
 					&mut self.map_data.lock().unwrap(),
@@ -338,7 +343,7 @@ impl eframe::App for MyApp {
 					Some(&mut self.debug_text),
 					&mut self.map_memory,
 					true,
-					self.layers.get_active_imagery(),
+					active_imagery_ref,
 				))
 				.rect;
 			rect.min += egui::Vec2::new(5.0, 5.0);

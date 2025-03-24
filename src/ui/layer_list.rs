@@ -1,15 +1,15 @@
 use std::collections::VecDeque;
 
 use derive_new::new;
-use egui::{FontId, Frame, RichText, ScrollArea, Widget};
+use egui::{Color32, FontId, Frame, RichText, ScrollArea, Widget};
 
 use crate::imagery::{Imageries, ImageryId};
 
 pub struct Layers(pub VecDeque<Layer>);
 
 impl Layers {
-	pub fn get_active_imagery(&self) -> Option<ImageryId> {
-		self.0.iter().find(|layer| layer.1).map(|layer| layer.0.clone())
+	pub fn get_active_imagery(&self) -> Option<&ImageryId> {
+		self.0.iter().find(|layer| layer.1).map(|layer| &layer.0)
 	}
 
 	pub fn new() -> Self {
@@ -41,9 +41,17 @@ impl Widget for LayerList<'_> {
 						return;
 					}
 					for Layer(layer, visible) in &mut self.layers.0 {
+						let Some(imagery) = self.imageries.entries.get(layer) else {
+							ui.label(
+								RichText::new(format!("Invalid layer: '{}'", layer.0))
+									.color(Color32::from_rgb(211, 47, 47)),
+							);
+							continue;
+						};
+
 						ui.horizontal(|ui| {
 							ui.checkbox(visible, "");
-							ui.label(self.imageries.entries.get(layer).unwrap().name());
+							ui.label(imagery.name());
 						});
 					}
 				})
