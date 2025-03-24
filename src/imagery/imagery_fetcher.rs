@@ -290,10 +290,8 @@ impl ImageryFetcher {
 		tile: &Tile,
 		client: Client,
 	) -> Result<TextureId, Error> {
-		use log::info;
-
-		if let Some(image_data) = persistent_cache.get_image(&tile).await {
-			return Self::create_texture(texture_manager, tile_to_string(&tile), &image_data);
+		if let Some(image_data) = persistent_cache.get_image(tile).await {
+			return Self::create_texture(texture_manager, tile_to_string(tile), &image_data);
 		}
 
 		let url = imageries
@@ -310,7 +308,7 @@ impl ImageryFetcher {
 				let bytes = response.bytes().await?;
 				let image_format = image::guess_format(&bytes)?;
 				persistent_cache.save_image(tile, &bytes, image_format).await; // TODO: Maybe do this on a separate thread
-				Self::create_texture(texture_manager, tile_to_string(&tile), &bytes)
+				Self::create_texture(texture_manager, tile_to_string(tile), &bytes)
 			}
 		}
 	}

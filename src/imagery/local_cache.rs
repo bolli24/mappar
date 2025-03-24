@@ -5,12 +5,13 @@ use std::time::Instant;
 
 use bytes::Bytes;
 use image::ImageFormat;
-use log::warn;
+use log::{error, warn};
 use regex::Regex;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_stream::StreamExt;
 
+use crate::imagery::ImageryId;
 use crate::imagery::imagery_fetcher::Tile;
 use crate::message_info;
 use crate::ui::messages::Messages;
@@ -34,17 +35,14 @@ impl LocalCache {
 			last_count: 0,
 		};
 
-		// FIXME:
-
-		/* crate::spawn_task!(async move {
+		crate::spawn_task!(async move {
 			let start = Instant::now();
 			std::fs::DirBuilder::new()
 				.recursive(true)
 				.create(&file_path)
 				.expect("Failed to create cache directory");
 
-			// let files = std::fs::read_dir(&file_path).expect("Failed to read cache directory");
-			let mut files = tokio_stream::wrappers::ReadDirStream::new(
+			let mut dirs = tokio_stream::wrappers::ReadDirStream::new(
 				tokio::fs::read_dir(&file_path)
 					.await
 					.expect("Failed to read cache directory"),
@@ -52,9 +50,34 @@ impl LocalCache {
 
 			let file_regex = Regex::new(r"^\d+_\d+_\d+\.(png|jpg)$").expect("Failed to create regex");
 
-			while let Some(file) = files.next().await {
-				if let Some((tile, image_format)) = try_get_file(file, &file_regex) {
-					cached_images.lock().await.insert(tile, image_format);
+			while let Some(dir) = dirs.next().await {
+				let dir_path = match dir {
+					Ok(dir) => {
+						let path = dir.path();
+						if !path.is_dir() {
+							continue;
+						}
+						path
+					}
+					Err(err) => {
+						error!("Skipping invalid directory: {err}");
+						continue;
+					}
+				};
+
+				let mut files = tokio_stream::wrappers::ReadDirStream::new(
+					tokio::fs::read_dir(&dir_path)
+						.await
+						.expect("Failed to read cache directory"),
+				);
+
+				let imagery_id = ImageryId(dir_path.file_name().unwrap().to_string_lossy().to_string());
+
+				while let Some(file) = files.next().await {
+					if let Some((coords, image_format)) = try_get_file(file, &file_regex) {
+						let tile = Tile::new(imagery_id.clone(), coords);
+						cached_images.lock().await.insert(tile, image_format);
+					}
 				}
 			}
 
@@ -64,7 +87,7 @@ impl LocalCache {
 				cached_images.lock().await.len(),
 				start.elapsed().as_millis()
 			);
-		}); */
+		});
 
 		new
 	}
@@ -93,10 +116,7 @@ impl LocalCache {
 	}
 
 	pub async fn get_image(&self, tile: &Tile) -> Option<Bytes> {
-		// FIXME:
-		return None;
-
-		let &image_format = self.cached_images.lock().await.get(&tile)?;
+		let &image_format = self.cached_images.lock().await.get(tile)?;
 
 		let file_path = self.file_path(tile, image_format);
 		let mut file = File::open(file_path).await.ok()?;
