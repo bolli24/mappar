@@ -6,7 +6,7 @@ use super::map_widget::css::Styles;
 use super::map_widget::render::DetailedElement;
 use super::messages::Messages;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
-use crate::imagery::{Imageries, esri_imagery, get_imagery};
+use crate::imagery::{Imageries, get_imagery};
 use crate::map::api::get_data;
 use crate::map::map_data::{Bounds, LatLon, MapData, latlon};
 use crate::ui::debug_text::DebugText;

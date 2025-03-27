@@ -22,7 +22,6 @@ use tokio::task::JoinSet;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::time;
 
-use crate::imagery::Imagery;
 #[cfg(target_arch = "wasm32")]
 use crate::imagery::image_worker::ImageWorker;
 #[cfg(not(target_arch = "wasm32"))]
@@ -33,7 +32,7 @@ use crate::ui::messages::Messages;
 #[cfg(target_arch = "wasm32")]
 use crate::util::sleep::timer;
 
-use super::{Imageries, ImageryId, ImageryRef};
+use super::{Imageries, ImageryRef};
 
 #[cfg(not(target_arch = "wasm32"))]
 type PersistentCache = local_cache::LocalCache;
@@ -42,6 +41,7 @@ type PersistentCache = web_cache::WebCache;
 
 pub struct ImageryFetcher {
 	memory_cache: MemoryCache,
+	texture_manager: Arc<RwLock<TextureManager>>,
 	imageries: Arc<Mutex<Imageries>>,
 	pending: Arc<Mutex<HashSet<Tile>>>,
 	persistent_cache: PersistentCache,
@@ -95,6 +95,7 @@ impl ImageryFetcher {
 			worker_bridge: Self::get_worker_bridge(texture_manager.clone(), memory_cache.clone()),
 			imageries,
 			memory_cache,
+			texture_manager: texture_manager.clone(),
 		};
 
 		let pending = fetcher.pending.clone();
@@ -402,10 +403,11 @@ impl ImageryFetcher {
 
 	/// Estimated VRAM usages of tiles in MiB
 	pub fn vram_used(&self) -> usize {
-		return 0;
-		// FIXME:
-		// let tile_size = self.imageries().lock().unwrap().tile_size().unwrap().pow(2) as usize;
-		// self.memory_cached_count() * tile_size * 4 / 1024 / 1024
+		self.texture_manager
+			.read()
+			.allocated()
+			.fold(0, |sum, (_, meta)| sum + meta.bytes_used())
+			/ 1024 / 1024
 	}
 
 	pub fn persistent_cached_count(&mut self) -> usize {

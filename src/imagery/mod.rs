@@ -137,39 +137,6 @@ async fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mu
 	*imageries.lock().unwrap() = parsed;
 }
 
-pub fn esri_imagery() -> Imagery {
-	Imagery {
-		id: "esri".into(),
-		name: vec!["ESRI World Imagery".into()],
-		description: None,
-		imagery_type: ImageryType::Tms,
-		url: ImageryUrl::try_from(
-			"https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}",
-		)
-		.unwrap(),
-		country: None,
-		max_zoom: 22,
-		min_zoom: 0,
-		tile_size: Some(256),
-		bounds: None,
-	}
-}
-
-pub fn osm_imagery() -> Imagery {
-	Imagery {
-		id: "osm".into(),
-		name: vec!["OpenStreetMap Carto".into()],
-		description: None,
-		imagery_type: ImageryType::Tms,
-		url: ImageryUrl::try_from("https://tile.openstreetmap.org/{zoom}/{x}/{y}.png").unwrap(),
-		country: None,
-		max_zoom: 19,
-		min_zoom: 0,
-		tile_size: Some(256),
-		bounds: None,
-	}
-}
-
 impl From<&str> for Name {
 	fn from(text: &str) -> Self {
 		Name {
