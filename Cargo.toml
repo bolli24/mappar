@@ -50,7 +50,7 @@ indexmap = "2.8"
 itertools = "0.14"
 regex = "1.11"
 undo = "0.52"
-string-interner = "0.19"
+lasso = { version = "0.7", features = ["serialize"] }
 
 chumsky = "0.10.0"
 

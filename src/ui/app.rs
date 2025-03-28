@@ -90,22 +90,15 @@ impl MyApp {
 
 		let imageries = Arc::new(Mutex::new(Imageries::new()));
 
-		#[cfg(not(target_arch = "wasm32"))]
 		let imagery_fetcher = {
 			Arc::new(Mutex::new(ImageryFetcher::new(
 				imageries.clone(),
 				cc.egui_ctx.tex_manager(),
+				#[cfg(not(target_arch = "wasm32"))]
 				project_dirs.cache_dir().to_path_buf(),
 				messages.clone(),
 			)))
 		};
-
-		#[cfg(target_arch = "wasm32")]
-		let imagery_fetcher = Arc::new(Mutex::new(ImageryFetcher::new(
-			esri_imagery(),
-			cc.egui_ctx.tex_manager(),
-			messages.clone(),
-		)));
 
 		let mut app = Self {
 			map_data: Arc::new(Mutex::new(MapData::new())),
@@ -368,6 +361,7 @@ impl eframe::App for MyApp {
 				ui.add(ImageriesWidget::new(
 					self.imageries.clone(),
 					&self.messages,
+					#[cfg(not(target_arch = "wasm32"))]
 					&self.project_dirs,
 				))
 			});

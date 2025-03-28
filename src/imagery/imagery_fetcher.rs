@@ -45,11 +45,9 @@ pub struct ImageryFetcher {
 	imageries: Arc<Mutex<Imageries>>,
 	pending: Arc<Mutex<HashSet<Tile>>>,
 	persistent_cache: PersistentCache,
-	#[cfg(target_arch = "wasm32")]
-	worker_bridge: Arc<Mutex<WorkerBridge<ImageWorker>>>,
 }
 
-#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone, new)]
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone, new, serde::Serialize, serde::Deserialize)]
 pub struct Tile {
 	pub imagery_ref: ImageryRef,
 	// (x, y, zoom)
@@ -83,7 +81,6 @@ impl ImageryFetcher {
 		messages: Messages,
 	) -> Self {
 		let memory_cache = Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(4192).unwrap())));
-		// let cache_directory = cache_base_directory.join(&imagery.id.0);
 
 		let fetcher = Self {
 			pending: Arc::new(Mutex::new(HashSet::new())),
@@ -91,8 +88,6 @@ impl ImageryFetcher {
 			persistent_cache: local_cache::LocalCache::new(cache_base_directory, messages, imageries.clone()),
 			#[cfg(target_arch = "wasm32")]
 			persistent_cache: web_cache::WebCache::new(),
-			#[cfg(target_arch = "wasm32")]
-			worker_bridge: Self::get_worker_bridge(texture_manager.clone(), memory_cache.clone()),
 			imageries,
 			memory_cache,
 			texture_manager: texture_manager.clone(),
@@ -112,16 +107,14 @@ impl ImageryFetcher {
 				texture_manager,
 			));
 		}
-		#[cfg(target_arch = "wasm32")]
-		let worker_bridge = fetcher.worker_bridge.clone();
+
 		#[cfg(target_arch = "wasm32")]
 		wasm_bindgen_futures::spawn_local(Self::fetching_loop(
 			pending,
 			cache,
-			imagery,
+			imageries,
 			persistent_cache,
 			texture_manager,
-			worker_bridge,
 		));
 
 		fetcher
@@ -131,30 +124,27 @@ impl ImageryFetcher {
 	fn get_worker_bridge(
 		texture_manager: Arc<RwLock<TextureManager>>,
 		memory_cache: MemoryCache,
-	) -> Arc<Mutex<WorkerBridge<ImageWorker>>> {
-		// TODO: Replace Arc<Mutex>
-		let worker_bridge = Arc::new(Mutex::new(
-			ImageWorker::spawner()
-				.callback(move |output| {
-					let tile = output.0;
-					let result = output.1;
-					let Some(image_data) = result else {
-						error!("Failed to decode image for tile: {:?}", tile);
-						return;
-					};
-					let Some(image) = image::RgbaImage::from_raw(256, 256, image_data) else {
-						error!("Failed to create image for tile: {:?}", tile);
-						return;
-					};
+	) -> WorkerBridge<ImageWorker> {
+		ImageWorker::spawner()
+			.callback(move |output| {
+				let tile = output.0;
+				let result = output.1;
 
-					let image = rgba_image_to_color_image(&image);
+				let Some(image_data) = result else {
+					error!("Failed to decode image for tile: {:?}", tile);
+					return;
+				};
+				let Some(image) = image::RgbaImage::from_raw(256, 256, image_data) else {
+					error!("Failed to create image for tile: {:?}", tile);
+					return;
+				};
 
-					let texture = Self::create_texture_from_decoded(&texture_manager, tile_to_string(&output.0), image);
-					Self::store_texture(&texture_manager, &memory_cache, tile, texture);
-				})
-				.spawn("./dummy_worker.js"),
-		));
-		worker_bridge
+				let image = rgba_image_to_color_image(&image);
+
+				let texture = Self::create_texture_from_decoded(&texture_manager, tile_to_string(&output.0), image);
+				Self::store_texture(&texture_manager, &memory_cache, tile, texture);
+			})
+			.spawn("./dummy_worker.js")
 	}
 
 	fn store_texture(
@@ -163,7 +153,8 @@ impl ImageryFetcher {
 		tile: Tile,
 		texture: TextureId,
 	) {
-		if let Some((_, Some(texture_id))) = memory_cache.lock().unwrap().push(tile, Some(texture)) {
+		if let Some((tile_b, Some(texture_id))) = memory_cache.lock().unwrap().push(tile, Some(texture)) {
+			assert_ne!(tile, tile_b, "Mustn't store the same tile twice.");
 			texture_manager.write().free(texture_id);
 		}
 	}
@@ -179,7 +170,6 @@ impl ImageryFetcher {
 		imageries: Arc<Mutex<Imageries>>,
 		persistent_cache: PersistentCache,
 		texture_manager: Arc<RwLock<TextureManager>>,
-		#[cfg(target_arch = "wasm32")] worker_bridge: Arc<Mutex<WorkerBridge<ImageWorker>>>,
 	) {
 		#[cfg(not(target_arch = "wasm32"))]
 		const MAX_CONCURRENT: usize = 16;
@@ -197,6 +187,11 @@ impl ImageryFetcher {
 
 		#[cfg(target_arch = "wasm32")]
 		let concurrent = Arc::new(Mutex::new(0));
+		#[cfg(target_arch = "wasm32")]
+		let worker_bridge = Arc::new(Mutex::new(Self::get_worker_bridge(
+			texture_manager.clone(),
+			memory_cache.clone(),
+		)));
 
 		loop {
 			#[cfg(not(target_arch = "wasm32"))]
@@ -219,13 +214,22 @@ impl ImageryFetcher {
 			}
 
 			let mut pending = pending.lock().unwrap();
-			let tile = pending.iter().next().unwrap().clone();
+			let tile = *pending.iter().next().unwrap();
 			pending.remove(&tile);
 			drop(pending);
 
-			if let Some((_, Some(texture_id))) = memory_cache.lock().unwrap().push(tile.clone(), None) {
-				texture_manager.write().free(texture_id);
+			match memory_cache.lock().unwrap().push(tile, None) {
+				Some((tile_b, _)) if tile == tile_b => {
+					// Already fetched current tile
+					continue;
+				}
+				Some((tile_b, Some(texture_id))) if tile != tile_b => {
+					// Different tile removed from LRU
+					texture_manager.write().free(texture_id);
+				}
+				_ => {}
 			}
+
 			#[cfg(not(target_arch = "wasm32"))]
 			let memory_cache = memory_cache.clone();
 			#[cfg(not(target_arch = "wasm32"))]
@@ -257,7 +261,7 @@ impl ImageryFetcher {
 				)
 				.await;
 				#[cfg(target_arch = "wasm32")]
-				let result = Self::fetch_tile(worker_bridge, imagery, persistent_cache, tile, client.clone()).await;
+				let result = Self::fetch_tile(worker_bridge, imageries, persistent_cache, tile, client.clone()).await;
 
 				match result {
 					#[allow(unused_variables)]
@@ -317,7 +321,7 @@ impl ImageryFetcher {
 	#[cfg(target_arch = "wasm32")]
 	async fn fetch_tile(
 		worker_bridge: Arc<Mutex<WorkerBridge<ImageWorker>>>,
-		imagery: Arc<Mutex<Imagery>>,
+		imageries: Arc<Mutex<Imageries>>,
 		persistent_cache: web_cache::WebCache,
 		tile: Tile,
 		client: Client,
@@ -328,10 +332,14 @@ impl ImageryFetcher {
 			worker_bridge.lock().unwrap().send(Input(tile, image_data.to_vec()));
 		}
 
-		let url = imagery.lock().unwrap().tile_url(tile.0, tile.1, tile.2);
+		let url = imageries
+			.lock()
+			.unwrap()
+			.get(tile.imagery_ref)
+			.expect("Imagery reference should be valid.")
+			.tile_url(tile.coords.0, tile.coords.1, tile.coords.2);
 
 		let response = client.get(url.clone()).send().await?;
-
 		match response.error_for_status() {
 			Err(err) => Err(Error::Reqwest(err)),
 			Ok(response) => {
@@ -340,12 +348,13 @@ impl ImageryFetcher {
 				// persistent_cache
 				// 	.save_image(tile, &bytes, file_format)
 				// 	.await;
-
+				//
 				worker_bridge.lock().unwrap().send(Input(tile, bytes.to_vec()));
 				Ok(())
 			}
 		}
 	}
+
 	pub fn decode_image(bytes: &[u8]) -> Result<(ColorImage, ImageFormat), Error> {
 		let image_format = image::guess_format(bytes)?;
 		let image = image::ImageReader::with_format(Cursor::new(bytes), image_format)
@@ -377,14 +386,14 @@ impl ImageryFetcher {
 			.alloc(name, ImageData::Color(Arc::new(image)), TextureOptions::LINEAR)
 	}
 
-	pub fn get_tile(&self, tile: &Tile, fetch: bool) -> Option<TextureId> {
+	pub fn get_tile(&self, tile: Tile, fetch: bool) -> Option<TextureId> {
 		puffin::profile_function!("get_tile");
 		let mut pending = self.pending.lock().unwrap(); // Lock this before memory_cache
 		if let Some(texture) = self.memory_cache.lock().unwrap().get(&tile) {
 			return *texture;
 		}
 		if fetch {
-			pending.insert(tile.clone());
+			pending.insert(tile);
 		}
 		None
 	}

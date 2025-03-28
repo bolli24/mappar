@@ -140,6 +140,19 @@ impl Widget for MapWidget<'_> {
 						pointer_world_pos,
 					};
 
+					let active_imagery_name: Option<String> = self.active_imagery_ref.and_then(|reference| {
+						self.imagery_fetcher
+							.lock()
+							.unwrap()
+							.imageries()
+							.lock()
+							.unwrap()
+							.get(reference)
+							.map(|imagery| imagery.name().to_string())
+					});
+
+					dbgtxt!(self.debug_text, "Active imagery: {active_imagery_name:?}");
+
 					if let Some(active_imagery_ref) = self.active_imagery_ref {
 						draw_tiles(
 							&painter,
@@ -329,7 +342,7 @@ fn draw_tiles(
 		puffin::profile_scope!("Draw Tile", format!("{x} {y}"));
 		// TODO: don't fetch new tiles when moving fast
 		let tile = Tile::new(imagery_ref, (x, y, tile_zoom_level));
-		let tile_texture = imagery_fetcher.get_tile(&tile, true);
+		let tile_texture = imagery_fetcher.get_tile(tile, true);
 		if let Some(image) = tile_texture {
 			let coords = get_tile_pos(x, y, tile_zoom_level);
 			let coords = (coords - (view.camera_pos * dvec2(1.0, -1.0))).to_pos2();

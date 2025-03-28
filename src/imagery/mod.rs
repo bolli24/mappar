@@ -3,6 +3,7 @@ use crate::ui::messages::Messages;
 use crate::{message_error, message_info};
 use celes::Country;
 use chumsky::Parser;
+use lasso::{Rodeo, Spur};
 use log::error;
 use quick_xml::de::Deserializer;
 use reqwest::Client;
@@ -12,9 +13,6 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-use string_interner::StringInterner;
-use string_interner::backend::StringBackend;
-use string_interner::symbol::SymbolU32;
 use web_time::Instant;
 
 #[cfg(target_arch = "wasm32")]
@@ -27,13 +25,17 @@ mod web_cache;
 
 mod schema;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub const JOSM_URL: &str = "https://josm.openstreetmap.de/maps";
+// openstreetmap.de doesn't support CORS, which is required for requests in the browser,
+// so we host our own hourly-updated copy
+#[cfg(target_arch = "wasm32")]
+pub const JOSM_URL: &str = "https://pub-a872030d163249caaf83979e9d4fe79a.r2.dev/josm.xml";
+
 pub const JOSM_FILE: &str = "josm_imagery.xml";
 
-pub type Interner = StringInterner<StringBackend>;
-
-#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
-pub struct ImageryRef(SymbolU32);
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ImageryRef(Spur);
 
 pub fn get_imagery(
 	#[cfg(not(target_arch = "wasm32"))] josm_xml_path: std::path::PathBuf,
@@ -98,15 +100,12 @@ pub fn update_josm_imagery(
 			}
 		};
 
-		// FIXME: Wasm32
+		// TODO: Wasm32: Cache iamgery locally
 		#[cfg(not(target_arch = "wasm32"))]
 		if let Err(err) = std::fs::write(josm_xml_path, &xml) {
 			message_error!(messages, "Unable to write JOSM imagery data to file: {err}");
 			return;
 		};
-
-		#[cfg(target_arch = "wasm32")]
-		todo!("Cache JOSM XML locally.");
 
 		imageries_from_str(&xml, messages, imageries).await;
 	});
@@ -213,14 +212,14 @@ pub struct Imageries {
 	pub entries: HashMap<ImageryId, Imagery>,
 
 	#[serde(skip)]
-	pub ids: Interner,
+	pub ids: Rodeo,
 }
 
 impl Imageries {
 	pub fn new() -> Self {
 		Self {
 			entries: HashMap::new(),
-			ids: Interner::new(),
+			ids: Rodeo::new(),
 		}
 	}
 
@@ -234,7 +233,7 @@ impl Imageries {
 
 	pub fn get(&self, reference: ImageryRef) -> Option<&Imagery> {
 		self.entries
-			.get(&ImageryId(self.ids.resolve(reference.0).unwrap().to_string()))
+			.get(&ImageryId(self.ids.try_resolve(&reference.0).unwrap().to_string()))
 	}
 }
 

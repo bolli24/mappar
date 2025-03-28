@@ -2,6 +2,7 @@ use crate::imagery::{Imageries, ImageryId};
 use crate::ui::memory::Memory;
 use crate::util::convert::CountryFlag;
 use derive_new::new;
+#[cfg(not(target_arch = "wasm32"))]
 use directories::ProjectDirs;
 use egui::{CentralPanel, Response, ScrollArea, SidePanel, TopBottomPanel, Ui, Widget, menu};
 use serde::{Deserialize, Serialize};
@@ -31,10 +32,10 @@ impl Default for ImageriesMemory {
 pub struct ImageriesWidget<'a> {
 	imageries: Arc<Mutex<Imageries>>,
 	messages: &'a Messages,
+	#[cfg(not(target_arch = "wasm32"))]
 	project_dirs: &'a ProjectDirs,
 }
 
-// TODO: Maybe use string interning for ids.
 impl Widget for ImageriesWidget<'_> {
 	fn ui(self, ui: &mut Ui) -> Response {
 		let mut mem = ImageriesMemory::load_or_default(ui.ctx(), Id::from("imagery_settings"));

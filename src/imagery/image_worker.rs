@@ -40,7 +40,7 @@ impl Worker for ImageWorker {
 			}
 		};
 
-		info!("Image Worker decoded image");
+		info!("Image Worker decoded image for tile: {:?}", msg.0);
 
 		scope.respond(id, Output(msg.0, decoded));
 	}
