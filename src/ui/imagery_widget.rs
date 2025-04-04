@@ -4,7 +4,8 @@ use crate::util::convert::CountryFlag;
 use derive_new::new;
 #[cfg(not(target_arch = "wasm32"))]
 use directories::ProjectDirs;
-use egui::{CentralPanel, Response, ScrollArea, SidePanel, TopBottomPanel, Ui, Widget, menu};
+use egui::{CentralPanel, Label, Response, Sense, SidePanel, TopBottomPanel, Ui, Widget, menu};
+use egui_extras::{Column, TableBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -57,15 +58,38 @@ impl Widget for ImageriesWidget<'_> {
 			});
 		});
 
-		SidePanel::left("imagery_list").show_inside(ui, |ui| {
-			ScrollArea::vertical().show(ui, |ui| {
-				ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+		let selected_index = mem
+			.selected
+			.clone()
+			.and_then(|selected| imageries.entries.get_index_of(&selected));
 
-				for (id, imagery) in &imageries.entries {
-					ui.label(imagery.country.and_then(|c| c.flag()).unwrap_or("".to_string()));
-					ui.selectable_value(&mut mem.selected, Some(id.clone()), imagery.name());
-				}
-			})
+		SidePanel::left("imagery_list").show_inside(ui, |ui| {
+			TableBuilder::new(ui)
+				.striped(true)
+				.column(Column::auto())
+				.column(Column::remainder())
+				.sense(Sense::CLICK)
+				.body(|body| {
+					body.rows(16.0, imageries.entries.len(), |mut row| {
+						let (id, imagery) = imageries
+							.entries
+							.get_index(row.index())
+							.expect("Index should be valid.");
+
+						row.set_selected(Some(row.index()) == selected_index);
+
+						row.col(|ui| {
+							ui.label(imagery.country.and_then(|c| c.flag()).unwrap_or("".to_string()));
+						});
+						row.col(|ui| {
+							Label::new(imagery.name()).selectable(false).ui(ui);
+						});
+
+						if row.response().clicked() {
+							mem.selected = Some(id.clone());
+						}
+					});
+				});
 		});
 
 		let response = CentralPanel::default()

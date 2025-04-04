@@ -24,6 +24,9 @@ image = { version = "0.25", default-features = false, features = [
 ] }
 resvg = { version = "0.45", default-features = false }
 glam = { version = "0.30", features = ["serde"] }
+egui-phosphor = { version = "0.9", default-features = false, features = [
+    "bold",
+] }
 
 log = { version = "0.4", features = ["release_max_level_info"] }
 simplelog = "0.12"

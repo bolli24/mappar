@@ -66,6 +66,11 @@ impl MyApp {
 		#[cfg(not(target_arch = "wasm32"))]
 		cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
 
+		let mut fonts = egui::FontDefinitions::default();
+		egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Bold);
+
+		cc.egui_ctx.set_fonts(fonts);
+
 		let bounds = Bounds {
 			min: latlon(51.82887, 12.19731),
 			max: latlon(51.82344, 12.21268),
@@ -297,7 +302,12 @@ impl eframe::App for MyApp {
 		egui::SidePanel::right("edit_panel")
 			.width_range(80.0..=800.0)
 			.show(ctx, |ui| {
-				LayerList::new(&mut self.layers, &self.imageries.lock().unwrap()).ui(ui);
+				LayerList::new(
+					&mut self.layers,
+					&self.imageries.lock().unwrap(),
+					&mut self.imagery_settings,
+				)
+				.ui(ui);
 				ui.separator();
 				KeyValueTable::new(
 					self.map_data.clone(),

@@ -3,13 +3,13 @@ use crate::ui::messages::Messages;
 use crate::{message_error, message_info};
 use celes::Country;
 use chumsky::Parser;
+use indexmap::IndexMap;
 use lasso::{Rodeo, Spur};
 use log::error;
 use quick_xml::de::Deserializer;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_inline_default::serde_inline_default;
-use std::collections::HashMap;
 use std::fmt::Display;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
@@ -27,7 +27,7 @@ mod schema;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub const JOSM_URL: &str = "https://josm.openstreetmap.de/maps";
-// openstreetmap.de doesn't support CORS, which is required for requests in the browser,
+// josm.openstreetmap.de/maps doesn't support CORS, which is required for requests in the browser,
 // so we host our own hourly-updated copy
 #[cfg(target_arch = "wasm32")]
 pub const JOSM_URL: &str = "https://pub-a872030d163249caaf83979e9d4fe79a.r2.dev/josm.xml";
@@ -209,7 +209,7 @@ pub struct Imageries {
 		serialize_with = "serialize_map",
 		deserialize_with = "deserialize_vec_to_map"
 	)]
-	pub entries: HashMap<ImageryId, Imagery>,
+	pub entries: IndexMap<ImageryId, Imagery>,
 
 	#[serde(skip)]
 	pub ids: Rodeo,
@@ -218,7 +218,7 @@ pub struct Imageries {
 impl Imageries {
 	pub fn new() -> Self {
 		Self {
-			entries: HashMap::new(),
+			entries: IndexMap::new(),
 			ids: Rodeo::new(),
 		}
 	}
@@ -235,6 +235,10 @@ impl Imageries {
 		self.entries
 			.get(&ImageryId(self.ids.try_resolve(&reference.0).unwrap().to_string()))
 	}
+
+	/* pub fn get_ref(&self, id: &ImageryId) -> Option<ImageryRef> {
+		self.entries.get(id).and_then(|_| self.ids.get(&id.0)).map(ImageryRef)
+	} */
 }
 
 impl Default for Imageries {
@@ -243,7 +247,7 @@ impl Default for Imageries {
 	}
 }
 
-fn serialize_map<S>(map: &HashMap<ImageryId, Imagery>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_map<S>(map: &IndexMap<ImageryId, Imagery>, serializer: S) -> Result<S::Ok, S::Error>
 where
 	S: serde::Serializer,
 {
@@ -251,7 +255,7 @@ where
 	vec.serialize(serializer)
 }
 
-fn deserialize_vec_to_map<'de, D>(deserializer: D) -> Result<HashMap<ImageryId, Imagery>, D::Error>
+fn deserialize_vec_to_map<'de, D>(deserializer: D) -> Result<IndexMap<ImageryId, Imagery>, D::Error>
 where
 	D: serde::Deserializer<'de>,
 {
