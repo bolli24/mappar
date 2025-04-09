@@ -7,7 +7,7 @@ use bytes::Bytes;
 use image::ImageFormat;
 use log::{error, warn};
 use regex::Regex;
-use tokio::fs::File;
+use tokio::fs::{DirBuilder, File};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_stream::StreamExt;
 
@@ -123,9 +123,16 @@ impl LocalCache {
 
 	pub async fn save_image(&mut self, tile: &Tile, image_data: &Bytes, image_format: ImageFormat) -> Option<()> {
 		let file_path = self.file_path(tile, image_format);
+
+		DirBuilder::new()
+			.recursive(true)
+			.create(file_path.as_path().parent().expect("Path must be valid."))
+			.await
+			.expect("Unable to create path");
+
 		let mut file = File::create(file_path).await.ok()?;
 		file.write_all(image_data).await.ok()?;
-		self.cached_images.lock().await.insert(tile.clone(), image_format);
+		self.cached_images.lock().await.insert(*tile, image_format);
 		Some(())
 	}
 
