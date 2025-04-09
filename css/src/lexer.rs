@@ -309,7 +309,7 @@ mod tests {
 
 	#[test]
 	fn josm() {
-		let mut lex = Token::lexer(include_str!("test/apple.mapcss"));
+		let mut lex = Token::lexer(include_str!("test/josm.mapcss"));
 		let file = File::create("test_output.txt").unwrap();
 		let mut writer = std::io::BufWriter::new(file);
 		let mut errored = false;
