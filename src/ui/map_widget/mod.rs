@@ -26,6 +26,7 @@ use map_memory::MapMemory;
 use render::{DetailedElement, RenderElement};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::f64::consts::PI;
 use std::ops::RangeInclusive;
 use std::sync::{Arc, Mutex};
@@ -324,6 +325,14 @@ fn draw_tiles(
 		.expect("Imagery reference should be valid.")
 		.max_zoom();
 
+	let min_zoom = imagery_fetcher
+		.imageries()
+		.lock()
+		.unwrap()
+		.get(imagery_ref)
+		.expect("Imagery reference should be valid.")
+		.min_zoom();
+
 	let tile_zoom_level = u32::min(
 		(view.zoom_level + (view.ui_scale as f64 - 1.0) + ZOOM_ADJUST).round() as u32,
 		max_zoom,
@@ -338,19 +347,62 @@ fn draw_tiles(
 		x_tiles.clone().count() * y_tiles.clone().count()
 	);
 
+	let mut drawn_tiles = HashSet::with_capacity(100);
+
+	// TODO: don't fetch new tiles when moving fast
+
 	for (x, y) in x_tiles.cartesian_product(y_tiles) {
-		puffin::profile_scope!("Draw Tile", format!("{x} {y}"));
-		// TODO: don't fetch new tiles when moving fast
-		let tile = Tile::new(imagery_ref, (x, y, tile_zoom_level));
-		let tile_texture = imagery_fetcher.get_tile(tile, true);
-		if let Some(image) = tile_texture {
-			let coords = get_tile_pos(x, y, tile_zoom_level);
-			let coords = (coords - (view.camera_pos * dvec2(1.0, -1.0))).to_pos2();
-			let rect = Rect::from_min_size(coords, vec2(tile_size as f32, tile_size as f32)) / view.scale as f32;
-			let rect = rect.translate(view.viewport.size() * 0.5);
-			painter.image(image, rect, UV, Color32::WHITE);
-		};
+		draw_tile(
+			Tile::new(imagery_ref, (x, y, tile_zoom_level)),
+			0,
+			view,
+			tile_size,
+			min_zoom,
+			painter,
+			&mut drawn_tiles,
+			&mut imagery_fetcher,
+		);
 	}
+}
+
+// TODO: reduce arguments
+// TODO: render smaller
+fn draw_tile(
+	tile: Tile,
+	extra_step: i8,
+	view: &View,
+	tile_size: f64,
+	min_zoom: u32,
+	painter: &Painter,
+	drawn_tiles: &mut HashSet<Tile>,
+	imagery_fetcher: &mut ImageryFetcher,
+) {
+	puffin::profile_scope!("Draw Tile", format!("{:?}", tile.coords));
+
+	if !drawn_tiles.insert(tile) {
+		return;
+	}
+	let tile_texture = imagery_fetcher.get_tile(tile, extra_step == 0);
+	if let Some(image) = tile_texture {
+		let coords = get_tile_pos(tile);
+		let coords = (coords - (view.camera_pos * dvec2(1.0, -1.0))).to_pos2();
+		let rect = Rect::from_min_size(coords, vec2(tile_size as f32, tile_size as f32)) / view.scale as f32;
+		let rect = rect.translate(view.viewport.size() * 0.5);
+		painter.image(image, rect, UV, Color32::WHITE);
+	} else if extra_step == 0 {
+		if let Some(larger) = tile.get_larger(min_zoom) {
+			draw_tile(
+				larger,
+				1,
+				view,
+				tile_size * 2.0,
+				min_zoom,
+				painter,
+				drawn_tiles,
+				imagery_fetcher,
+			);
+		}
+	};
 }
 
 fn closest_element<'a>(render_data: &'a [DetailedElement], scale: &f64) -> Option<&'a DetailedElement> {
@@ -422,10 +474,10 @@ fn tiles_in_rect(corners: (DVec2, DVec2), zoom_level: u32) -> (RangeInclusive<u3
 	(min.x..=max.x, min.y..=max.y)
 }
 
-fn get_tile_pos(tile_x: u32, tile_y: u32, zoom_level: u32) -> DVec2 {
-	let n = 2.0f64.powi(zoom_level as i32);
-	let lon_deg = (tile_x as f64 / n).mul_add(360.0, -180.0);
-	let lat_rad = (PI - 2.0 * PI * tile_y as f64 / n).sinh().atan();
+fn get_tile_pos(tile: Tile) -> DVec2 {
+	let n = 2.0f64.powi(tile.coords.2 as i32);
+	let lon_deg = (tile.coords.0 as f64 / n).mul_add(360.0, -180.0);
+	let lat_rad = (PI - 2.0 * PI * tile.coords.1 as f64 / n).sinh().atan();
 
 	latlon(-lat_rad.to_degrees(), lon_deg).to_web_mercator()
 }

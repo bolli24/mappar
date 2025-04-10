@@ -54,6 +54,19 @@ pub struct Tile {
 	pub coords: (u32, u32, u32),
 }
 
+impl Tile {
+	pub fn get_larger(&self, min_zoom: u32) -> Option<Tile> {
+		if self.coords.2 <= min_zoom {
+			None
+		} else {
+			Some(Tile::new(
+				self.imagery_ref,
+				(self.coords.0 / 2, self.coords.1 / 2, self.coords.2 - 1),
+			))
+		}
+	}
+}
+
 fn tile_to_string(tile: &Tile) -> String {
 	format!(
 		"tile_{:?}_{}_{}_{}",
@@ -431,16 +444,7 @@ impl ImageryFetcher {
 		} else {
 			self.get_larger_tile(tile)
 		}
-	}
-
-	fn get_larger_tile(&self, tile: Tile) -> Option<Tile> {
-		if tile.2 <= self.imagery.lock().unwrap().min_zoom() {
-			None
-		} else {
-			Some((tile.0 / 2, tile.1 / 2, tile.0 - 1))
-		}
-	}
-	*/
+	}*/
 }
 
 fn rgba_image_to_color_image(image: &image::ImageBuffer<image::Rgba<u8>, Vec<u8>>) -> ColorImage {
