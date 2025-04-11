@@ -1,6 +1,7 @@
 pub mod app;
 mod debug_text;
 mod display_window;
+mod edit_bar;
 mod imagery_widget;
 mod key_value_table;
 mod layer_list;

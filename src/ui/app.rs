@@ -1,3 +1,4 @@
+use super::edit_bar::EditMode;
 use super::imagery_widget::ImageriesWidget;
 use super::key_value_table::KeyValueTable;
 use super::layer_list::Layers;
@@ -10,6 +11,7 @@ use crate::imagery::{Imageries, get_imagery};
 use crate::map::api::get_data;
 use crate::map::map_data::{Bounds, LatLon, MapData, latlon};
 use crate::ui::debug_text::DebugText;
+use crate::ui::edit_bar::EditBar;
 use crate::ui::layer_list::{Layer, LayerList};
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
@@ -56,6 +58,7 @@ pub struct MyApp {
 	imagery_settings: bool,
 	#[cfg(not(target_arch = "wasm32"))]
 	project_dirs: ProjectDirs,
+	edit_mode: EditMode,
 }
 
 impl MyApp {
@@ -124,6 +127,7 @@ impl MyApp {
 			imagery_settings: false,
 			#[cfg(not(target_arch = "wasm32"))]
 			project_dirs,
+			edit_mode: EditMode::Select,
 		};
 
 		app.layers.0.push_back(Layer("EsriWorldImagery".into(), true));
@@ -276,6 +280,12 @@ impl eframe::App for MyApp {
 				ui.add_space(16.0);
 				egui::widgets::global_theme_preference_switch(ui);
 			});
+
+			ui.add(EditBar::new(
+				&mut self.edit_mode,
+				&mut self.map_memory,
+				&mut self.map_data.lock().unwrap(),
+			));
 		});
 
 		#[cfg(not(target_arch = "wasm32"))]
@@ -347,6 +357,7 @@ impl eframe::App for MyApp {
 					&mut self.map_memory,
 					true,
 					active_imagery_ref,
+					self.edit_mode,
 				))
 				.rect;
 			rect.min += egui::Vec2::new(5.0, 5.0);

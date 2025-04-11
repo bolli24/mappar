@@ -10,6 +10,7 @@ use crate::imagery::ImageryRef;
 use crate::imagery::imagery_fetcher::{ImageryFetcher, Tile};
 use crate::map::map_data::{CIRCUMFERENCE_EARTH, Element, LatLon, MapData, latlon};
 use crate::ui::debug_text::DebugText;
+use crate::ui::edit_bar::EditMode;
 use crate::util::convert::{ToDVec2, ToPos2};
 use css::Styles;
 use derive_new::new;
@@ -43,6 +44,7 @@ pub struct MapWidget<'a> {
 	mem: &'a mut MapMemory,
 	interactive: bool,
 	active_imagery_ref: Option<ImageryRef>,
+	edit_mode: EditMode,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -187,7 +189,7 @@ impl Widget for MapWidget<'_> {
 						}
 					};
 
-					if self.interactive && response.clicked() {
+					if self.interactive && self.edit_mode == EditMode::Select && response.clicked() {
 						if let Some(hover_element) = hover_element {
 							self.mem.selection.clear(self.map_data);
 							self.mem.selection.selected_elements.insert(hover_element.id);

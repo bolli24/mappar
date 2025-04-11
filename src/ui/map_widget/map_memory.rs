@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use super::MapState;
 use crate::map::map_data::{ElementId, MapData};
 use glam::DVec2;
 
@@ -8,7 +7,6 @@ use glam::DVec2;
 pub struct MapMemory {
 	pub zoom_level: f64,
 	pub camera_pos: DVec2,
-	pub state: MapState,
 	pub selection: Selection,
 }
 
@@ -17,7 +15,6 @@ impl Default for MapMemory {
 		Self {
 			zoom_level: 1.0,
 			camera_pos: DVec2::ZERO,
-			state: MapState::Default,
 			selection: Selection::default(),
 		}
 	}
