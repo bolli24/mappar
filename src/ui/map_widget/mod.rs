@@ -6,8 +6,8 @@ pub mod render;
 mod style;
 
 use crate::dbgtxt;
-use crate::imagery::ImageryRef;
 use crate::imagery::imagery_fetcher::{ImageryFetcher, Tile};
+use crate::imagery::{Imagery, ImageryRef};
 use crate::map::map_data::{CIRCUMFERENCE_EARTH, Element, LatLon, MapData, latlon};
 use crate::ui::debug_text::DebugText;
 use crate::ui::edit_bar::EditMode;
@@ -156,7 +156,10 @@ impl Widget for MapWidget<'_> {
 
 					dbgtxt!(self.debug_text, "Active imagery: {active_imagery_name:?}");
 
-					if let Some(active_imagery_ref) = self.active_imagery_ref {
+					if let Some(active_imagery_ref) = self.active_imagery_ref
+					/* && self.imagery_fetcher.lock().unwrap().imageries().lock().unwrap().get(reference)*/
+					{
+						// log::info!("{:?}", self.imagery_fetcher.lock().unwrap().imageries().lock().unwrap());
 						draw_tiles(
 							&painter,
 							active_imagery_ref,
@@ -309,38 +312,21 @@ fn draw_tiles(
 	dbgtxt!(debug_text, "Pending tiles: {}", imagery_fetcher.pending_count());
 
 	let corners = get_world_corners(view.viewport, view.camera_pos, view.scale);
-
-	let base_tile_size = imagery_fetcher
+	let imagery = imagery_fetcher
 		.imageries()
 		.lock()
 		.unwrap()
 		.get(imagery_ref)
 		.expect("Imagery reference should be valid.")
-		.tile_size()
-		.unwrap_or(256);
-
-	let max_zoom = imagery_fetcher
-		.imageries()
-		.lock()
-		.unwrap()
-		.get(imagery_ref)
-		.expect("Imagery reference should be valid.")
-		.max_zoom();
-
-	let min_zoom = imagery_fetcher
-		.imageries()
-		.lock()
-		.unwrap()
-		.get(imagery_ref)
-		.expect("Imagery reference should be valid.")
-		.min_zoom();
+		.clone();
 
 	let tile_zoom_level = u32::min(
 		(view.zoom_level + (view.ui_scale as f64 - 1.0) + ZOOM_ADJUST).round() as u32,
-		max_zoom,
+		imagery.max_zoom(),
 	);
 
-	let tile_size = ((CIRCUMFERENCE_EARTH) / f64::exp2(tile_zoom_level as f64) / 256.0) * base_tile_size as f64;
+	let tile_size =
+		((CIRCUMFERENCE_EARTH) / f64::exp2(tile_zoom_level as f64) / 256.0) * imagery.tile_size().unwrap_or(256) as f64;
 	let (x_tiles, y_tiles) = tiles_in_rect(corners, tile_zoom_level);
 
 	dbgtxt!(
@@ -356,55 +342,96 @@ fn draw_tiles(
 	for (x, y) in x_tiles.cartesian_product(y_tiles) {
 		draw_tile(
 			Tile::new(imagery_ref, (x, y, tile_zoom_level)),
-			0,
+			MIN_STEP,
 			view,
 			tile_size,
-			min_zoom,
+			&imagery,
 			painter,
 			&mut drawn_tiles,
 			&mut imagery_fetcher,
 		);
 	}
+
+	dbgtxt!(debug_text, "Drawn tiles: {}", drawn_tiles.len());
 }
 
-// TODO: reduce arguments
-// TODO: render smaller
+const MAX_STEP: i32 = 2;
+const MIN_STEP: i32 = -MAX_STEP;
+
 fn draw_tile(
 	tile: Tile,
-	extra_step: i8,
+	extra_step: i32,
 	view: &View,
 	tile_size: f64,
-	min_zoom: u32,
+	imagery: &Imagery,
 	painter: &Painter,
 	drawn_tiles: &mut HashSet<Tile>,
 	imagery_fetcher: &mut ImageryFetcher,
 ) {
 	puffin::profile_scope!("Draw Tile", format!("{:?}", tile.coords));
-
 	if !drawn_tiles.insert(tile) {
 		return;
 	}
-	let tile_texture = imagery_fetcher.get_tile(tile, extra_step == 0);
+	let tile_texture = imagery_fetcher.get_tile(tile, extra_step == MIN_STEP);
 	if let Some(image) = tile_texture {
 		let coords = get_tile_pos(tile);
 		let coords = (coords - (view.camera_pos * dvec2(1.0, -1.0))).to_pos2();
 		let rect = Rect::from_min_size(coords, vec2(tile_size as f32, tile_size as f32)) / view.scale as f32;
 		let rect = rect.translate(view.viewport.size() * 0.5);
-		painter.image(image, rect, UV, Color32::WHITE);
-	} else if extra_step == 0 {
-		if let Some(larger) = tile.get_larger(min_zoom) {
+
+		let tint = Color32::WHITE;
+
+		#[cfg(any())]
+		let tint = if extra_step == -1 {
+			Color32::LIGHT_BLUE
+		} else if extra_step == 0 {
+			Color32::BLUE
+		} else if extra_step == 2 {
+			Color32::LIGHT_RED
+		} else if extra_step == 3 {
+			Color32::RED
+		} else {
+			Color32::WHITE
+		};
+
+		painter.image(image, rect, UV, tint);
+		return;
+	}
+
+	if (MIN_STEP..0).contains(&extra_step) {
+		let extra_step = extra_step + 1;
+		if let Some(larger) = tile.get_larger(imagery.min_zoom) {
 			draw_tile(
 				larger,
-				1,
+				extra_step,
 				view,
 				tile_size * 2.0,
-				min_zoom,
+				imagery,
 				painter,
 				drawn_tiles,
 				imagery_fetcher,
 			);
 		}
-	};
+	} else if (0..MAX_STEP).contains(&extra_step) {
+		// FIXME:
+		let extra_step = extra_step + 1;
+		let Some(smaller) = tile.get_smaller(imagery.max_zoom) else {
+			return;
+		};
+
+		for tile in smaller {
+			draw_tile(
+				tile,
+				extra_step,
+				view,
+				tile_size / 2.0,
+				imagery,
+				painter,
+				drawn_tiles,
+				imagery_fetcher,
+			);
+		}
+	}
 }
 
 fn closest_element<'a>(render_data: &'a [DetailedElement], scale: &f64) -> Option<&'a DetailedElement> {

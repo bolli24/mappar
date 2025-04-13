@@ -311,6 +311,7 @@ impl eframe::App for MyApp {
 		});
 		egui::SidePanel::right("edit_panel")
 			.width_range(80.0..=800.0)
+			.default_width(200.0)
 			.show(ctx, |ui| {
 				LayerList::new(
 					&mut self.layers,

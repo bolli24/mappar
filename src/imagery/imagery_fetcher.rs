@@ -65,6 +65,20 @@ impl Tile {
 			))
 		}
 	}
+
+	pub fn get_smaller(&self, max_zoom: u32) -> Option<[Tile; 4]> {
+		if self.coords.2 >= max_zoom {
+			None
+		} else {
+			let zoom = self.coords.2 + 1;
+			Some([
+				Tile::new(self.imagery_ref, (self.coords.0 * 2, self.coords.1 * 2, zoom)),
+				Tile::new(self.imagery_ref, (self.coords.0 * 2 + 1, self.coords.1 * 2, zoom)),
+				Tile::new(self.imagery_ref, (self.coords.0 * 2, self.coords.1 * 2 + 1, zoom)),
+				Tile::new(self.imagery_ref, (self.coords.0 * 2 + 1, self.coords.1 * 2 + 1, zoom)),
+			])
+		}
+	}
 }
 
 fn tile_to_string(tile: &Tile) -> String {
@@ -399,6 +413,7 @@ impl ImageryFetcher {
 			.alloc(name, ImageData::Color(Arc::new(image)), TextureOptions::LINEAR)
 	}
 
+	// TODO: allow fetching of local tiles.
 	pub fn get_tile(&self, tile: Tile, fetch: bool) -> Option<TextureId> {
 		puffin::profile_function!("get_tile");
 		let mut pending = self.pending.lock().unwrap(); // Lock this before memory_cache
