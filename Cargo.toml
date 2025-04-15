@@ -48,11 +48,11 @@ bytemuck = "1.22"
 chrono = { version = "0.4", features = ["wasmbind"] }
 web-time = "1.1.0"
 
+undo = { version = "0.52", default-features = false, features = ["alloc"]}
 lru = "0.14"
 indexmap = "2.9"
 itertools = "0.14"
 regex = "1.11"
-undo = "0.52"
 lasso = { version = "0.7", features = ["serialize"] }
 
 chumsky = "0.10.1"
