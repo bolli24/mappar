@@ -1,5 +1,5 @@
 use derive_new::new;
-use egui::{Button, Key, RichText, Widget};
+use egui::{Key, RichText, Widget};
 
 use crate::map::map_data::MapData;
 
@@ -34,9 +34,8 @@ impl Widget for EditBar<'_> {
 	fn ui(self, ui: &mut egui::Ui) -> egui::Response {
 		ui.horizontal(|ui| {
 			for EditButton(icon, tooltip, mode, key) in MODE_BUTTONS {
-				if Button::new(RichText::new(icon.to_string()).size(20.0))
-					.selected(*self.edit_mode == mode)
-					.ui(ui)
+				if ui
+					.selectable_label(*self.edit_mode == mode, RichText::new(icon.to_string()).size(20.0))
 					.on_hover_text(tooltip)
 					.clicked() || ui.ctx().input(|i| i.key_pressed(key))
 				{
