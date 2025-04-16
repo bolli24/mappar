@@ -13,7 +13,7 @@ use epaint::{ColorImage, ImageData, TextureId, TextureManager};
 #[cfg(target_arch = "wasm32")]
 use gloo_worker::{Spawnable, WorkerBridge};
 use image::{EncodableLayout, ImageFormat};
-use log::error;
+use log::{error, info};
 use lru::LruCache;
 use reqwest::Client;
 use reqwest::ClientBuilder;
@@ -232,7 +232,22 @@ impl ImageryFetcher {
 
 			#[cfg(not(target_arch = "wasm32"))]
 			while join_set.len() >= MAX_CONCURRENT {
-				join_set.join_next().await.unwrap().unwrap();
+				// Maximum number of tasks reached: wait to join the next
+				let Some(result) = join_set.join_next().await else {
+					continue;
+				};
+				match result {
+					Ok(_) => {}
+					Err(err) if err.is_cancelled() => {
+						info!("{err}");
+					}
+					Err(err) if err.is_panic() => {
+						error!("{err}");
+					}
+					_ => {
+						unreachable!()
+					}
+				}
 			}
 
 			#[cfg(target_arch = "wasm32")]
