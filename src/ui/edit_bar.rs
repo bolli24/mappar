@@ -37,7 +37,7 @@ impl Widget for EditBar<'_> {
 				if ui
 					.selectable_label(*self.edit_mode == mode, RichText::new(icon.to_string()).size(20.0))
 					.on_hover_text(tooltip)
-					.clicked() || ui.ctx().input(|i| i.key_pressed(key))
+					.clicked() || (ui.ctx().memory(|m| m.focused().is_none()) && ui.ctx().input(|i| i.key_pressed(key)))
 				{
 					*self.edit_mode = mode;
 

@@ -1,10 +1,10 @@
-use super::map_data::{latlon, ElementId};
+use super::map_data::{ElementId, latlon};
 use crate::map::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member};
 use indexmap::IndexMap;
 use log::{error, info, warn};
+use quick_xml::Reader;
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesStart, Event};
-use quick_xml::Reader;
 use reqwest::{Client, StatusCode};
 use std::fmt::Debug;
 use std::str::from_utf8;
@@ -113,7 +113,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					let (id, lat_lon, info) = parse_attributes(attributes)?;
 
 					let (element, element_type) = match e.name().as_ref() {
-						b"node" => (Element::Node { pos: lat_lon? }, ElementType::Node),
+						b"node" => (Element::Node { pos: lat_lon?.into() }, ElementType::Node),
 						b"way" => (Element::Way { nodes }, ElementType::Way),
 						b"relation" => (Element::Relation { members }, ElementType::Relation),
 						_ => {
@@ -139,7 +139,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					data.add(MapElement {
 						id: ElementId(id, ElementType::Node),
 						info,
-						element: Element::Node { pos: lat_lon? },
+						element: Element::Node { pos: lat_lon?.into() },
 						tags: IndexMap::new(),
 						new_tag: None,
 					});

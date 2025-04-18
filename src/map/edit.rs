@@ -3,6 +3,7 @@ use crate::unreachable_log;
 use indexmap::map::Entry;
 use std::collections::HashMap;
 
+// TODO: allow editing of multiple elements, use ArrayVec
 #[derive(Debug)]
 pub struct Edit(pub ElementId, pub Action);
 

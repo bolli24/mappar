@@ -1,6 +1,6 @@
+use super::View;
 use super::css::Styles;
 use super::style::Style;
-use super::View;
 use crate::map::map_data::{self, ElementId};
 use crate::map::map_data::{Element, MapData, MapElement};
 use crate::util::convert::ToPos2;
@@ -79,7 +79,7 @@ impl DetailedElement {
 		puffin::profile_function!(map_element.id.to_string());
 
 		let element = match &map_element.element {
-			Element::Node { pos } => RenderElement::Node(pos.to_web_mercator()),
+			Element::Node { pos } => RenderElement::Node(pos.get().to_web_mercator()),
 			Element::Way { nodes: node_indices } => {
 				// TODO: order nodes clockwise for filled rendering
 				// but keep order counterclockwise for convex partitioning
@@ -135,7 +135,7 @@ impl DetailedElement {
 
 	pub fn hovered(&self) -> Self {
 		let mut element = self.clone();
-		element.style.color = Color32::RED.gamma_multiply(0.75);
+		element.style.color = Color32::YELLOW.gamma_multiply(0.75);
 		element.style.size += 2.0;
 
 		match &mut element.element {
@@ -145,6 +145,26 @@ impl DetailedElement {
 			RenderElement::Collection(elements) => {
 				for sub_element in elements {
 					*sub_element = sub_element.hovered();
+				}
+			}
+			_ => (),
+		}
+
+		element
+	}
+
+	pub fn selected(&self) -> Self {
+		let mut element = self.clone();
+		element.style.color = Color32::RED.gamma_multiply(0.75);
+		element.style.size += 2.0;
+
+		match &mut element.element {
+			RenderElement::Node(_) => {
+				element.style.icon = None;
+			}
+			RenderElement::Collection(elements) => {
+				for sub_element in elements {
+					*sub_element = sub_element.selected();
 				}
 			}
 			_ => (),

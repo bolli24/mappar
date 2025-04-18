@@ -45,8 +45,13 @@ impl Widget for KeyValueTable<'_> {
 							ui.strong("Value");
 						});
 					})
-					.body(|body| {
+					.body(|mut body| {
+						if self.selection.selected_elements.len() > 1 {
+							body.ui_mut().label("Select only one element to edit tags.");
+							return;
+						}
 						let Some(MapElement { tags, new_tag, .. }) = element else {
+							body.ui_mut().label("Nothing is selected.");
 							return;
 						};
 						let id = *id.unwrap();

@@ -91,7 +91,8 @@ impl Widget for LayerList<'_> {
 				ui.horizontal(|ui| {
 					if ui
 						.button(RichText::new(egui_phosphor::bold::ARROWS_COUNTER_CLOCKWISE).size(20.0))
-						.clicked() || ui.input(|i| i.key_pressed(egui::Key::Backtick))
+						.clicked() || (ui.memory(|m| m.focused().is_none())
+						&& ui.input(|i| i.key_pressed(egui::Key::Backtick)))
 					{
 						self.layers.rotate();
 					}

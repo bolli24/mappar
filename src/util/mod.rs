@@ -3,6 +3,32 @@ pub mod history;
 #[cfg(target_arch = "wasm32")]
 pub mod sleep;
 
+pub trait HashMapExt {
+	fn with_capacity(capacity: usize) -> Self;
+}
+
+pub trait HashSetExt {
+	fn with_capacity(capacity: usize) -> Self;
+}
+
+impl<K, V, S> HashMapExt for std::collections::HashMap<K, V, S>
+where
+	S: std::hash::BuildHasher + Default,
+{
+	fn with_capacity(capacity: usize) -> Self {
+		std::collections::HashMap::with_capacity_and_hasher(capacity, S::default())
+	}
+}
+
+impl<K, S> HashSetExt for std::collections::HashSet<K, S>
+where
+	S: std::hash::BuildHasher + Default,
+{
+	fn with_capacity(capacity: usize) -> Self {
+		std::collections::HashSet::with_capacity_and_hasher(capacity, S::default())
+	}
+}
+
 #[macro_export]
 macro_rules! unreachable_log {
     ($($arg:tt)*) => {{

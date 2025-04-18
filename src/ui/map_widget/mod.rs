@@ -1,6 +1,7 @@
 pub mod css;
 mod draw_list;
 pub mod map_memory;
+mod map_state;
 mod polygon;
 pub mod render;
 mod style;
@@ -11,6 +12,7 @@ use crate::imagery::{Imagery, ImageryRef};
 use crate::map::map_data::{CIRCUMFERENCE_EARTH, Element, LatLon, MapData, latlon};
 use crate::ui::debug_text::DebugText;
 use crate::ui::edit_bar::EditMode;
+use crate::ui::map_widget::map_state::MapState;
 use crate::util::convert::{ToDVec2, ToPos2};
 use css::Styles;
 use derive_new::new;
@@ -25,7 +27,6 @@ use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
 use map_memory::MapMemory;
 use render::{DetailedElement, RenderElement};
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::f64::consts::PI;
@@ -60,13 +61,6 @@ pub struct View {
 }
 
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
-
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
-pub enum MapState {
-	Default,
-	BoxSelect(DVec2),
-	Move,
-}
 
 impl Widget for MapWidget<'_> {
 	#[allow(clippy::too_many_lines)]
@@ -103,15 +97,23 @@ impl Widget for MapWidget<'_> {
 
 					let scale = scale(self.mem.zoom_level);
 
+					let world_delta = {
+						let mut delta = ui.ctx().input(|i| i.pointer.delta());
+						if let Some(from_global) = ui.ctx().layer_transform_from_global(ui.layer_id()) {
+							delta *= from_global.scaling;
+						}
+						let delta = delta * scale as f32;
+						dvec2(f64::from(delta.x), -f64::from(delta.y))
+					};
+
+					dbgtxt!(self.debug_text, "World delta: {world_delta}");
+
 					if self.interactive
 						&& (response.dragged_by(PointerButton::Middle)
 							|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
 								&& response.dragged_by(PointerButton::Primary)))
 					{
-						let delta = response.drag_delta();
-						let delta = delta * scale as f32;
-						let delta = dvec2(f64::from(delta.x), -f64::from(delta.y));
-						self.mem.camera_pos -= delta;
+						self.mem.camera_pos -= world_delta;
 					}
 
 					dbgtxt!(self.debug_text, "Camera: {:?}", self.mem.camera_pos);
@@ -192,15 +194,55 @@ impl Widget for MapWidget<'_> {
 						}
 					};
 
-					if self.interactive && self.edit_mode == EditMode::Select && response.clicked() {
-						if let Some(hover_element) = hover_element {
-							self.mem.selection.clear(self.map_data);
-							self.mem.selection.selected_elements.insert(hover_element.id);
-						} else {
-							self.mem.selection.clear(self.map_data);
+					if self.interactive && self.edit_mode == EditMode::Select {
+						if response.contains_pointer()
+							&& ui.ctx().input(|i| i.pointer.button_down(PointerButton::Primary))
+							&& self.mem.map_state == MapState::Default
+						{
+							if let Some(hover_element) = hover_element {
+								if !ui.ctx().input(|i| i.modifiers.shift)
+									&& !self.mem.selection.selected_elements.contains(&hover_element.id)
+								{
+									self.mem.selection.selected_elements.clear();
+								}
+								self.mem.selection.selected_elements.insert(hover_element.id);
+							}
+						}
+
+						if response.clicked_by(PointerButton::Primary) && self.mem.map_state == MapState::Default {
+							if let Some(hover_element) = hover_element {
+								if !ui.ctx().input(|i| i.modifiers.shift) {
+									self.mem.selection.selected_elements.clear();
+								}
+								self.mem.selection.selected_elements.insert(hover_element.id);
+							}
+						}
+
+						if response.clicked_by(PointerButton::Primary)
+							&& hover_element.is_none()
+							&& !ui.ctx().input(|i| i.modifiers.shift)
+						{
+							self.mem.selection.selected_elements.clear();
+						}
+
+						if response.drag_started_by(PointerButton::Primary) {
+							self.mem.map_state = MapState::MoveElements(pointer_world_pos.unwrap());
+						} else if response.drag_stopped_by(PointerButton::Primary) {
+							self.mem.map_state = MapState::Default;
+						}
+						if
+						/* response.contains_pointer()
+						&& ui.ctx().input(|i| i.pointer.button_down(PointerButton::Primary)) */
+						matches!(self.mem.map_state, MapState::MoveElements(_))
+							&& world_delta.length_squared() > 1e-5
+						// && !self.mem.selection.selected_elements.is_empty()
+						{
+							self.map_data
+								.move_by(&self.mem.selection.selected_elements, &world_delta);
 						}
 					}
 
+					dbgtxt!(self.debug_text, "MapState: {:?}", self.mem.map_state);
 					dbgtxt!(self.debug_text, "Closest element: {:?}", hover_element.map(|e| e.id));
 					dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");
 
@@ -213,8 +255,7 @@ impl Widget for MapWidget<'_> {
 						}
 						let selected = self.mem.selection.selected_elements.contains(&element.id);
 						if selected {
-							// TODO: Selection Style
-							draw_element(&element.hovered(), &mut shapes, &view)
+							draw_element(&element.selected(), &mut shapes, &view)
 						}
 						draw_element(element, &mut shapes, &view);
 					}

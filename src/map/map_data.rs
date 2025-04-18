@@ -1,11 +1,15 @@
+use crate::util::HashSetExt;
+
 use super::edit::{Action, Edit, EditError};
 use chrono::{DateTime, Utc};
-use glam::{dvec2, DVec2};
+use glam::{DVec2, dvec2};
 use indexmap::IndexMap;
 use mappar_macros::Id;
-use std::collections::HashMap;
+use std::cell::Cell;
+use std::collections::{HashMap, HashSet};
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 use std::fmt::{Debug, Display};
+use std::ops::Add;
 use undo::Record;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -50,8 +54,8 @@ impl MapData {
 
 	pub fn get_node_pos(&self, id: ElementId) -> Option<LatLon> {
 		let e = self.get(&id)?;
-		if let Element::Node { pos } = e.element {
-			return Some(pos);
+		if let Element::Node { pos } = &e.element {
+			return Some(pos.get());
 		}
 		None
 	}
@@ -134,6 +138,40 @@ impl MapData {
 		)
 	}
 
+	// TODO: use Edit
+	pub fn move_by<'a>(&mut self, elements: impl IntoIterator<Item = &'a ElementId>, delta: &DVec2) {
+		let mut moved = HashSet::with_capacity(100);
+
+		for element_id in elements.into_iter() {
+			self.move_element(&mut moved, element_id, delta);
+		}
+	}
+
+	fn move_element(&mut self, moved: &mut HashSet<ElementId>, element_id: &ElementId, delta: &DVec2) {
+		if !moved.insert(*element_id) {
+			return;
+		}
+		let element = self.get(element_id).unwrap();
+		match &element.element {
+			Element::Node { pos } => {
+				pos.set(pos.get() + *delta);
+			}
+			Element::Way { nodes } => {
+				debug_assert!(
+					nodes.len() >= 2 && !is_closed(nodes) || nodes.len() >= 3,
+					"Way must be proper shape."
+				);
+				for node in nodes.clone() {
+					self.move_element(moved, &node, delta);
+				}
+			}
+			Element::Relation { .. } => {
+				todo!("Moving relations.")
+				// TODO: Do I even have to do this?
+			}
+		}
+	}
+
 	/// # Safety:
 	/// Panics if element or key does not exist.
 	fn get_value(&self, id: &ElementId, key: &String) -> String {
@@ -205,6 +243,14 @@ impl LatLon {
 				.to_degrees(),
 			lon: (pos.x / RADIUS_EARTH).to_degrees(),
 		}
+	}
+}
+
+impl Add<DVec2> for LatLon {
+	type Output = LatLon;
+
+	fn add(self, rhs: DVec2) -> Self::Output {
+		LatLon::from_web_mercator(self.to_web_mercator() + rhs)
 	}
 }
 
@@ -290,18 +336,25 @@ impl MapElement {
 		self.tags.get(key).or_else(|| {
 			self.new_tag.as_ref().and_then(
 				|(new_key, new_value)| {
-					if new_key == key {
-						Some(new_value)
-					} else {
-						None
-					}
+					if new_key == key { Some(new_value) } else { None }
 				},
 			)
 		})
 	}
 }
 pub fn is_closed(nodes: &[ElementId]) -> bool {
-	nodes.len() >= 2 && nodes[0] == nodes[nodes.len() - 1]
+	debug_assert!(nodes.len() >= 2);
+	nodes[0] == nodes[nodes.len() - 1]
+}
+
+pub fn unique_nodes(nodes: &[ElementId]) -> impl Iterator<Item = &ElementId> + '_ {
+	let closed = is_closed(nodes);
+	nodes.iter().skip(if closed { 1 } else { 0 })
+}
+
+pub fn unique_nodes_mut(nodes: &mut [ElementId]) -> impl Iterator<Item = &mut ElementId> + '_ {
+	let closed = is_closed(nodes);
+	nodes.iter_mut().skip(if closed { 1 } else { 0 })
 }
 
 fn is_area_tag(key: &str, value: &str) -> bool {
@@ -366,7 +419,7 @@ pub struct Member {
 
 #[derive(Debug)]
 pub enum Element {
-	Node { pos: LatLon },
+	Node { pos: Cell<LatLon> },
 	Way { nodes: Vec<ElementId> },
 	Relation { members: Vec<Member> },
 }
