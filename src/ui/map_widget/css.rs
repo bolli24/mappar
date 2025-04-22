@@ -292,26 +292,26 @@ impl Styles {
 		let mut style = MapStyle::default();
 
 		let stylesets = matching_rules(&self.css, element);
-		// TODO: sort styles
+		// TODO: sort styles by specificity
 		for Styleset { rules, .. } in stylesets {
-			self.apply_rules(&mut style, rules);
+			self.apply_rules(element, &mut style, rules);
 		}
 
 		style
 	}
 
-	fn apply_rules(&self, style: &mut MapStyle, rules: &[Rule]) {
+	fn apply_rules(&self, element: &MapElement, style: &mut MapStyle, rules: &[Rule]) {
 		for rule in rules {
 			match rule {
 				Rule::Style(style_rule) => {
-					self.apply_style_rule(style, style_rule);
+					self.apply_style_rule(element, style, style_rule);
 				}
 				Rule::ClassAssign(_) => {}
 			}
 		}
 	}
 
-	fn apply_style_rule(&self, style: &mut MapStyle, style_rule: &Spanned<CssStyle>) {
+	fn apply_style_rule(&self, element: &MapElement, style: &mut MapStyle, style_rule: &Spanned<CssStyle>) {
 		puffin::profile_function!();
 		let specifier = &style_rule.0.specifier.0;
 		let span = style_rule.0.specifier.1;
@@ -347,6 +347,42 @@ impl Styles {
 					);
 				}
 			}
+			"text" => match &style_rule.0.specifier.0 {
+				Specifier::Named(name) => {
+					if name == "auto" {
+						style.text.text = element.get_auto_text()
+					}
+				}
+				Specifier::Expression(Expression::String(text)) => style.text.text = text.clone(),
+				_ => self.error(
+					Error::IllegalSpecifier(style_rule.0.key.clone(), specifier.clone()),
+					span,
+				),
+			},
+			"font-size" => {
+				if let Specifier::Expression(Expression::Number(number)) = &style_rule.0.specifier.0 {
+					style.text.font_size = *number as f32;
+				} else {
+					self.error(
+						Error::IllegalSpecifier(style_rule.0.key.clone(), specifier.clone()),
+						span,
+					)
+				}
+			}
+			"text-color" => match &style_rule.0.specifier.0 {
+				Specifier::Color(color, _name) => {
+					style.text.color = *color;
+				}
+				Specifier::Named(color_name) => {
+					if let Some(color) = get_named_color(color_name) {
+						style.text.color = color
+					}
+				}
+				specifier => self.error(
+					Error::IllegalSpecifier(style_rule.0.key.clone(), specifier.clone()),
+					span,
+				),
+			},
 			name => self.error(Error::UnknownProperty(name.to_string()), style_rule.1),
 		}
 	}
@@ -390,7 +426,7 @@ fn matches_rule(styleset: &Styleset, element: &MapElement) -> bool {
 fn matches_selector(selector: &Selector, element: &MapElement) -> bool {
 	match selector {
 		Selector::SubSelector(selector) => matches_subselector(selector, element),
-		Selector::ChildRelation(..) => false,
+		Selector::ChildRelation(..) => todo!(),
 	}
 }
 
@@ -399,7 +435,7 @@ fn matches_subselector(subselector: &SubSelector, element: &MapElement) -> bool 
 		SubSelector::Object(object, _zoom, conditions, _pseudo_class) => {
 			matches_object(object, element) && matches_conditions(conditions, element)
 		}
-		_ => false,
+		_ => todo!(),
 	}
 }
 
@@ -408,7 +444,8 @@ fn matches_object(object: &Object, element: &MapElement) -> bool {
 		Object::Node => matches!(element.element, Element::Node { .. }),
 		Object::Way => matches!(element.element, Element::Way { .. }),
 		Object::Relation => matches!(element.element, Element::Relation { .. }),
-		_ => false,
+		Object::All => true,
+		_ => todo!(),
 	}
 }
 
@@ -417,7 +454,7 @@ fn matches_conditions(conditions: &[Condition], element: &MapElement) -> bool {
 		Condition::Binary(tag_key, BinaryOp::Eq, Expression::Identifier(tag_value)) => {
 			element.get_tag_with_new(tag_key) == Some(tag_value)
 		}
-		_ => false,
+		_ => todo!(),
 	})
 }
 

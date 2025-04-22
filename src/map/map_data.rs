@@ -383,6 +383,22 @@ pub struct MapElement {
 	pub new_tag: Option<(String, String)>,
 }
 
+pub const AUTO_TEXT_TAGS: [&str; 6] = ["name", "int_name", "ref", "operator", "brand", "addr:housenumber"];
+
+impl MapElement {
+	// TODO: also consider "name:" + <LANG>
+	pub fn get_auto_text(&self) -> String {
+		for tag in AUTO_TEXT_TAGS {
+			if let Some(value) = self.tags.get(tag) {
+				if !value.is_empty() {
+					return value.to_string();
+				}
+			}
+		}
+		String::new()
+	}
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ElementType {
 	Node,

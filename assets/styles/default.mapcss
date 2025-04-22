@@ -1,6 +1,11 @@
+* {
+    font-size: 12;
+}
+
 node {
     size: 4;
     color: lightgrey;
+    text: auto;
 }
 
 way {

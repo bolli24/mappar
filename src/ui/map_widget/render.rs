@@ -137,6 +137,7 @@ impl DetailedElement {
 		let mut element = self.clone();
 		element.style.color = Color32::YELLOW.gamma_multiply(0.75);
 		element.style.size += 2.0;
+		element.style.text.text = String::new();
 
 		match &mut element.element {
 			RenderElement::Node(_) => {
@@ -157,6 +158,7 @@ impl DetailedElement {
 		let mut element = self.clone();
 		element.style.color = Color32::RED.gamma_multiply(0.75);
 		element.style.size += 2.0;
+		element.style.text.text = String::new();
 
 		match &mut element.element {
 			RenderElement::Node(_) => {
