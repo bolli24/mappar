@@ -60,6 +60,16 @@ pub struct View {
 	pub pointer_world_pos: Option<DVec2>,
 }
 
+impl View {
+	// We translate every position directly instead of using the transform
+	// due to epaint only supporting 32-bit floating point number
+	#[inline]
+	pub fn render_pos(&self, pos: &DVec2) -> Pos2 {
+		let pos = (*pos - self.camera_pos).to_pos2();
+		self.transform * Pos2::new(pos.x, -pos.y)
+	}
+}
+
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 
 impl Widget for MapWidget<'_> {
@@ -280,7 +290,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 
 	match &element.element {
 		RenderElement::Node(pos) => {
-			let render_pos = render_pos(pos, &view.camera_pos, &view.transform);
+			let render_pos = view.render_pos(pos);
 			let rect = Rect::from_center_size(render_pos, Vec2::splat(size * view.ui_scale));
 			if let Some(icon) = element.style.icon {
 				shapes.images.push(Shape::image(icon.0, rect, UV, Color32::WHITE))
@@ -301,10 +311,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 			}
 		}
 		RenderElement::Path(nodes, is_closed) => {
-			let nodes: Vec<Pos2> = nodes
-				.iter()
-				.map(|pos| render_pos(pos, &view.camera_pos, &view.transform))
-				.collect();
+			let nodes: Vec<Pos2> = nodes.iter().map(|pos| view.render_pos(pos)).collect();
 			let stroke = PathStroke::new(size * view.ui_scale, color);
 			shapes.paths.push(Shape::Path(PathShape {
 				points: nodes,
@@ -315,10 +322,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 		}
 		RenderElement::Area(_, polygons) => {
 			for polygon in polygons {
-				let nodes: Vec<Pos2> = polygon
-					.iter()
-					.map(|pos| render_pos(pos, &view.camera_pos, &view.transform))
-					.collect();
+				let nodes: Vec<Pos2> = polygon.iter().map(|pos| view.render_pos(pos)).collect();
 				shapes.areas.push(Shape::convex_polygon(
 					nodes,
 					color,
@@ -522,14 +526,6 @@ fn closest_element<'a>(render_data: &'a [DetailedElement], scale: &f64) -> Optio
 			_ => a.pointer_distance.partial_cmp(&b.pointer_distance).expect("NaN"),
 		})
 		.next()
-}
-
-// We translate every position directly instead of using the transform
-// due to epaint only supporting 32-bit floating point number
-#[inline]
-fn render_pos(pos: &DVec2, camera_offset: &DVec2, transform: &RectTransform) -> Pos2 {
-	let pos = (*pos - *camera_offset).to_pos2();
-	transform * Pos2::new(pos.x, -pos.y)
 }
 
 fn get_tile(coords: DVec2, zoom_level: u32) -> UVec2 {
