@@ -20,7 +20,7 @@ use egui::{
 	Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, Response, ScrollArea, Sense, Vec2, Widget, pos2,
 	vec2,
 };
-use epaint::{CornerRadius, PathShape, PathStroke, Shape};
+use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape};
 use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
 use map_memory::MapMemory;
@@ -205,18 +205,19 @@ impl Widget for MapWidget<'_> {
 					dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");
 
 					let mut shapes = DrawList::new();
+					let fonts = ui.ctx().fonts(|f| f.clone());
 
 					for element in &render_data {
 						let hovered = self.interactive && hover_element.is_some_and(|e| e.id == element.id);
 						if hovered {
-							draw_element(&element.hovered(), &mut shapes, &view);
+							draw_element(&element.hovered(), &mut shapes, &view, &fonts);
 						}
 						let selected = self.mem.selection.selected_elements.contains(&element.id);
 						if selected {
 							// TODO: Selection Style
-							draw_element(&element.hovered(), &mut shapes, &view)
+							draw_element(&element.hovered(), &mut shapes, &view, &fonts)
 						}
-						draw_element(element, &mut shapes, &view);
+						draw_element(element, &mut shapes, &view, &fonts);
 					}
 
 					dbgtxt!(self.debug_text, "Drawn Elements: {}", shapes.count());
@@ -232,20 +233,30 @@ impl Widget for MapWidget<'_> {
 }
 
 #[inline]
-fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View) {
+fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, fonts: &Fonts) {
 	let color = element.style.color;
 	let size = element.style.size;
 
 	match &element.element {
 		RenderElement::Node(pos) => {
-			let rect = Rect::from_center_size(
-				render_pos(pos, &view.camera_pos, &view.transform),
-				Vec2::splat(size * view.ui_scale),
-			);
+			let render_pos = render_pos(pos, &view.camera_pos, &view.transform);
+			let rect = Rect::from_center_size(render_pos, Vec2::splat(size * view.ui_scale));
 			if let Some(icon) = element.style.icon {
 				shapes.images.push(Shape::image(icon.0, rect, UV, Color32::WHITE))
 			} else {
 				shapes.nodes.push(Shape::rect_filled(rect, CornerRadius::ZERO, color));
+			}
+
+			if !element.style.text.text.is_empty() {
+				let text = &element.style.text;
+				shapes.nodes.push(Shape::text(
+					fonts,
+					render_pos + text.offset,
+					text.anchor,
+					&text.text,
+					text.font_id(),
+					text.color,
+				))
 			}
 		}
 		RenderElement::Path(nodes, is_closed) => {
@@ -277,7 +288,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View) {
 		}
 		RenderElement::Collection(elements) => {
 			for e in elements {
-				draw_element(e, shapes, view);
+				draw_element(e, shapes, view, fonts);
 			}
 		}
 	};

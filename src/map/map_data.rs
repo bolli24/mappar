@@ -1,6 +1,6 @@
 use super::edit::{Action, Edit, EditError};
 use chrono::{DateTime, Utc};
-use glam::{dvec2, DVec2};
+use glam::{DVec2, dvec2};
 use indexmap::IndexMap;
 use mappar_macros::Id;
 use std::collections::HashMap;
@@ -290,11 +290,7 @@ impl MapElement {
 		self.tags.get(key).or_else(|| {
 			self.new_tag.as_ref().and_then(
 				|(new_key, new_value)| {
-					if new_key == key {
-						Some(new_value)
-					} else {
-						None
-					}
+					if new_key == key { Some(new_value) } else { None }
 				},
 			)
 		})
@@ -328,6 +324,22 @@ pub struct MapElement {
 	pub element: Element,
 	pub tags: IndexMap<String, String>,
 	pub new_tag: Option<(String, String)>,
+}
+
+pub const AUTO_TEXT_TAGS: [&str; 6] = ["name", "int_name", "ref", "operator", "brand", "addr:housenumber"];
+
+impl MapElement {
+	// TODO: also consider "name:" + <LANG>
+	pub fn get_auto_text(&self) -> String {
+		for tag in AUTO_TEXT_TAGS {
+			if let Some(value) = self.tags.get(tag) {
+				if !value.is_empty() {
+					return value.to_string();
+				}
+			}
+		}
+		String::new()
+	}
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

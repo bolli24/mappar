@@ -1,6 +1,6 @@
+use super::View;
 use super::css::Styles;
 use super::style::Style;
-use super::View;
 use crate::map::map_data::{self, ElementId};
 use crate::map::map_data::{Element, MapData, MapElement};
 use crate::util::convert::ToPos2;
@@ -137,6 +137,7 @@ impl DetailedElement {
 		let mut element = self.clone();
 		element.style.color = Color32::RED.gamma_multiply(0.75);
 		element.style.size += 2.0;
+		element.style.text.text = String::new();
 
 		match &mut element.element {
 			RenderElement::Node(_) => {
