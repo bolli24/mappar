@@ -16,6 +16,7 @@ use crate::ui::edit_bar::EditMode;
 use crate::ui::map_widget::map_state::MapState;
 use crate::util::convert::{ToDVec2, ToPos2};
 use css::Styles;
+use css::context::StyleContext;
 use derive_new::new;
 use draw_list::DrawList;
 use egui::{
@@ -133,6 +134,9 @@ impl Widget for MapWidget<'_> {
 
 					let mut render_data = Vec::with_capacity(self.map_data.len());
 					let select_threshold = 5.0 * view.scale;
+					let style_context = StyleContext {
+						zoom_level: view.zoom_level as f32,
+					};
 
 					{
 						puffin::profile_scope!("Calculate Render data");
@@ -142,7 +146,14 @@ impl Widget for MapWidget<'_> {
 							.iter()
 							.filter(|e| !matches!(e.element, Element::Relation { .. }))
 						{
-							DetailedElement::add_elements(&mut render_data, element, self.map_data, self.styles, &view);
+							DetailedElement::add_elements(
+								&mut render_data,
+								element,
+								self.map_data,
+								self.styles,
+								&view,
+								&style_context,
+							);
 						}
 					}
 

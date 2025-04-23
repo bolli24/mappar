@@ -1,18 +1,21 @@
 #![allow(dead_code)]
 use crate::lexer::Token;
 use ariadne::{Color, Label, Report, ReportKind, Source};
-use chumsky::input::Stream;
-use chumsky::input::ValueInput;
+use chumsky::input::{Stream, ValueInput};
 use chumsky::prelude::*;
+use chumsky::recursive::Indirect;
 use ecolor::Color32;
 use logos::Logos;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
 pub mod color;
+pub mod eval;
 pub mod lexer;
 
 pub use chumsky::span::SimpleSpan;
+pub use eval::Error as EvalError;
+pub use eval::{Expression, ExpressionType, Type, Value, ValueType};
 
 // TODO: better regex
 
@@ -98,7 +101,7 @@ where
 		Token::Op("!") => UnaryOp::Not
 	};
 
-	let mut expression = Recursive::<_>::declare();
+	let mut expression: Recursive<Indirect<'_, '_, _, Spanned<Expression>, _>> = Recursive::<_>::declare();
 
 	let function = identifier
 		.then(
@@ -141,32 +144,37 @@ where
 			Token::Quoted(s) => Expression::String(s)
 		},
 		number.map(Expression::Number),
-		expression.clone().delimited_by(
+		expression.clone().map(|expr| expr.0).delimited_by(
 			just(Token::ParenOpen).padded_by(opt_spaces.clone()),
 			just(Token::ParenClose).padded_by(opt_spaces.clone()),
 		),
-	));
+	))
+	.map_with(|atom: Expression, extras| Spanned(atom, extras.span()));
 
-	let unary_expression = unary
-		.repeated()
-		.foldr(atom.clone(), |op, expr| Expression::Unary(Box::new(expr), op));
+	let unary_expression = unary.repeated().foldr_with(atom, |op, expr, extras| {
+		Spanned(Expression::Unary(Box::new(expr), op), extras.span())
+	});
 
-	let factor = unary_expression.clone().then_ignore(opt_spaces.clone()).foldl(
+	let factor = unary_expression.clone().then_ignore(opt_spaces.clone()).foldl_with(
 		binary
 			.filter(|op| matches!(op, BinaryOp::Mul | BinaryOp::Div))
 			.then_ignore(opt_spaces.clone())
 			.then(unary_expression.clone())
 			.repeated(),
-		|a, (op, b)| Expression::Binary(Box::new(a), op, Box::new(b)),
+		|a: Spanned<Expression>, (op, b): (BinaryOp, Spanned<Expression>), extras| {
+			Spanned(Expression::Binary(Box::new(a), op, Box::new(b)), extras.span())
+		},
 	);
 
-	let term = factor.clone().then_ignore(opt_spaces.clone()).foldl(
+	let term = factor.clone().then_ignore(opt_spaces.clone()).foldl_with(
 		binary
 			.filter(|op| matches!(op, BinaryOp::Add | BinaryOp::Sub))
 			.then_ignore(opt_spaces.clone())
 			.then(factor.clone())
 			.repeated(),
-		|a, (op, b)| Expression::Binary(Box::new(a), op, Box::new(b)),
+		|a: Spanned<Expression>, (op, b): (BinaryOp, Spanned<Expression>), extras| {
+			Spanned(Expression::Binary(Box::new(a), op, Box::new(b)), extras.span())
+		},
 	);
 
 	/*
@@ -219,7 +227,7 @@ where
 		labelled_color.map(|(label, color)| Specifier::Color(color, label)),
 		sizes.map(Specifier::Sizes),
 		expression.clone().map(|expression| match expression {
-			Expression::Identifier(name) => Specifier::Named(name),
+			Spanned(Expression::Identifier(name), _) => Specifier::Named(name),
 			_ => Specifier::Expression(expression),
 		}),
 	))
@@ -328,7 +336,7 @@ where
 			function.clone().map(Condition::Function), // function
 			binary_condition
 				.clone() // tag binary tag
-				.map(|((tag, op), value)| Condition::Binary(tag, op, value)),
+				.map(|((tag, op), value)| Condition::Binary(tag, op, value.0)),
 			tag.clone()
 				.then_ignore(just(Token::Question)) // tag?!
 				.then_ignore(just(Token::Exclamation))
@@ -431,7 +439,7 @@ where
 		.delimited_by(just(Token::BracketOpen), just(Token::BracketClose))
 		.try_map(|((a, op), b), span| {
 			if LINK_OPERATIONS.contains(&op) {
-				Ok(Link(a, op, b))
+				Ok(Link(a, op, b.0))
 			} else {
 				Err(Rich::custom(span, format!("Invalid operator {op}")))
 			}
@@ -558,7 +566,7 @@ pub enum Object {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Zoom(u8, u8);
+pub struct Zoom(pub u8, pub u8);
 
 impl TryFrom<&str> for Zoom {
 	type Error = ();
@@ -678,18 +686,8 @@ pub enum Specifier {
 	Sizes(Vec<Size>),
 	Color(Color32, Option<String>),
 	Url(String),
-	Expression(Expression),
+	Expression(Spanned<Expression>),
 	Function(Function),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Type {
-	Named,
-	Sizes,
-	Color,
-	Url,
-	Expression(ExpressionType),
-	Function(ExpressionType),
 }
 
 impl Specifier {
@@ -699,29 +697,9 @@ impl Specifier {
 			Self::Sizes(_) => Type::Sizes,
 			Self::Color(_, _) => Type::Color,
 			Self::Url(_) => Type::Url,
-			Self::Expression(expression) => Type::Expression(expression.get_type()),
+			Self::Expression(expression) => Type::Expression(expression.0.get_type()),
 			Self::Function(function) => Type::Expression(function.get_return_type()),
 		}
-	}
-}
-
-impl Display for Type {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let type_str = match self {
-			Type::Named => "named",
-			Type::Sizes => "sizes",
-			Type::Color => "color",
-			Type::Url => "URL",
-			Type::Expression(expression_type) | Type::Function(expression_type) => match expression_type {
-				ExpressionType::Number => "number",
-				ExpressionType::String => "string",
-				ExpressionType::Bool => "boolean",
-				ExpressionType::Regex => "regular expression",
-				ExpressionType::Unknown => "unknown",
-			},
-		};
-
-		write!(f, "{type_str}")
 	}
 }
 
@@ -749,101 +727,6 @@ impl From<&str> for Unit {
 	}
 }
 
-#[derive(Clone)]
-pub enum Expression {
-	Number(f64),
-	Identifier(String),
-	String(String),
-	Function(Function),
-	Binary(Box<Expression>, BinaryOp, Box<Expression>),
-	Unary(Box<Expression>, UnaryOp),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ExpressionType {
-	Number,
-	String,
-	Bool,
-	Regex,
-	Unknown,
-}
-
-impl Expression {
-	pub fn get_type(&self) -> ExpressionType {
-		match self {
-			Self::Number(_) => ExpressionType::Number,
-			Self::Identifier(_) => ExpressionType::Unknown,
-			Self::String(_) => ExpressionType::String,
-			Self::Function(function) => function.get_return_type(),
-			Self::Binary(a, op, b) => {
-				let a_type = a.get_type();
-				let b_type = b.get_type();
-				if a_type == ExpressionType::Unknown || b_type == ExpressionType::Unknown {
-					return ExpressionType::Unknown;
-				}
-				match op {
-					BinaryOp::Eq | BinaryOp::NotEq => {
-						if a_type == b_type {
-							ExpressionType::Bool
-						} else {
-							ExpressionType::Unknown
-						}
-					}
-					BinaryOp::ListMembership => todo!(),
-					BinaryOp::RegexMatch => {
-						if a_type == ExpressionType::String && b_type == ExpressionType::Regex {
-							ExpressionType::Bool
-						} else {
-							ExpressionType::Unknown
-						}
-					}
-					BinaryOp::Le | BinaryOp::Ge | BinaryOp::Lt | BinaryOp::Gt => {
-						if a_type == ExpressionType::Number && b_type == ExpressionType::Number {
-							ExpressionType::Bool
-						} else {
-							ExpressionType::Unknown
-						}
-					}
-					BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div => {
-						if a_type == ExpressionType::Number && b_type == ExpressionType::Number {
-							ExpressionType::Number
-						} else {
-							ExpressionType::Unknown
-						}
-					}
-				}
-			}
-			Self::Unary(value, op) => {
-				let value_type = value.get_type();
-				match op {
-					UnaryOp::Not if value_type == ExpressionType::Bool => ExpressionType::Bool,
-					UnaryOp::Neg if value_type == ExpressionType::Number => ExpressionType::Number,
-					_ => ExpressionType::Unknown,
-				}
-			}
-		}
-	}
-}
-
-impl Display for Expression {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Number(n) => write!(f, "{n}"),
-			Self::Identifier(name) => write!(f, "{name}"),
-			Self::String(string) => write!(f, "\"{string}\""),
-			Self::Function(function) => write!(f, "{function}"),
-			Self::Binary(a, op, b) => write!(f, "({a} {op} {b})"),
-			Self::Unary(expr, op) => write!(f, "{op}{expr}"),
-		}
-	}
-}
-
-impl Debug for Expression {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{self}")
-	}
-}
-
 #[derive(Debug, Clone)]
 pub enum Condition {
 	Binary(String, BinaryOp, Expression),
@@ -856,7 +739,7 @@ pub enum Condition {
 }
 
 #[derive(Debug, Clone)]
-pub struct Function(pub String, pub Vec<Expression>);
+pub struct Function(pub String, pub Vec<Spanned<Expression>>);
 
 impl Function {
 	pub fn get_return_type(&self) -> ExpressionType {
@@ -871,7 +754,7 @@ impl Display for Function {
 			if i > 0 {
 				write!(f, ", ")?;
 			}
-			write!(f, "{}", arg)?;
+			write!(f, "{}", arg.0)?;
 		}
 		write!(f, ")")
 	}

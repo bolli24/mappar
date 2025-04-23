@@ -18,5 +18,5 @@ impl Default for MapState {
 }
 
 impl MapState {
-	pub fn update(&mut self, response: &Response, edit_mode: &EditMode) {}
+	pub fn update(&mut self, _response: &Response, _edit_mode: &EditMode) {}
 }

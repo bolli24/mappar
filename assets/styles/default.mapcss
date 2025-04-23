@@ -5,6 +5,9 @@
 node {
     size: 4;
     color: lightgrey;
+}
+
+node|z16- {
     text: auto;
 }
 
@@ -28,7 +31,11 @@ way[highway=secondary] {
     width: 1.5;
 }
 
-node[natural=tree] {
+node|z16-[natural=tree] {
     size: 10;
     icon-image: "icons/tree.svg";
+}
+
+node[natural=tree] {
+    color: green
 }

@@ -1,5 +1,6 @@
 use super::View;
 use super::css::Styles;
+use super::css::context::StyleContext;
 use super::style::Style;
 use crate::map::map_data::{self, ElementId};
 use crate::map::map_data::{Element, MapData, MapElement};
@@ -75,6 +76,7 @@ impl DetailedElement {
 		map_data: &MapData,
 		styles: &mut Option<Styles>,
 		view: &View,
+		style_context: &StyleContext,
 	) {
 		puffin::profile_function!(map_element.id.to_string());
 
@@ -109,7 +111,7 @@ impl DetailedElement {
 
 		let style = styles
 			.as_mut()
-			.map(|styles| styles.get_style(map_element))
+			.map(|styles| styles.get_style(map_element, style_context))
 			.unwrap_or_default();
 
 		render_data.push(Self {
