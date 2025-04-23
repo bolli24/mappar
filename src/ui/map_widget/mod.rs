@@ -5,6 +5,7 @@ mod map_state;
 mod polygon;
 pub mod render;
 mod style;
+mod view;
 
 use crate::dbgtxt;
 use crate::imagery::imagery_fetcher::{ImageryFetcher, Tile};
@@ -17,7 +18,6 @@ use crate::util::convert::{ToDVec2, ToPos2};
 use css::Styles;
 use derive_new::new;
 use draw_list::DrawList;
-use eframe::emath::RectTransform;
 use egui::{
 	Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, Response, ScrollArea, Sense, Vec2, Widget, pos2,
 	vec2,
@@ -32,6 +32,7 @@ use std::collections::HashSet;
 use std::f64::consts::PI;
 use std::ops::RangeInclusive;
 use std::sync::{Arc, Mutex};
+use view::View;
 
 const ZOOM_SPEED: f64 = 5.0;
 
@@ -48,28 +49,6 @@ pub struct MapWidget<'a> {
 	edit_mode: EditMode,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct View {
-	pub transform: RectTransform,
-	pub viewport: Rect,
-	pub camera_pos: DVec2,
-	pub world_view_rect: Rect,
-	pub zoom_level: f64,
-	pub scale: f64,
-	pub ui_scale: f32,
-	pub pointer_world_pos: Option<DVec2>,
-}
-
-impl View {
-	// We translate every position directly instead of using the transform
-	// due to epaint only supporting 32-bit floating point number
-	#[inline]
-	pub fn render_pos(&self, pos: &DVec2) -> Pos2 {
-		let pos = (*pos - self.camera_pos).to_pos2();
-		self.transform * Pos2::new(pos.x, -pos.y)
-	}
-}
-
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 
 impl Widget for MapWidget<'_> {
@@ -79,7 +58,6 @@ impl Widget for MapWidget<'_> {
 			.show(ui, |ui| {
 				Frame::canvas(ui.style()).show(ui, |ui| {
 					puffin::profile_function!("Draw Map");
-					let ui_scale = ui.ctx().pixels_per_point();
 					let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 					ui.ctx().request_repaint();
 					let clip_rect = ui.clip_rect();
@@ -87,32 +65,31 @@ impl Widget for MapWidget<'_> {
 					let viewport = response.interact_rect;
 					dbgtxt!(self.debug_text, "Viewport: {viewport:?}");
 
-					let zoom = if self.interactive {
-						response.ctx.input(|i| i.smooth_scroll_delta).y as f64
-					} else {
-						0.0
-					};
-					if zoom != 0.0 && response.contains_pointer() {
-						// TODO: fix zoom speed on chrome
-						let zoom_diff = zoom / 1000.0 * ZOOM_SPEED;
-						self.mem.zoom_level += zoom_diff;
-						self.mem.zoom_level = self.mem.zoom_level.clamp(1.0, 25.0);
-						if let Some(pointer_world_pos) =
-							pointer_world_pos(self.mem.camera_pos, &response, viewport, scale(self.mem.zoom_level))
-						{
-							let camera_diff = pointer_world_pos - self.mem.camera_pos;
-							self.mem.camera_pos += camera_diff * zoom_diff * 0.69; // No idea why the funny number is right here
+					if self.interactive {
+						let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y as f64;
+						if zoom != 0.0 && response.contains_pointer() {
+							// TODO: fix zoom speed on chrome
+							let zoom_diff = zoom / 1000.0 * ZOOM_SPEED;
+							self.mem.zoom_level += zoom_diff;
+							self.mem.zoom_level = self.mem.zoom_level.clamp(1.0, 25.0);
+							if let Some(pointer_world_pos) =
+								pointer_world_pos(self.mem.camera_pos, &response, viewport, scale(self.mem.zoom_level))
+							{
+								let camera_diff = pointer_world_pos - self.mem.camera_pos;
+								self.mem.camera_pos += camera_diff * zoom_diff * 0.69; // No idea why the funny number is right here
+							}
 						}
 					}
 
-					let scale = scale(self.mem.zoom_level);
+					let view = View::new(&response, self.mem.camera_pos, self.mem.zoom_level);
 
 					let world_delta = {
+						// How much has the pointer moved on the map
 						let mut delta = ui.ctx().input(|i| i.pointer.delta());
 						if let Some(from_global) = ui.ctx().layer_transform_from_global(ui.layer_id()) {
 							delta *= from_global.scaling;
 						}
-						let delta = delta * scale as f32;
+						let delta = delta * view.scale as f32;
 						dvec2(f64::from(delta.x), -f64::from(delta.y))
 					};
 
@@ -128,43 +105,16 @@ impl Widget for MapWidget<'_> {
 
 					dbgtxt!(self.debug_text, "Camera: {:?}", self.mem.camera_pos);
 					dbgtxt!(self.debug_text, "Zoom: {}", self.mem.zoom_level);
-					dbgtxt!(self.debug_text, "Scale: {scale}");
-					dbgtxt!(self.debug_text, "UI Scale: {ui_scale}");
-
-					let camera_rect = viewport.translate(-viewport.size() / 2.0) * scale as f32;
-					let transform = RectTransform::from_to(camera_rect, viewport);
-					let world_corners = get_world_corners(viewport, self.mem.camera_pos, scale);
-					let world_view_rect = Rect::from_two_pos(world_corners.0.to_pos2(), world_corners.1.to_pos2());
-					let pointer_world_pos = pointer_world_pos(self.mem.camera_pos, &response, viewport, scale); // We get this here again to reduce latency
-
-					dbgtxt!(self.debug_text, "World View Rect: {:?}", world_view_rect);
+					dbgtxt!(self.debug_text, "Scale: {}", view.scale);
+					dbgtxt!(self.debug_text, "UI Scale: {}", view.ui_scale);
+					dbgtxt!(self.debug_text, "World View Rect: {:?}", view.world_view_rect);
 					dbgtxt!(
 						self.debug_text,
 						"Pointer Pos: {:?}",
-						pointer_world_pos.map(|p| p.round().as_ivec2())
+						view.pointer_world_pos.map(|p| p.round().as_ivec2())
 					);
 
-					let view = View {
-						transform,
-						viewport,
-						camera_pos: self.mem.camera_pos,
-						world_view_rect,
-						scale,
-						zoom_level: self.mem.zoom_level,
-						ui_scale,
-						pointer_world_pos,
-					};
-
-					let active_imagery_name: Option<String> = self.active_imagery_ref.and_then(|reference| {
-						self.imagery_fetcher
-							.lock()
-							.unwrap()
-							.imageries()
-							.lock()
-							.unwrap()
-							.get(reference)
-							.map(|imagery| imagery.name().to_string())
-					});
+					let active_imagery_name = self.active_imagery_name();
 
 					dbgtxt!(self.debug_text, "Active imagery: {active_imagery_name:?}");
 
@@ -182,7 +132,7 @@ impl Widget for MapWidget<'_> {
 					}
 
 					let mut render_data = Vec::with_capacity(self.map_data.len());
-					let select_threshold = 5.0 * scale;
+					let select_threshold = 5.0 * view.scale;
 
 					{
 						puffin::profile_scope!("Calculate Render data");
@@ -198,8 +148,8 @@ impl Widget for MapWidget<'_> {
 
 					let hover_element = {
 						puffin::profile_scope!("Get hover element");
-						match (self.interactive, pointer_world_pos) {
-							(true, Some(_)) => closest_element(&render_data, &scale),
+						match (self.interactive, view.pointer_world_pos) {
+							(true, Some(_)) => closest_element(&render_data, &view.scale),
 							_ => None,
 						}
 					};
@@ -236,7 +186,7 @@ impl Widget for MapWidget<'_> {
 						}
 
 						if response.drag_started_by(PointerButton::Primary) {
-							self.mem.map_state = MapState::MoveElements(pointer_world_pos.unwrap());
+							self.mem.map_state = MapState::MoveElements(view.pointer_world_pos.unwrap());
 						} else if response.drag_stopped_by(PointerButton::Primary) {
 							self.mem.map_state = MapState::Default;
 						}
@@ -280,6 +230,21 @@ impl Widget for MapWidget<'_> {
 			})
 			.inner
 			.response
+	}
+}
+
+impl MapWidget<'_> {
+	fn active_imagery_name(&self) -> Option<String> {
+		self.active_imagery_ref.and_then(|reference| {
+			self.imagery_fetcher
+				.lock()
+				.unwrap()
+				.imageries()
+				.lock()
+				.unwrap()
+				.get(reference)
+				.map(|imagery| imagery.name().to_string())
+		})
 	}
 }
 
@@ -570,16 +535,13 @@ fn view_to_world_pos(pos: Pos2, view: Rect, camera_pos: DVec2, scale: f64) -> DV
 }
 
 fn pointer_world_pos(camera_pos: DVec2, response: &Response, viewport: Rect, scale: f64) -> Option<DVec2> {
-	let pointer_world_pos = response
-		.contains_pointer()
-		.then(|| {
-			response
-				.ctx
-				.input(|i| i.pointer.latest_pos())
-				.map(|pos| view_to_world_pos(pos, viewport, camera_pos, scale))
-		})
-		.flatten();
-	pointer_world_pos
+	if !response.contains_pointer() {
+		return None;
+	}
+	response
+		.ctx
+		.input(|i| i.pointer.latest_pos())
+		.map(|pos| view_to_world_pos(pos, viewport, camera_pos, scale))
 }
 
 fn get_tile_bound(view: Rect, camera_pos: DVec2, scale: f64) -> (DVec2, DVec2) {
@@ -588,12 +550,12 @@ fn get_tile_bound(view: Rect, camera_pos: DVec2, scale: f64) -> (DVec2, DVec2) {
 	(camera_pos - half, camera_pos + half)
 }
 
-// tile width in meters at specified latitude and zoom level
+/// tile width in meters at specified latitude and zoom level
 pub fn tile_width(zoom_level: u32, lat: f64) -> f64 {
 	(CIRCUMFERENCE_EARTH * f64::cos(lat.to_radians())) / f64::exp2(zoom_level as f64)
 }
 
-// aka Resolution in meters per pixel
+/// aka Resolution in meters per pixel
 pub fn scale(zoom_level: f64) -> f64 {
 	(CIRCUMFERENCE_EARTH * f64::cos(0.0f64.to_radians())) / f64::exp2(zoom_level) / 256.0
 }
