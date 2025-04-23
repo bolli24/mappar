@@ -1,5 +1,3 @@
-use crate::util::HashSetExt;
-
 use super::edit::{Action, Edit, EditError};
 use chrono::{DateTime, Utc};
 use glam::{DVec2, dvec2};

@@ -1,4 +1,4 @@
-use super::css::Icon;
+use super::css::icon::Icon;
 use egui::{Align2, Color32, FontFamily, FontId};
 
 #[derive(Debug, Clone, PartialEq)]
