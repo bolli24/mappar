@@ -235,9 +235,9 @@ impl Styles {
 			file_name,
 			&self.texture_manager,
 			#[cfg(target_arch = "wasm32")]
-			icons,
+			&self.icons,
 			#[cfg(target_arch = "wasm32")]
-			fallback_texture,
+			self.fallback_texture,
 		)
 		.unwrap_or_else(|err| {
 			error!("Could not load icon '{file_name}': {err}");
