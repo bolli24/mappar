@@ -254,6 +254,11 @@ impl eframe::App for MyApp {
 							open::that(self.project_dirs.cache_dir())
 								.unwrap_or_else(|e| error!("Couldn't open config directory: {e}"));
 						}
+						if ui.button("Open Logs Directory").clicked() {
+							ui.close_menu();
+							open::that(self.project_dirs.data_local_dir().join("logs"))
+								.unwrap_or_else(|e| error!("Couldn't open logs directory: {e}"));
+						}
 						if ui.button("Quit").clicked() {
 							ctx.send_viewport_cmd(egui::ViewportCommand::Close);
 						}
