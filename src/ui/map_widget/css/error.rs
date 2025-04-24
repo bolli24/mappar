@@ -1,12 +1,12 @@
 use std::{collections::HashSet, fmt::Display};
 
-use ariadne::{Color, Label, Report, ReportKind, Source};
+use ariadne::{Color, Config, Label, Report, ReportKind, Source};
 use log::warn;
 use mappar_css::{EvalError, SimpleSpan, Specifier};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-	#[error("Illegal specifier of type {} for {}.", .1.get_type(), .0)]
+	#[error("Illegal specifier of type '{}' for '{}'.", .1.get_type(), .0)]
 	IllegalSpecifier(String, Specifier),
 
 	#[error("Unknown property: {0}")]
@@ -37,7 +37,8 @@ impl Reporting {
 		}
 
 		let report = Report::build(ReportKind::Error, (&self.file_name, span.into_range()))
-			// .with_message()
+			.with_config(Config::new().with_color(false))
+			.with_message("Invalid CSS")
 			.with_label(
 				Label::new((&self.file_name, span.into_range()))
 					.with_message(message.to_string())
