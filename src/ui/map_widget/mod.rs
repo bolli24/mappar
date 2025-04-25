@@ -303,7 +303,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 						let midpoint = *a + (vec * 0.5);
 
 						if !view.viewport.contains(midpoint) {
-							return;
+							continue;
 						}
 
 						let mut angle = vec.angle();
