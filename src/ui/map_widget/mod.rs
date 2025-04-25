@@ -23,7 +23,7 @@ use egui::{
 	Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, Response, ScrollArea, Sense, Vec2, Widget, pos2,
 	vec2,
 };
-use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape};
+use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape, TextShape};
 use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
 use map_memory::MapMemory;
@@ -289,6 +289,41 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 		RenderElement::Path(nodes, is_closed) => {
 			let nodes: Vec<Pos2> = nodes.iter().map(|pos| view.render_pos(pos)).collect();
 			let stroke = PathStroke::new(size * view.ui_scale, color);
+
+			if !element.style.text.text.is_empty() {
+				// FIXME: double text rendering
+				let text = &element.style.text;
+				let galley = fonts.layout_no_wrap(text.text.to_string(), text.font_id(), text.color);
+				let len_sq = galley.size().x.powi(2);
+
+				use std::f32::consts::{FRAC_PI_2, PI};
+				for (a, b) in nodes.iter().tuple_windows() {
+					if a.distance_sq(*b) > len_sq {
+						let vec = b.to_vec2() - a.to_vec2();
+						let midpoint = *a + (vec * 0.5);
+
+						if !view.viewport.contains(midpoint) {
+							return;
+						}
+
+						let mut angle = vec.angle();
+						if angle > FRAC_PI_2 {
+							angle -= PI
+						}
+
+						shapes.paths.push(Shape::Text(TextShape {
+							pos: midpoint,
+							galley: galley.clone(),
+							underline: egui::Stroke::NONE,
+							fallback_color: text.color,
+							override_text_color: None,
+							opacity_factor: 1.0,
+							angle,
+						}))
+					}
+				}
+			}
+
 			shapes.paths.push(Shape::Path(PathShape {
 				points: nodes,
 				stroke,

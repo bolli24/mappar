@@ -7,7 +7,10 @@ use mappar_css::{EvalError, SimpleSpan, Specifier};
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
 	#[error("Illegal specifier of type '{}' for '{}'.", .1.get_type(), .0)]
-	IllegalSpecifier(String, Specifier),
+	InvalidSpecifierType(String, Specifier),
+
+	#[error("Invalid specifier variant '{}' for '{}'. Must be one of: {}", .0, .1, .2.join(", "))]
+	InvalidSpecifierVariant(String, String, &'static [&'static str]),
 
 	#[error("Unknown property: {0}")]
 	UnknownProperty(String),
@@ -32,6 +35,7 @@ impl Reporting {
 	}
 
 	pub fn report(&mut self, message: impl Display, span: SimpleSpan) {
+		puffin::profile_function!();
 		if !self.messages.insert(span) {
 			return;
 		}

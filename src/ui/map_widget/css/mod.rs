@@ -152,12 +152,39 @@ impl Styles {
 			},
 			"font-size" => self.try_assign_number(&mut style.text.font_size, specifier, key),
 			"text-color" => self.try_assign_color(&mut style.text.color, specifier, key),
+			"text-position" => self.try_assign_enum(&mut style.text.position, specifier, key),
 			name => self.error(Error::UnknownProperty(name.to_string()), style_rule.1),
 		}
 	}
 
 	fn error(&self, error: Error, span: SimpleSpan) {
 		self.reporting.borrow_mut().report(error, span)
+	}
+
+	fn try_assign_enum<'a, T: TryFrom<&'a str> + strum::VariantNames>(
+		&self,
+		value: &mut T,
+		specifier: &'a Spanned<Specifier>,
+		key: &str,
+	) {
+		if let Specifier::Named(identifier) = &specifier.0 {
+			match T::try_from(identifier) {
+				Ok(identifier) => {
+					*value = identifier;
+				}
+				Err(_) => {
+					self.error(
+						Error::InvalidSpecifierVariant(identifier.clone(), key.to_string(), T::VARIANTS),
+						specifier.1,
+					);
+				}
+			}
+		} else {
+			self.error(
+				Error::InvalidSpecifierType(key.to_string(), specifier.0.clone()),
+				specifier.1,
+			);
+		}
 	}
 
 	fn try_assign_number(&self, number: &mut f32, specifier: &Spanned<Specifier>, key: &str) {
@@ -194,7 +221,7 @@ impl Styles {
 			Specifier::Named(color_name) => get_named_color(color_name),
 			_ => {
 				self.error(
-					Error::IllegalSpecifier(key.to_string(), specifier.0.clone()),
+					Error::InvalidSpecifierType(key.to_string(), specifier.0.clone()),
 					specifier.1,
 				);
 				None
@@ -210,7 +237,7 @@ impl Styles {
 						Some(value)
 					} else {
 						self.error(
-							Error::IllegalSpecifier(key.to_string(), specifier.0.clone()),
+							Error::InvalidSpecifierType(key.to_string(), specifier.0.clone()),
 							specifier.1,
 						);
 						None

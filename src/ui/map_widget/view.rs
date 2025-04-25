@@ -43,4 +43,16 @@ impl View {
 		let pos = (*pos - self.camera_pos).to_pos2();
 		self.transform * Pos2::new(pos.x, -pos.y)
 	}
+
+	/// How close is a point to the viewport borders.
+	pub fn border_distance(&self, pos: Pos2) -> f32 {
+		[
+			pos.x - self.viewport.min.x,
+			self.viewport.max.x - pos.x,
+			pos.y - self.viewport.min.y,
+			self.viewport.max.y - pos.y,
+		]
+		.into_iter()
+		.fold(f32::INFINITY, f32::min)
+	}
 }

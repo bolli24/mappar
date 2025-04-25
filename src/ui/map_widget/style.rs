@@ -1,5 +1,6 @@
 use super::css::icon::Icon;
 use egui::{Align2, Color32, FontFamily, FontId};
+use strum::{EnumString, VariantNames};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Style {
@@ -70,7 +71,8 @@ impl Default for Text {
 	}
 }
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, EnumString, VariantNames)]
+#[strum(serialize_all = "snake_case")]
 pub enum TextPosition {
 	#[default]
 	Center,

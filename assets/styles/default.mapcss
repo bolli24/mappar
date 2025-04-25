@@ -14,6 +14,8 @@ node|z16- {
 way {
     color: #404052;
     size: 2.0;
+    text: auto;
+    text-position: line;
 }
 
 way[highway=trunk] way[highway=trunk_link] {
