@@ -414,13 +414,15 @@ impl Display for ElementType {
 	}
 }
 
-impl ElementType {
-	pub fn from_str(str: &str) -> Option<Self> {
-		match str {
-			"node" => Some(Self::Node),
-			"way" => Some(Self::Way),
-			"relation" => Some(Self::Relation),
-			_ => None,
+impl TryFrom<&str> for ElementType {
+	type Error = ();
+
+	fn try_from(value: &str) -> Result<Self, Self::Error> {
+		match value {
+			"node" => Ok(Self::Node),
+			"way" => Ok(Self::Way),
+			"relation" => Ok(Self::Relation),
+			_ => Err(()),
 		}
 	}
 }

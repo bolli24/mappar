@@ -63,6 +63,7 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 	Ok(data)
 }
 
+// TODO: better Error handling, maybe use anyhow
 fn parse_osm_xml(xml: &str) -> Option<MapData> {
 	let mut data = MapData::new();
 	let mut reader = Reader::from_str(xml);
@@ -84,7 +85,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 						match reader.read_event() {
 							Ok(Event::Empty(ref e)) => match e.name().as_ref() {
 								b"tag" => {
-									parse_tag(&mut tags, e);
+									parse_tag(&mut tags, e).ok()?;
 								}
 								b"nd" => {
 									let node_ref = e.attributes().next()?.ok()?;
@@ -168,9 +169,9 @@ fn parse_member(e: &BytesStart) -> (ElementId, String) {
 				ref_id.0 = from_utf8(attr.value.as_ref()).unwrap().parse().unwrap();
 			}
 			b"role" => {
-				role = from_utf8(attr.value.as_ref()).unwrap().to_string();
+				role = attr.unescape_value().unwrap().to_string();
 			}
-			b"type" => ref_id.1 = ElementType::from_str(from_utf8(attr.value.as_ref()).unwrap()).unwrap(),
+			b"type" => ref_id.1 = ElementType::try_from(from_utf8(attr.value.as_ref()).unwrap()).unwrap(),
 			_ => {
 				error!(
 					"Unknown attribute on relation member: {:?}=\"{:?}\"",
@@ -182,25 +183,23 @@ fn parse_member(e: &BytesStart) -> (ElementId, String) {
 	(ref_id, role)
 }
 
-fn parse_tag(tags: &mut IndexMap<String, String>, e: &BytesStart) {
+fn parse_tag(tags: &mut IndexMap<String, String>, e: &BytesStart) -> Result<(), quick_xml::Error> {
 	let mut key = String::new();
 	let mut value = String::new();
 
 	for a in e.attributes() {
 		let a = a.unwrap();
 		match a.key.as_ref() {
-			b"k" => {
-				key = from_utf8(&a.value).unwrap().to_string();
-			}
-			b"v" => {
-				value = from_utf8(&a.value).unwrap().to_string();
-			}
+			b"k" => key = a.unescape_value()?.to_string(),
+			b"v" => value = a.unescape_value()?.to_string(),
 			_ => {}
 		}
 	}
 	if !key.is_empty() && !value.is_empty() {
 		tags.insert(key, value);
 	}
+
+	Ok(())
 }
 
 fn parse_attributes(attributes: Attributes) -> Option<(i64, Option<LatLon>, ElementInfo)> {
