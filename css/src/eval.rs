@@ -83,6 +83,7 @@ pub enum Type {
 	Url,
 	Expression(ExpressionType),
 	Function(ExpressionType),
+	Rotation,
 }
 
 impl Display for Type {
@@ -99,6 +100,7 @@ impl Display for Type {
 				ExpressionType::Regex => "regular expression",
 				ExpressionType::Unknown => "unknown",
 			},
+			Type::Rotation => "rotation",
 		};
 
 		write!(f, "{type_str}")

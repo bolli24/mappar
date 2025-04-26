@@ -153,6 +153,7 @@ impl Styles {
 			"font-size" => self.try_assign_number(&mut style.text.font_size, specifier, key),
 			"text-color" => self.try_assign_color(&mut style.text.color, specifier, key),
 			"text-position" => self.try_assign_enum(&mut style.text.position, specifier, key),
+			"icon-rotation" => self.try_assing_rotation(&mut style.icon_rotation, specifier, key),
 			name => self.error(Error::UnknownProperty(name.to_string()), style_rule.1),
 		}
 	}
@@ -184,6 +185,14 @@ impl Styles {
 				Error::InvalidSpecifierType(key.to_string(), specifier.0.clone()),
 				specifier.1,
 			);
+		}
+	}
+
+	fn try_assing_rotation(&self, number: &mut f32, specifier: &Spanned<Specifier>, key: &str) {
+		if let Specifier::Rotation(rotation) = specifier.0 {
+			*number = rotation as f32;
+		} else {
+			self.try_eval_number(specifier, key);
 		}
 	}
 

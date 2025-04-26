@@ -19,12 +19,13 @@ use css::Styles;
 use css::context::StyleContext;
 use derive_new::new;
 use draw_list::DrawList;
+use egui::emath::Rot2;
 use egui::{
-	Align2, Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, Response, ScrollArea, Sense, Vec2,
-	Widget, pos2, vec2,
+	Color32, Frame, Id, Mesh, Modifiers, Painter, PointerButton, Pos2, Rect, Response, ScrollArea, Sense, TextureId,
+	Vec2, Widget, pos2, vec2,
 };
 use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape, TextShape};
-use glam::{DVec2, Mat2, Mat3A, UVec2, dvec2, uvec2};
+use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
 use map_memory::MapMemory;
 use render::{DetailedElement, RenderElement};
@@ -259,6 +260,15 @@ impl MapWidget<'_> {
 	}
 }
 
+fn icon_shape(texture_id: TextureId, rect: Rect, angle: f32) -> Shape {
+	let mut mesh = Mesh::with_texture(texture_id);
+	mesh.add_rect_with_uv(rect, UV, Color32::WHITE);
+	if angle != 0.0 {
+		mesh.rotate(Rot2::from_angle(angle), rect.center());
+	}
+	Shape::mesh(mesh)
+}
+
 #[inline]
 fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, fonts: &Fonts) {
 	let color = element.style.color;
@@ -269,7 +279,9 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 			let render_pos = view.render_pos(pos);
 			let rect = Rect::from_center_size(render_pos, Vec2::splat(size * view.ui_scale));
 			if let Some(icon) = element.style.icon {
-				shapes.images.push(Shape::image(icon.0, rect, UV, Color32::WHITE))
+				shapes
+					.images
+					.push(icon_shape(icon.0, rect, element.style.icon_rotation))
 			} else {
 				shapes.nodes.push(Shape::rect_filled(rect, CornerRadius::ZERO, color));
 			}

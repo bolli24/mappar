@@ -7,6 +7,7 @@ pub struct Style {
 	pub color: Color32,
 	pub size: f32,
 	pub icon: Option<Icon>,
+	pub icon_rotation: f32,
 	pub text: Text,
 }
 
@@ -16,6 +17,7 @@ impl Default for Style {
 			color: Color32::LIGHT_RED,
 			size: 2.0,
 			icon: None,
+			icon_rotation: 0.0,
 			text: Text::default(),
 		}
 	}

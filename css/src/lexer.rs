@@ -58,6 +58,9 @@ pub enum Token<'a> {
 	#[regex(r"px|pt|%", |lex| lex.slice(), priority = 2)]
 	Unit(&'a str),
 
+	#[regex(r"rad|deg|°|grad|turn", |lex| lex.slice(), priority = 2)]
+	RotationUnit(&'a str),
+
 	#[regex(r"[[^[:ascii:]][[:alpha:]]_][[^[:ascii:]][[:alnum:]]_-]*", |lex| lex.slice(), priority = 1)]
 	Identifier(&'a str),
 
@@ -150,6 +153,7 @@ impl Display for Token<'_> {
 			Token::Op(op) => write!(f, "{}", op),
 			Token::Color(color) => write!(f, "{:?}", color),
 			Token::Unit(unit) => write!(f, "{}", unit),
+			Token::RotationUnit(unit) => write!(f, "{}", unit),
 			Token::Identifier(ident) => write!(f, "{}", ident),
 			Token::Number(num) => write!(f, "{}", num),
 			Token::Quoted(string) => write!(f, "\"{}\"", string),

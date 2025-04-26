@@ -6,8 +6,10 @@ use chumsky::prelude::*;
 use chumsky::recursive::Indirect;
 use ecolor::Color32;
 use logos::Logos;
+use std::f64::consts::PI;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
+use std::ops::Mul;
 
 pub mod color;
 pub mod eval;
@@ -212,7 +214,7 @@ where
 	let labelled_color = identifier.or_not().then(color);
 
 	let unit = select! {
-		Token::Unit(unit) => Unit::from(unit),
+		Token::Unit(unit) => Unit::try_from(unit).unwrap(),
 	};
 
 	let size = number.then(unit.or_not()).map(|(number, unit)| Size { number, unit });
@@ -223,9 +225,14 @@ where
 		.collect::<Vec<Size>>()
 		.filter(|sizes| sizes.len() > 1 || sizes[0].unit.is_some()); // A single size without a unit is a number
 
+	let rotation_unit = select! { Token::RotationUnit(unit) => RotationUnit::try_from(unit).unwrap() };
+
+	let rotation = number.then(rotation_unit).map(|(number, unit)| unit * number);
+
 	let specifier = choice((
 		labelled_color.map(|(label, color)| Specifier::Color(color, label)),
 		sizes.map(Specifier::Sizes),
+		rotation.map(Specifier::Rotation),
 		expression.clone().map(|expression| match expression {
 			Spanned(Expression::Identifier(name), _) => Specifier::Named(name),
 			_ => Specifier::Expression(expression),
@@ -688,6 +695,7 @@ pub enum Specifier {
 	Url(String),
 	Expression(Spanned<Expression>),
 	Function(Function),
+	Rotation(f64),
 }
 
 impl Specifier {
@@ -699,6 +707,7 @@ impl Specifier {
 			Self::Url(_) => Type::Url,
 			Self::Expression(expression) => Type::Expression(expression.0.get_type()),
 			Self::Function(function) => Type::Expression(function.get_return_type()),
+			Self::Rotation(_) => Type::Rotation,
 		}
 	}
 }
@@ -716,13 +725,62 @@ pub enum Unit {
 	Percent,
 }
 
-impl From<&str> for Unit {
-	fn from(s: &str) -> Self {
+impl TryFrom<&str> for Unit {
+	type Error = String;
+
+	fn try_from(s: &str) -> Result<Self, Self::Error> {
 		match s {
-			"px" => Unit::Px,
-			"pt" => Unit::Pt,
-			"%" => Unit::Percent,
-			_ => unreachable!(),
+			"px" => Ok(Unit::Px),
+			"pt" => Ok(Unit::Pt),
+			"%" => Ok(Unit::Percent),
+			_ => Err(format!("Unknown unit: {}", s)),
+		}
+	}
+}
+
+impl Mul<f64> for Unit {
+	type Output = f64;
+
+	fn mul(self, rhs: f64) -> Self::Output {
+		match self {
+			Self::Px => rhs,
+			Self::Pt => rhs * 4.0 / 3.0,
+			Self::Percent => rhs / 100.0,
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum RotationUnit {
+	Rad,
+	Deg,
+	Grad,
+	Turn,
+}
+
+impl TryFrom<&str> for RotationUnit {
+	type Error = String;
+
+	fn try_from(s: &str) -> Result<Self, Self::Error> {
+		match s {
+			"rad" => Ok(Self::Rad),
+			"deg" | "°" => Ok(Self::Deg),
+			"grad" => Ok(Self::Grad),
+			"turn" => Ok(Self::Turn),
+			_ => Err(format!("Unknown rotation unit: {}", s)),
+		}
+	}
+}
+
+impl Mul<f64> for RotationUnit {
+	type Output = f64;
+
+	fn mul(self, rhs: f64) -> Self::Output {
+		match self {
+			Self::Rad => rhs,
+			Self::Deg => rhs * PI / 180.0,
+			Self::Grad => rhs * PI / 200.0,
+			Self::Turn => rhs * PI,
 		}
 	}
 }
