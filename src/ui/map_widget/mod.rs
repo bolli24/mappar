@@ -20,11 +20,11 @@ use css::context::StyleContext;
 use derive_new::new;
 use draw_list::DrawList;
 use egui::{
-	Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, Response, ScrollArea, Sense, Vec2, Widget, pos2,
-	vec2,
+	Align2, Color32, Frame, Id, Modifiers, Painter, PointerButton, Pos2, Rect, Response, ScrollArea, Sense, Vec2,
+	Widget, pos2, vec2,
 };
 use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape, TextShape};
-use glam::{DVec2, UVec2, dvec2, uvec2};
+use glam::{DVec2, Mat2, Mat3A, UVec2, dvec2, uvec2};
 use itertools::Itertools;
 use map_memory::MapMemory;
 use render::{DetailedElement, RenderElement};
@@ -276,7 +276,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 
 			if !element.style.text.text.is_empty() {
 				let text = &element.style.text;
-				shapes.nodes.push(Shape::text(
+				shapes.text.push(Shape::text(
 					fonts,
 					render_pos + text.offset,
 					text.anchor,
@@ -291,7 +291,6 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 			let stroke = PathStroke::new(size * view.ui_scale, color);
 
 			if !element.style.text.text.is_empty() {
-				// FIXME: double text rendering
 				let text = &element.style.text;
 				let galley = fonts.layout_no_wrap(text.text.to_string(), text.font_id(), text.color);
 				let len_sq = galley.size().x.powi(2);
@@ -306,13 +305,16 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 							continue;
 						}
 
+						let normalized = vec.normalized();
+						let pos =
+							midpoint - 0.5 * (galley.size().x * normalized - galley.size().y * normalized.rot90());
 						let mut angle = vec.angle();
 						if angle > FRAC_PI_2 {
 							angle -= PI
 						}
 
-						shapes.paths.push(Shape::Text(TextShape {
-							pos: midpoint,
+						shapes.text.push(Shape::Text(TextShape {
+							pos,
 							galley: galley.clone(),
 							underline: egui::Stroke::NONE,
 							fallback_color: text.color,

@@ -1,20 +1,17 @@
 use egui::{Painter, Shape};
 
+#[derive(Default)]
 pub struct DrawList {
 	pub paths: Vec<Shape>,
 	pub areas: Vec<Shape>,
 	pub nodes: Vec<Shape>,
 	pub images: Vec<Shape>,
+	pub text: Vec<Shape>,
 }
 
 impl DrawList {
-	pub const fn new() -> Self {
-		Self {
-			paths: Vec::new(),
-			areas: Vec::new(),
-			nodes: Vec::new(),
-			images: Vec::new(),
-		}
+	pub fn new() -> Self {
+		Self::default()
 	}
 
 	pub fn draw(self, painter: &Painter) {
@@ -23,9 +20,10 @@ impl DrawList {
 		painter.extend(self.paths);
 		painter.extend(self.nodes);
 		painter.extend(self.images);
+		painter.extend(self.text);
 	}
 
 	pub fn count(&self) -> usize {
-		self.paths.len() + self.areas.len() + self.nodes.len() + self.images.len()
+		self.paths.len() + self.areas.len() + self.nodes.len() + self.images.len() + self.text.len()
 	}
 }
