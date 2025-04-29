@@ -50,7 +50,7 @@ pub fn get_imagery(
 		.await
 		{
 			message_info!(messages, "Found local imagery info.");
-			imageries_from_str(&xml, messages, imageries).await;
+			let _ = imageries_from_str(&xml, messages, imageries).await;
 		} else {
 			message_info!(messages, "Could not find local imagery info. Fetching...");
 			update_josm_imagery(
@@ -102,16 +102,18 @@ pub fn update_josm_imagery(
 
 		// TODO: Wasm32: Cache iamgery locally
 		#[cfg(not(target_arch = "wasm32"))]
-		if let Err(err) = std::fs::write(josm_xml_path, &xml) {
-			message_error!(messages, "Unable to write JOSM imagery data to file: {err}");
-			return;
-		};
+		if imageries_from_str(&xml, messages.clone(), imageries).await.is_ok() {
+			if let Err(err) = std::fs::write(josm_xml_path, &xml) {
+				message_error!(messages, "Unable to write JOSM imagery data to file: {err}");
+			};
+		}
 
-		imageries_from_str(&xml, messages, imageries).await;
+		#[cfg(target_arch = "wasm32")]
+		let _ = imageries_from_str(&xml, messages, imageries).await;
 	});
 }
 
-async fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mutex<Imageries>>) {
+async fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mutex<Imageries>>) -> Result<(), ()> {
 	let start = Instant::now();
 
 	let mut deserializer = Deserializer::from_str(xml);
@@ -123,7 +125,7 @@ async fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mu
 		Err(err) => {
 			let path = err.path().to_string();
 			message_error!(messages, "Unable to parse JOSM imagery data: <{path}> - {err}");
-			return;
+			return Err(());
 		}
 	};
 
@@ -134,6 +136,7 @@ async fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mu
 		start.elapsed()
 	);
 	*imageries.lock().unwrap() = parsed;
+	Ok(())
 }
 
 impl From<&str> for Name {
