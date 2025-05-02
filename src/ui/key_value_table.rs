@@ -22,7 +22,7 @@ impl Widget for KeyValueTable<'_> {
 		let column_width = ((panel.width() - ACTION_COLUMN) * 0.5).clamp(40.0, 400.0);
 		let mut map_data = self.map_data.lock().unwrap();
 
-		let id = self.selection.selected_elements.iter().next();
+		let id = self.selection.elements.iter().next();
 
 		let element = id.and_then(|id| map_data.get(id));
 		let mut edit = None;
@@ -46,7 +46,7 @@ impl Widget for KeyValueTable<'_> {
 						});
 					})
 					.body(|mut body| {
-						if self.selection.selected_elements.len() > 1 {
+						if self.selection.elements.len() > 1 {
 							body.ui_mut().label("Select only one element to edit tags.");
 							return;
 						}

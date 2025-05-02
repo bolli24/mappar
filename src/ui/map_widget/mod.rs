@@ -1,7 +1,7 @@
 pub mod css;
 mod draw_list;
 pub mod map_memory;
-mod map_state;
+pub mod map_state;
 mod polygon;
 pub mod render;
 mod style;
@@ -13,7 +13,6 @@ use crate::imagery::{Imagery, ImageryRef};
 use crate::map::map_data::{CIRCUMFERENCE_EARTH, Element, LatLon, MapData, latlon};
 use crate::ui::debug_text::DebugText;
 use crate::ui::edit_bar::EditMode;
-use crate::ui::map_widget::map_state::MapState;
 use crate::util::convert::{ToDVec2, ToPos2};
 use css::Styles;
 use css::context::StyleContext;
@@ -21,14 +20,15 @@ use derive_new::new;
 use draw_list::DrawList;
 use egui::emath::Rot2;
 use egui::{
-	Color32, Frame, Id, Mesh, Modifiers, Painter, PointerButton, Pos2, Rect, Response, ScrollArea, Sense, TextureId,
-	Vec2, Widget, pos2, vec2,
+	Color32, Frame, Id, Mesh, Painter, Pos2, Rect, Response, ScrollArea, Sense, TextureId, Vec2, Widget, pos2, vec2,
 };
 use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape, TextShape};
 use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
 use map_memory::MapMemory;
+use map_state::MapState2;
 use render::{DetailedElement, RenderElement};
+use statig::prelude::StateMachine;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::f64::consts::PI;
@@ -49,6 +49,7 @@ pub struct MapWidget<'a> {
 	interactive: bool,
 	active_imagery_ref: Option<ImageryRef>,
 	edit_mode: EditMode,
+	map_state2: &'a mut StateMachine<MapState2>,
 }
 
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
@@ -94,16 +95,6 @@ impl Widget for MapWidget<'_> {
 						let delta = delta * view.scale as f32;
 						dvec2(f64::from(delta.x), -f64::from(delta.y))
 					};
-
-					dbgtxt!(self.debug_text, "World delta: {world_delta}");
-
-					if self.interactive
-						&& (response.dragged_by(PointerButton::Middle)
-							|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
-								&& response.dragged_by(PointerButton::Primary)))
-					{
-						self.mem.camera_pos -= world_delta;
-					}
 
 					dbgtxt!(self.debug_text, "Camera: {:?}", self.mem.camera_pos);
 					dbgtxt!(self.debug_text, "Zoom: {}", self.mem.zoom_level);
@@ -166,55 +157,20 @@ impl Widget for MapWidget<'_> {
 						}
 					};
 
-					if self.interactive && self.edit_mode == EditMode::Select {
-						if response.contains_pointer()
-							&& ui.ctx().input(|i| i.pointer.button_down(PointerButton::Primary))
-							&& self.mem.map_state == MapState::Default
-						{
-							if let Some(hover_element) = hover_element {
-								if !ui.ctx().input(|i| i.modifiers.shift)
-									&& !self.mem.selection.selected_elements.contains(&hover_element.id)
-								{
-									self.mem.selection.selected_elements.clear();
-								}
-								self.mem.selection.selected_elements.insert(hover_element.id);
-							}
-						}
+					let mut context = map_state::Context {
+						ui_context: ui.ctx(),
+						response: response.clone(),
+						interactive: self.interactive,
+						map_data: self.map_data,
+						mem: self.mem,
+						world_delta,
+						edit_mode: self.edit_mode,
+						hover_element,
+					};
 
-						if response.clicked_by(PointerButton::Primary) && self.mem.map_state == MapState::Default {
-							if let Some(hover_element) = hover_element {
-								if !ui.ctx().input(|i| i.modifiers.shift) {
-									self.mem.selection.selected_elements.clear();
-								}
-								self.mem.selection.selected_elements.insert(hover_element.id);
-							}
-						}
+					self.map_state2.handle_with_context(&(), &mut context);
+					dbgtxt!(self.debug_text, "MapState: {:?}", self.map_state2.state());
 
-						if response.clicked_by(PointerButton::Primary)
-							&& hover_element.is_none()
-							&& !ui.ctx().input(|i| i.modifiers.shift)
-						{
-							self.mem.selection.selected_elements.clear();
-						}
-
-						if response.drag_started_by(PointerButton::Primary) {
-							self.mem.map_state = MapState::MoveElements(view.pointer_world_pos.unwrap());
-						} else if response.drag_stopped_by(PointerButton::Primary) {
-							self.mem.map_state = MapState::Default;
-						}
-						if
-						/* response.contains_pointer()
-						&& ui.ctx().input(|i| i.pointer.button_down(PointerButton::Primary)) */
-						matches!(self.mem.map_state, MapState::MoveElements(_))
-							&& world_delta.length_squared() > 1e-5
-						// && !self.mem.selection.selected_elements.is_empty()
-						{
-							self.map_data
-								.move_by(&self.mem.selection.selected_elements, &world_delta);
-						}
-					}
-
-					dbgtxt!(self.debug_text, "MapState: {:?}", self.mem.map_state);
 					dbgtxt!(self.debug_text, "Closest element: {:?}", hover_element.map(|e| e.id));
 					dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");
 
@@ -226,7 +182,7 @@ impl Widget for MapWidget<'_> {
 						if hovered {
 							draw_element(&element.hovered(), &mut shapes, &view, &fonts);
 						}
-						let selected = self.mem.selection.selected_elements.contains(&element.id);
+						let selected = self.mem.selection.elements.contains(&element.id);
 						if selected {
 							draw_element(&element.selected(), &mut shapes, &view, &fonts)
 						}

@@ -4,6 +4,7 @@ use super::key_value_table::KeyValueTable;
 use super::layer_list::Layers;
 use super::map_widget::MapWidget;
 use super::map_widget::css::Styles;
+use super::map_widget::map_state::MapState2;
 use super::map_widget::render::DetailedElement;
 use super::messages::Messages;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
@@ -18,6 +19,7 @@ use crate::ui::map_widget::map_memory::MapMemory;
 use crate::{dbgtxt, message_error, unreachable_log};
 use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
+use statig::prelude::{IntoStateMachineExt, StateMachine};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::watch::{Receiver, Sender, channel};
@@ -59,6 +61,7 @@ pub struct MyApp {
 	#[cfg(not(target_arch = "wasm32"))]
 	project_dirs: ProjectDirs,
 	edit_mode: EditMode,
+	map_state: StateMachine<MapState2>,
 }
 
 impl MyApp {
@@ -128,6 +131,7 @@ impl MyApp {
 			#[cfg(not(target_arch = "wasm32"))]
 			project_dirs,
 			edit_mode: EditMode::Select,
+			map_state: MapState2::state_machine(MapState2 {}),
 		};
 
 		app.layers.0.push_back(Layer("EsriWorldImagery".into(), true));
@@ -364,6 +368,7 @@ impl eframe::App for MyApp {
 					true,
 					active_imagery_ref,
 					self.edit_mode,
+					&mut self.map_state,
 				))
 				.rect;
 			rect.min += egui::Vec2::new(5.0, 5.0);
@@ -412,8 +417,8 @@ impl eframe::App for MyApp {
 				if let Some(change_result) = change_result {
 					match change_result {
 						Ok(id) => {
-							self.map_memory.selection.selected_elements.clear();
-							self.map_memory.selection.selected_elements.insert(id);
+							self.map_memory.selection.elements.clear();
+							self.map_memory.selection.elements.insert(id);
 						}
 						Err(_) => {
 							unreachable_log!("Undo should not error.");
