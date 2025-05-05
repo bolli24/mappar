@@ -274,12 +274,18 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 						}
 
 						let normalized = vec.normalized();
-						let pos =
-							midpoint - 0.5 * (galley.size().x * normalized - galley.size().y * normalized.rot90());
 						let mut angle = vec.angle();
+						let mut flip = 0.5;
+
 						if angle > FRAC_PI_2 {
-							angle -= PI
+							angle -= PI;
+						} else if angle < -FRAC_PI_2 {
+							angle += PI;
+						} else {
+							flip = -0.5;
 						}
+						let pos =
+							midpoint + flip * (galley.size().x * normalized - galley.size().y * normalized.rot90());
 
 						shapes.text.push(Shape::Text(TextShape {
 							pos,
