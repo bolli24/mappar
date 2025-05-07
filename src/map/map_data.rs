@@ -387,7 +387,7 @@ impl MapElement {
 	// TODO: also consider "name:" + <LANG>
 	pub fn get_auto_text(&self) -> String {
 		for tag in AUTO_TEXT_TAGS {
-			if let Some(value) = self.tags.get(tag) {
+			if let Some(value) = self.get_tag_with_new(tag) {
 				if !value.is_empty() {
 					return value.to_string();
 				}
