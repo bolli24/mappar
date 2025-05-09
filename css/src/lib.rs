@@ -671,6 +671,16 @@ pub enum SubSelector {
 	SettingGroup(String),
 }
 
+impl SubSelector {
+	pub fn pseudo_class(&self) -> Option<&str> {
+		match &self {
+			Self::Object(_, _, _, pseudo_class) => pseudo_class.as_ref().map(|s| s.as_str()),
+			Self::PseudoClass(pseudo_class) => Some(&pseudo_class),
+			_ => None,
+		}
+	}
+}
+
 type Layer = String;
 
 type PseudoClass = String;

@@ -339,6 +339,13 @@ impl MapElement {
 			)
 		})
 	}
+
+	pub fn is_closed(&self) -> bool {
+		match &self.element {
+			Element::Way { nodes } => is_closed(nodes),
+			_ => false,
+		}
+	}
 }
 pub fn is_closed(nodes: &[ElementId]) -> bool {
 	debug_assert!(nodes.len() >= 2);

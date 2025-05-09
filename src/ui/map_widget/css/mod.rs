@@ -311,14 +311,15 @@ fn matches_selector(selector: &Selector, element: &MapElement, context: &StyleCo
 }
 
 fn matches_subselector(subselector: &SubSelector, element: &MapElement, context: &StyleContext) -> bool {
-	match subselector {
+	let matching = match subselector {
 		SubSelector::Object(object, zoom, conditions, _pseudo_class) => {
 			matches_object(object, element, context)
 				&& matches_zoom(zoom, context)
 				&& matches_conditions(conditions, element, context)
 		}
 		_ => todo!(),
-	}
+	};
+	matching && (subselector.pseudo_class() != Some("closed") || element.is_closed())
 }
 
 fn matches_zoom(zoom: &Option<Zoom>, context: &StyleContext) -> bool {
