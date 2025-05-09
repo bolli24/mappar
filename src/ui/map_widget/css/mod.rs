@@ -340,6 +340,7 @@ fn matches_conditions(conditions: &[Condition], element: &MapElement, _context: 
 		Condition::Binary(tag_key, BinaryOp::Eq, Expression::Identifier(tag_value)) => {
 			element.get_tag_with_new(tag_key) == Some(tag_value)
 		}
+		Condition::Tag(tag) => element.get_tag_with_new(&tag).is_some(),
 		_ => todo!(),
 	})
 }

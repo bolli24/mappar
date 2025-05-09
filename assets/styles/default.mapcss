@@ -15,6 +15,9 @@ way {
     color: #404052;
     size: 2.0;
     text: auto;
+}
+
+way[highway] way[railway] {
     text-position: line;
 }
 

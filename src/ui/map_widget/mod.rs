@@ -20,7 +20,8 @@ use derive_new::new;
 use draw_list::DrawList;
 use egui::emath::Rot2;
 use egui::{
-	Color32, Frame, Id, Mesh, Painter, Pos2, Rect, Response, ScrollArea, Sense, TextureId, Vec2, Widget, pos2, vec2,
+	Color32, Frame, Galley, Id, Mesh, Painter, Pos2, Rect, Response, ScrollArea, Sense, TextureId, Vec2, Widget, pos2,
+	vec2,
 };
 use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape, TextShape};
 use glam::{DVec2, UVec2, dvec2, uvec2};
@@ -34,6 +35,7 @@ use std::collections::HashSet;
 use std::f64::consts::PI;
 use std::ops::RangeInclusive;
 use std::sync::{Arc, Mutex};
+use style::TextPosition;
 use view::View;
 
 const ZOOM_SPEED: f64 = 5.0;
@@ -229,6 +231,7 @@ fn icon_shape(texture_id: TextureId, rect: Rect, angle: f32) -> Shape {
 fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, fonts: &Fonts) {
 	let color = element.style.color;
 	let size = element.style.size;
+	let text = &element.style.text;
 
 	match &element.element {
 		RenderElement::Node(pos) => {
@@ -242,8 +245,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 				shapes.nodes.push(Shape::rect_filled(rect, CornerRadius::ZERO, color));
 			}
 
-			if !element.style.text.text.is_empty() {
-				let text = &element.style.text;
+			if !text.text.is_empty() {
 				shapes.text.push(Shape::text(
 					fonts,
 					render_pos + text.offset,
@@ -255,16 +257,14 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 			}
 		}
 		RenderElement::Path(nodes, is_closed) => {
-			let nodes: Vec<Pos2> = nodes.iter().map(|pos| view.render_pos(pos)).collect();
-			let stroke = PathStroke::new(size * view.ui_scale, color);
+			let vertices: Vec<Pos2> = nodes.iter().map(|pos| view.render_pos(pos)).collect();
 
-			if !element.style.text.text.is_empty() {
-				let text = &element.style.text;
+			if !is_closed && text.position == TextPosition::Line && !text.text.is_empty() {
 				let galley = fonts.layout_no_wrap(text.text.to_string(), text.font_id(), text.color);
 				let len_sq = galley.size().x.powi(2);
 
 				use std::f32::consts::{FRAC_PI_2, PI};
-				for (a, b) in nodes.iter().tuple_windows() {
+				for (a, b) in vertices.iter().tuple_windows() {
 					if a.distance_sq(*b) > len_sq {
 						let vec = b.to_vec2() - a.to_vec2();
 						let midpoint = *a + (vec * 0.5);
@@ -298,10 +298,28 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 						}))
 					}
 				}
+			} else if *is_closed && text.position == TextPosition::Center && !text.text.is_empty() {
+				let galley = fonts.layout_no_wrap(text.text.to_string(), text.font_id(), text.color);
+				let bounds = Rect::from_points(&vertices);
+				let pos = find_label_pos(bounds, &galley, &vertices);
+
+				if let Some(pos) = pos {
+					let pos = pos - galley.size() * 0.5;
+					shapes.text.push(Shape::Text(TextShape {
+						pos,
+						galley: galley.clone(),
+						underline: egui::Stroke::NONE,
+						fallback_color: text.color,
+						override_text_color: None,
+						opacity_factor: 1.0,
+						angle: 0.0,
+					}))
+				}
 			}
 
+			let stroke = PathStroke::new(size * view.ui_scale, color);
 			shapes.paths.push(Shape::Path(PathShape {
-				points: nodes,
+				points: vertices,
 				stroke,
 				fill: Color32::TRANSPARENT,
 				closed: *is_closed,
@@ -515,6 +533,23 @@ fn closest_element<'a>(render_data: &'a [DetailedElement], scale: &f64) -> Optio
 		.next()
 }
 
+fn find_label_pos(bounds: Rect, galley: &Galley, points: &[Pos2]) -> Option<Pos2> {
+	let galley_size = galley.size();
+
+	if galley_size.x > bounds.width() || galley_size.y > bounds.height() {
+		return None;
+	}
+
+	let centered = Rect::from_center_size(bounds.center(), galley.size());
+
+	if rect_inside_polygon(centered, points) {
+		return Some(centered.center());
+	}
+
+	None
+	// TODO: find better label position
+}
+
 fn get_tile(coords: DVec2, zoom_level: u32) -> UVec2 {
 	const TILE_SIZE: f64 = 256.0;
 	let lat_lon = LatLon::from_web_mercator(coords);
@@ -584,4 +619,41 @@ pub fn scale(zoom_level: f64) -> f64 {
 
 pub fn world_size(zoom_level: u32) -> f64 {
 	2f64.powi(zoom_level as i32)
+}
+
+/// Compute if a point is inside a polygon
+/// Only works with closed polygon i.e. points[0] = points[points.len() - 1]
+pub fn point_inside_polygon(p: Pos2, points: &[Pos2]) -> bool {
+	debug_assert_eq!(points[0], points[points.len() - 1]);
+	let mut wn = 0;
+	for i in 0..points.len() - 1 {
+		if points[i].y <= p.y {
+			if points[i + 1].y > p.y && is_left(points[i], points[i + 1], p) {
+				wn += 1;
+			}
+		} else if !is_left(points[i], points[i + 1], p) {
+			wn -= 0;
+		}
+	}
+
+	wn != 0
+}
+
+/// Compute if a point is inside a polygon
+// TODO: Maybe check the other corners as well
+pub fn rect_inside_polygon(rect: Rect, points: &[Pos2]) -> bool {
+	point_inside_polygon(rect.min, points) && point_inside_polygon(rect.max, points)
+}
+
+/*
+isLeft( Point P0, Point P1, Point P2 )
+{
+	return ( (P1.x - P0.x) * (P2.y - P0.y)
+			- (P2.x -  P0.x) * (P1.y - P0.y) );
+}
+*/
+
+#[inline]
+fn is_left(p0: Pos2, p1: Pos2, p2: Pos2) -> bool {
+	(p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y) > 0.0
 }
