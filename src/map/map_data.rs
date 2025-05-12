@@ -1,8 +1,9 @@
-use super::edit::{Action, Edit, EditError};
+use super::edit::{Action, Edit};
 use chrono::{DateTime, Utc};
 use glam::{DVec2, dvec2};
 use indexmap::IndexMap;
 use mappar_macros::Id;
+use smallvec::smallvec;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
@@ -25,8 +26,10 @@ pub struct Version(pub u64);
 #[derive(Id, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct UserId(pub u32);
 
+pub type Elements = HashMap<ElementId, MapElement>;
+
 pub struct MapData {
-	elements: HashMap<ElementId, MapElement>,
+	pub elements: Elements,
 	history: Record<Edit>,
 }
 
@@ -70,30 +73,30 @@ impl MapData {
 		self.history.len()
 	}
 
-	pub fn edit(&mut self, edit: Edit) -> Result<ElementId, EditError> {
+	pub fn edit(&mut self, edit: Edit) -> <Edit as undo::Edit>::Output {
 		self.history.edit(&mut self.elements, edit)
 	}
 
-	pub fn undo(&mut self) -> Option<Result<ElementId, EditError>> {
+	pub fn undo(&mut self) -> Option<<Edit as undo::Edit>::Output> {
 		self.history.undo(&mut self.elements)
 	}
 
-	pub fn redo(&mut self) -> Option<Result<ElementId, EditError>> {
+	pub fn redo(&mut self) -> Option<<Edit as undo::Edit>::Output> {
 		self.history.undo(&mut self.elements)
 	}
 
 	pub fn add_tag(&self, id: ElementId, key: String, value: String) -> Edit {
-		Edit(id, Action::AddTag { key, value })
+		Edit(smallvec![id], Action::AddTag { key, value })
 	}
 
 	pub fn add_new_tag(&self, id: ElementId) -> Edit {
 		let (key, value) = self.get(&id).unwrap().new_tag.clone().unwrap();
-		Edit(id, Action::AddNewTag { key, value })
+		Edit(smallvec![id], Action::AddNewTag { key, value })
 	}
 
 	pub fn override_tag(&self, id: ElementId, key: String, value: String) -> Edit {
 		Edit(
-			id,
+			smallvec![id],
 			Action::OverrideTag {
 				previous_value: self.get_value(&id, &key),
 				key,
@@ -104,7 +107,7 @@ impl MapData {
 
 	pub fn update_value(&self, id: ElementId, key: String, value: String) -> Edit {
 		Edit(
-			id,
+			smallvec![id],
 			Action::UpdateValue {
 				previous_value: self.get_value(&id, &key),
 				key,
@@ -120,7 +123,7 @@ impl MapData {
 			unreachable!("Element {id} must have key '{key}' to be overwritten.");
 		};
 		let value = element.tags.get_index(index).unwrap().1.clone();
-		Edit(id, Action::RemoveTag { key, value, index })
+		Edit(smallvec![id], Action::RemoveTag { key, value, index })
 	}
 
 	pub fn update_new_tag(&self, id: ElementId, key: String, value: String) -> Edit {
@@ -128,7 +131,7 @@ impl MapData {
 			unreachable!("Element {id} must exist.");
 		};
 		Edit(
-			id,
+			smallvec![id],
 			Action::UpdateNewTag {
 				current: (key, value),
 				previous: element.new_tag.clone(),
@@ -137,19 +140,23 @@ impl MapData {
 	}
 
 	// TODO: use Edit
-	pub fn move_by<'a>(&mut self, elements: impl IntoIterator<Item = &'a ElementId>, delta: &DVec2) {
+	pub fn raw_move_by<'a>(elements: &mut Elements, ids: impl IntoIterator<Item = &'a ElementId>, delta: DVec2) {
 		let mut moved = HashSet::with_capacity(100);
 
-		for element_id in elements.into_iter() {
-			self.move_element(&mut moved, element_id, delta);
+		for element_id in ids.into_iter() {
+			Self::move_element(elements, &mut moved, element_id, &delta);
 		}
 	}
 
-	fn move_element(&mut self, moved: &mut HashSet<ElementId>, element_id: &ElementId, delta: &DVec2) {
+	pub fn move_by<'a>(&self, ids: impl IntoIterator<Item = &'a ElementId>, delta: DVec2, already_moved: bool) -> Edit {
+		Edit(ids.into_iter().copied().collect(), Action::Move(delta, already_moved))
+	}
+
+	fn move_element(elements: &mut Elements, moved: &mut HashSet<ElementId>, element_id: &ElementId, delta: &DVec2) {
 		if !moved.insert(*element_id) {
 			return;
 		}
-		let element = self.get(element_id).unwrap();
+		let element = elements.get(element_id).unwrap();
 		match &element.element {
 			Element::Node { pos } => {
 				pos.set(pos.get() + *delta);
@@ -160,7 +167,7 @@ impl MapData {
 					"Way must be proper shape."
 				);
 				for node in nodes.clone() {
-					self.move_element(moved, &node, delta);
+					Self::move_element(elements, moved, &node, delta);
 				}
 			}
 			Element::Relation { .. } => {

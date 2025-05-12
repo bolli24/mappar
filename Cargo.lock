@@ -2028,6 +2028,7 @@ dependencies = [
  "serde-inline-default",
  "serde_path_to_error",
  "simplelog",
+ "smallvec",
  "statig",
  "strum 0.27.1",
  "tar",

@@ -38,6 +38,8 @@ use std::sync::{Arc, Mutex};
 use style::TextPosition;
 use view::View;
 
+use super::messages::Messages;
+
 const ZOOM_SPEED: f64 = 5.0;
 
 #[derive(new)]
@@ -51,6 +53,7 @@ pub struct MapWidget<'a> {
 	interactive: bool,
 	active_imagery_ref: Option<ImageryRef>,
 	edit_mode: EditMode,
+	messages: Messages,
 	map_state2: &'a mut StateMachine<MapState2>,
 }
 
@@ -168,6 +171,7 @@ impl Widget for MapWidget<'_> {
 						world_delta,
 						edit_mode: self.edit_mode,
 						hover_element,
+						messages: self.messages.clone(),
 					};
 
 					self.map_state2.handle_with_context(&(), &mut context);

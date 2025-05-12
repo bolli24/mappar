@@ -2,7 +2,11 @@ use egui::{Modifiers, PointerButton};
 use glam::DVec2;
 use statig::prelude::*;
 
-use crate::{map::map_data::MapData, ui::edit_bar::EditMode};
+use crate::{
+	map::map_data::MapData,
+	message_error,
+	ui::{edit_bar::EditMode, messages::Messages},
+};
 
 use super::{map_memory::MapMemory, render::DetailedElement};
 
@@ -20,6 +24,7 @@ pub struct Context<'a> {
 	pub world_delta: DVec2,
 	pub edit_mode: EditMode,
 	pub hover_element: Option<&'a DetailedElement>,
+	pub messages: Messages,
 }
 
 #[state_machine(initial = "State::default()", state(derive(Debug)), superstate(derive(Debug)))]
@@ -58,7 +63,9 @@ impl MapState2 {
 			&& !context.mem.selection.elements.is_empty()
 			&& context.edit_mode == EditMode::Select
 		{
-			return Response::Transition(State::MoveElements {});
+			return Response::Transition(State::MoveElements {
+				total_delta: DVec2::ZERO,
+			});
 		}
 
 		Response::Handled
@@ -79,12 +86,29 @@ impl MapState2 {
 	}
 
 	#[state]
-	fn move_elements(context: &mut Context<'_>) -> Response<State> {
-		context
-			.map_data
-			.move_by(&context.mem.selection.elements, &context.world_delta);
+	fn move_elements(context: &mut Context<'_>, total_delta: &mut DVec2) -> Response<State> {
+		*total_delta += context.world_delta;
+		MapData::raw_move_by(
+			&mut context.map_data.elements,
+			&context.mem.selection.elements,
+			context.world_delta,
+		);
 
 		if context.response.drag_stopped_by(PointerButton::Primary) {
+			let edit = context
+				.map_data
+				.move_by(&context.mem.selection.elements, *total_delta, true);
+			let result = context.map_data.edit(edit);
+			if let Err(err) = result {
+				message_error!(context.messages, "Error moving elements: {err}");
+			}
+			Response::Transition(State::Default {})
+		} else if context.response.clicked_by(PointerButton::Secondary) {
+			MapData::raw_move_by(
+				&mut context.map_data.elements,
+				&context.mem.selection.elements,
+				-*total_delta,
+			);
 			Response::Transition(State::Default {})
 		} else {
 			Response::Handled

@@ -368,6 +368,7 @@ impl eframe::App for MyApp {
 					true,
 					active_imagery_ref,
 					self.edit_mode,
+					self.messages.clone(),
 					&mut self.map_state,
 				))
 				.rect;
@@ -416,9 +417,11 @@ impl eframe::App for MyApp {
 
 				if let Some(change_result) = change_result {
 					match change_result {
-						Ok(id) => {
+						Ok(ids) => {
 							self.map_memory.selection.elements.clear();
-							self.map_memory.selection.elements.insert(id);
+							for id in ids {
+								self.map_memory.selection.elements.insert(id);
+							}
 						}
 						Err(_) => {
 							unreachable_log!("Undo should not error.");
