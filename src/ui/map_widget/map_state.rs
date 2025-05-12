@@ -49,13 +49,14 @@ impl MapState2 {
 				.input(|i| i.pointer.button_down(PointerButton::Primary))
 			&& context.edit_mode == EditMode::Select
 		{
+			let shift = context.ui_context.input(|i| i.modifiers.shift);
 			if let Some(hover_element) = context.hover_element {
-				if !context.ui_context.input(|i| i.modifiers.shift)
-					&& !context.mem.selection.elements.contains(&hover_element.id)
-				{
+				if !shift && !context.mem.selection.elements.contains(&hover_element.id) {
 					context.mem.selection.elements.clear();
 				}
 				context.mem.selection.elements.insert(hover_element.id);
+			} else if !shift {
+				context.mem.selection.elements.clear();
 			}
 		}
 
