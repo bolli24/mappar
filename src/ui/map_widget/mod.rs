@@ -645,14 +645,6 @@ pub fn rect_inside_polygon(rect: Rect, points: &[Pos2]) -> bool {
 	point_inside_polygon(rect.min, points) && point_inside_polygon(rect.max, points)
 }
 
-/*
-isLeft( Point P0, Point P1, Point P2 )
-{
-	return ( (P1.x - P0.x) * (P2.y - P0.y)
-			- (P2.x -  P0.x) * (P1.y - P0.y) );
-}
-*/
-
 #[inline]
 fn is_left(p0: Pos2, p1: Pos2, p2: Pos2) -> bool {
 	debug_assert_ne!((p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y), 0.0);
