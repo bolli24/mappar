@@ -75,7 +75,7 @@ eframe = { version = "0.31", default-features = false, features = [
     "wayland",
     "persistence",
 ] }
-tokio = { version = "1.44", features = [
+tokio = { version = "1.45", features = [
     "macros",
     "sync",
     "rt-multi-thread",
@@ -94,7 +94,7 @@ eframe = { version = "0.31", default-features = false, features = [
     "glow",          # Use instead of wgpu because eframe does not support webgl with wgpu by default
     "persistence",
 ] }
-tokio = { version = "1.44", default-features = false, features = [
+tokio = { version = "1.45", default-features = false, features = [
     "macros",
     "sync",
     "rt",
