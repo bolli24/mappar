@@ -632,7 +632,7 @@ pub fn point_inside_polygon(p: Pos2, points: &[Pos2]) -> bool {
 				wn += 1;
 			}
 		} else if !is_left(points[i], points[i + 1], p) {
-			wn -= 0;
+			wn -= 1;
 		}
 	}
 
@@ -655,5 +655,6 @@ isLeft( Point P0, Point P1, Point P2 )
 
 #[inline]
 fn is_left(p0: Pos2, p1: Pos2, p2: Pos2) -> bool {
+	debug_assert_ne!((p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y), 0.0);
 	(p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y) > 0.0
 }
