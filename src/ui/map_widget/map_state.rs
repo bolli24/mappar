@@ -11,7 +11,7 @@ use crate::{
 use super::{map_memory::MapMemory, render::DetailedElement};
 
 #[derive(Debug, Clone)]
-pub struct MapState {
+pub struct MapStateMachine {
 	// TODO: edit_mode: EditMode
 }
 
@@ -32,7 +32,7 @@ pub struct Context<'a> {
 	state(derive(Debug)),
 	superstate(derive(Debug))
 )]
-impl MapState {
+impl MapStateMachine {
 	#[state]
 	fn default(context: &mut Context<'_>, mouse_down_delta: &mut DVec2) -> Response<State> {
 		let Context {

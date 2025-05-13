@@ -27,7 +27,7 @@ use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape, TextShape};
 use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
 use map_memory::MapMemory;
-use map_state::MapState;
+use map_state::{MapStateMachine, State as MapState};
 use render::{DetailedElement, RenderElement};
 use statig::prelude::StateMachine;
 use std::cmp::Ordering;
@@ -54,7 +54,7 @@ pub struct MapWidget<'a> {
 	active_imagery_ref: Option<ImageryRef>,
 	edit_mode: EditMode,
 	messages: Messages,
-	map_state: &'a mut StateMachine<MapState>,
+	map_state: &'a mut StateMachine<MapStateMachine>,
 }
 
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
@@ -182,10 +182,12 @@ impl Widget for MapWidget<'_> {
 
 					let mut shapes = DrawList::new();
 					let fonts = ui.ctx().fonts(|f| f.clone());
+					let show_hover = self.mem.selection.elements.is_empty()
+						|| matches!(self.map_state.state(), MapState::Default { .. });
 
 					for element in &render_data {
 						let hovered = self.interactive && hover_element.is_some_and(|e| e.id == element.id);
-						if hovered {
+						if hovered && show_hover {
 							draw_element(&element.hovered(), &mut shapes, &view, &fonts);
 						}
 						let selected = self.mem.selection.elements.contains(&element.id);
