@@ -35,11 +35,22 @@ pub struct Context<'a> {
 impl MapState2 {
 	#[state]
 	fn default(context: &mut Context<'_>, last_delta: &mut DVec2) -> Response<State> {
-		if !context.interactive {
+		let Context {
+			ui_context,
+			response,
+			map_data: _,
+			interactive,
+			mem,
+			world_delta,
+			edit_mode,
+			hover_element,
+			messages: _,
+		} = context;
+
+		if !*interactive {
 			return Response::Handled;
 		}
 
-		let response = &context.response;
 		if response.drag_started_by(PointerButton::Middle)
 			|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
 				&& response.drag_started_by(PointerButton::Primary))
@@ -47,26 +58,25 @@ impl MapState2 {
 			return Response::Transition(State::MoveView {});
 		}
 
-		if context.response.contains_pointer()
-			&& context
-				.ui_context
-				.input(|i| i.pointer.button_down(PointerButton::Primary))
-			&& context.edit_mode == EditMode::Select
+		let shift = ui_context.input(|i| i.modifiers.shift);
+		if response.contains_pointer()
+			&& ui_context.input(|i| i.pointer.button_down(PointerButton::Primary))
+			&& *edit_mode == EditMode::Select
 		{
-			let shift = context.ui_context.input(|i| i.modifiers.shift);
-			if let Some(hover_element) = context.hover_element {
-				if !shift && !context.mem.selection.elements.contains(&hover_element.id) {
-					context.mem.selection.elements.clear();
+			if let Some(hover_element) = hover_element {
+				if !shift && !mem.selection.elements.contains(&hover_element.id) {
+					mem.selection.elements.clear();
 				}
-				context.mem.selection.elements.insert(hover_element.id);
-			} else if !shift {
-				context.mem.selection.elements.clear();
+				mem.selection.elements.insert(hover_element.id);
 			}
+		}
+		if *edit_mode == EditMode::Select && response.clicked_by(PointerButton::Primary) && hover_element.is_none() {
+			mem.selection.elements.clear();
 		}
 
 		if response.drag_started_by(PointerButton::Primary)
-			&& !context.mem.selection.elements.is_empty()
-			&& context.edit_mode == EditMode::Select
+			&& !mem.selection.elements.is_empty()
+			&& *edit_mode == EditMode::Select
 		{
 			return Response::Transition(State::MoveElements {
 				total_delta: DVec2::ZERO,
@@ -74,7 +84,7 @@ impl MapState2 {
 			});
 		}
 
-		*last_delta = context.world_delta;
+		*last_delta = *world_delta;
 
 		Response::Handled
 	}
