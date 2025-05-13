@@ -58,6 +58,16 @@ impl MapState2 {
 			return Response::Transition(State::MoveView {});
 		}
 
+		if response.drag_started_by(PointerButton::Primary)
+			&& !mem.selection.elements.is_empty()
+			&& *edit_mode == EditMode::Select
+		{
+			return Response::Transition(State::MoveElements {
+				total_delta: DVec2::ZERO,
+				initial_delta: *last_delta,
+			});
+		}
+
 		let shift = ui_context.input(|i| i.modifiers.shift);
 		if response.contains_pointer()
 			&& ui_context.input(|i| i.pointer.button_down(PointerButton::Primary))
@@ -72,16 +82,6 @@ impl MapState2 {
 		}
 		if *edit_mode == EditMode::Select && response.clicked_by(PointerButton::Primary) && hover_element.is_none() {
 			mem.selection.elements.clear();
-		}
-
-		if response.drag_started_by(PointerButton::Primary)
-			&& !mem.selection.elements.is_empty()
-			&& *edit_mode == EditMode::Select
-		{
-			return Response::Transition(State::MoveElements {
-				total_delta: DVec2::ZERO,
-				initial_delta: *last_delta,
-			});
 		}
 
 		*last_delta = *world_delta;
