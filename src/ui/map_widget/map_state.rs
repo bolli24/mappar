@@ -4,14 +4,14 @@ use statig::prelude::*;
 
 use crate::{
 	map::map_data::MapData,
-	message_error, message_info,
+	message_error,
 	ui::{edit_bar::EditMode, messages::Messages},
 };
 
 use super::{map_memory::MapMemory, render::DetailedElement};
 
 #[derive(Debug, Clone)]
-pub struct MapState2 {
+pub struct MapState {
 	// TODO: edit_mode: EditMode
 }
 
@@ -32,7 +32,7 @@ pub struct Context<'a> {
 	state(derive(Debug)),
 	superstate(derive(Debug))
 )]
-impl MapState2 {
+impl MapState {
 	#[state]
 	fn default(context: &mut Context<'_>, mouse_down_delta: &mut DVec2) -> Response<State> {
 		let Context {

@@ -27,7 +27,7 @@ use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape, TextShape};
 use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
 use map_memory::MapMemory;
-use map_state::MapState2;
+use map_state::MapState;
 use render::{DetailedElement, RenderElement};
 use statig::prelude::StateMachine;
 use std::cmp::Ordering;
@@ -54,7 +54,7 @@ pub struct MapWidget<'a> {
 	active_imagery_ref: Option<ImageryRef>,
 	edit_mode: EditMode,
 	messages: Messages,
-	map_state2: &'a mut StateMachine<MapState2>,
+	map_state: &'a mut StateMachine<MapState>,
 }
 
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
@@ -174,8 +174,8 @@ impl Widget for MapWidget<'_> {
 						messages: self.messages.clone(),
 					};
 
-					self.map_state2.handle_with_context(&(), &mut context);
-					dbgtxt!(self.debug_text, "MapState: {:?}", self.map_state2.state());
+					self.map_state.handle_with_context(&(), &mut context);
+					dbgtxt!(self.debug_text, "MapState: {:?}", self.map_state.state());
 
 					dbgtxt!(self.debug_text, "Closest element: {:?}", hover_element.map(|e| e.id));
 					dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");

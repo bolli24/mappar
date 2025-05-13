@@ -4,7 +4,7 @@ use super::key_value_table::KeyValueTable;
 use super::layer_list::Layers;
 use super::map_widget::MapWidget;
 use super::map_widget::css::Styles;
-use super::map_widget::map_state::MapState2;
+use super::map_widget::map_state::MapState;
 use super::map_widget::render::DetailedElement;
 use super::messages::Messages;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
@@ -61,7 +61,7 @@ pub struct MyApp {
 	#[cfg(not(target_arch = "wasm32"))]
 	project_dirs: ProjectDirs,
 	edit_mode: EditMode,
-	map_state: StateMachine<MapState2>,
+	map_state: StateMachine<MapState>,
 }
 
 impl MyApp {
@@ -131,7 +131,7 @@ impl MyApp {
 			#[cfg(not(target_arch = "wasm32"))]
 			project_dirs,
 			edit_mode: EditMode::Select,
-			map_state: MapState2::state_machine(MapState2 {}),
+			map_state: MapState::state_machine(MapState {}),
 		};
 
 		app.layers.0.push_back(Layer("EsriWorldImagery".into(), true));
