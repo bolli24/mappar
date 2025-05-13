@@ -93,12 +93,12 @@ impl Widget for MapWidget<'_> {
 
 					let world_delta = {
 						// How much has the pointer moved on the map
-						let mut delta = ui.ctx().input(|i| i.pointer.delta());
+						let mut delta = ui.ctx().input(|i| i.pointer.delta()).to_dvec2();
 						if let Some(from_global) = ui.ctx().layer_transform_from_global(ui.layer_id()) {
-							delta *= from_global.scaling;
+							delta *= f64::from(from_global.scaling);
 						}
-						let delta = delta * view.scale as f32;
-						dvec2(f64::from(delta.x), -f64::from(delta.y))
+						delta = dvec2(delta.x, -delta.y);
+						delta * view.scale
 					};
 
 					dbgtxt!(self.debug_text, "Camera: {:?}", self.mem.camera_pos);

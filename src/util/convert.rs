@@ -1,6 +1,6 @@
 use celes::Country;
 use egui::Pos2;
-use glam::{dvec2, DVec2};
+use glam::{DVec2, dvec2};
 
 pub trait ToDVec2 {
 	fn to_dvec2(self) -> DVec2;
@@ -11,6 +11,12 @@ pub trait ToPos2 {
 }
 
 impl ToDVec2 for Pos2 {
+	fn to_dvec2(self) -> DVec2 {
+		dvec2(self.x as f64, self.y as f64)
+	}
+}
+
+impl ToDVec2 for egui::Vec2 {
 	fn to_dvec2(self) -> DVec2 {
 		dvec2(self.x as f64, self.y as f64)
 	}

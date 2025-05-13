@@ -4,7 +4,7 @@ use statig::prelude::*;
 
 use crate::{
 	map::map_data::MapData,
-	message_error,
+	message_error, message_info,
 	ui::{edit_bar::EditMode, messages::Messages},
 };
 
@@ -34,7 +34,7 @@ pub struct Context<'a> {
 )]
 impl MapState2 {
 	#[state]
-	fn default(context: &mut Context<'_>, last_delta: &mut DVec2) -> Response<State> {
+	fn default(context: &mut Context<'_>, mouse_down_delta: &mut DVec2) -> Response<State> {
 		let Context {
 			ui_context,
 			response,
@@ -51,6 +51,12 @@ impl MapState2 {
 			return Response::Handled;
 		}
 
+		if ui_context.input(|i| i.pointer.button_down(PointerButton::Primary)) {
+			*mouse_down_delta += *world_delta;
+		} else {
+			*mouse_down_delta = DVec2::ZERO;
+		}
+
 		if response.drag_started_by(PointerButton::Middle)
 			|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
 				&& response.drag_started_by(PointerButton::Primary))
@@ -64,7 +70,7 @@ impl MapState2 {
 		{
 			return Response::Transition(State::MoveElements {
 				total_delta: DVec2::ZERO,
-				initial_delta: *last_delta,
+				initial_delta: *mouse_down_delta,
 			});
 		}
 
@@ -84,8 +90,6 @@ impl MapState2 {
 			mem.selection.elements.clear();
 		}
 
-		*last_delta = *world_delta;
-
 		Response::Handled
 	}
 
@@ -100,7 +104,7 @@ impl MapState2 {
 			Response::Handled
 		} else {
 			Response::Transition(State::Default {
-				last_delta: DVec2::ZERO,
+				mouse_down_delta: DVec2::ZERO,
 			})
 		}
 	}
@@ -125,7 +129,7 @@ impl MapState2 {
 				message_error!(context.messages, "Error moving elements: {err}");
 			}
 			Response::Transition(State::Default {
-				last_delta: DVec2::ZERO,
+				mouse_down_delta: DVec2::ZERO,
 			})
 		} else if context.response.clicked_by(PointerButton::Secondary) {
 			MapData::raw_move_by(
@@ -134,7 +138,7 @@ impl MapState2 {
 				-*total_delta,
 			);
 			Response::Transition(State::Default {
-				last_delta: DVec2::ZERO,
+				mouse_down_delta: DVec2::ZERO,
 			})
 		} else {
 			Response::Handled
