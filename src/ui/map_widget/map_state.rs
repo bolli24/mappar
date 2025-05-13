@@ -27,10 +27,14 @@ pub struct Context<'a> {
 	pub messages: Messages,
 }
 
-#[state_machine(initial = "State::default()", state(derive(Debug)), superstate(derive(Debug)))]
+#[state_machine(
+	initial = "State::default(DVec2::ZERO)",
+	state(derive(Debug)),
+	superstate(derive(Debug))
+)]
 impl MapState2 {
 	#[state]
-	fn default(context: &mut Context<'_>) -> Response<State> {
+	fn default(context: &mut Context<'_>, last_delta: &mut DVec2) -> Response<State> {
 		if !context.interactive {
 			return Response::Handled;
 		}
@@ -66,8 +70,11 @@ impl MapState2 {
 		{
 			return Response::Transition(State::MoveElements {
 				total_delta: DVec2::ZERO,
+				initial_delta: *last_delta,
 			});
 		}
+
+		*last_delta = context.world_delta;
 
 		Response::Handled
 	}
@@ -82,18 +89,22 @@ impl MapState2 {
 		{
 			Response::Handled
 		} else {
-			Response::Transition(State::Default {})
+			Response::Transition(State::Default {
+				last_delta: DVec2::ZERO,
+			})
 		}
 	}
 
 	#[state]
-	fn move_elements(context: &mut Context<'_>, total_delta: &mut DVec2) -> Response<State> {
-		*total_delta += context.world_delta;
+	fn move_elements(context: &mut Context<'_>, total_delta: &mut DVec2, initial_delta: &mut DVec2) -> Response<State> {
+		*total_delta += context.world_delta + *initial_delta;
 		MapData::raw_move_by(
 			&mut context.map_data.elements,
 			&context.mem.selection.elements,
-			context.world_delta,
+			context.world_delta + *initial_delta,
 		);
+
+		*initial_delta = DVec2::ZERO;
 
 		if context.response.drag_stopped_by(PointerButton::Primary) {
 			let edit = context
@@ -103,14 +114,18 @@ impl MapState2 {
 			if let Err(err) = result {
 				message_error!(context.messages, "Error moving elements: {err}");
 			}
-			Response::Transition(State::Default {})
+			Response::Transition(State::Default {
+				last_delta: DVec2::ZERO,
+			})
 		} else if context.response.clicked_by(PointerButton::Secondary) {
 			MapData::raw_move_by(
 				&mut context.map_data.elements,
 				&context.mem.selection.elements,
 				-*total_delta,
 			);
-			Response::Transition(State::Default {})
+			Response::Transition(State::Default {
+				last_delta: DVec2::ZERO,
+			})
 		} else {
 			Response::Handled
 		}
