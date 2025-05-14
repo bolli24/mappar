@@ -131,7 +131,7 @@ impl MyApp {
 			#[cfg(not(target_arch = "wasm32"))]
 			project_dirs,
 			edit_mode: EditMode::Select,
-			map_state: MapStateMachine::state_machine(MapStateMachine {}),
+			map_state: MapStateMachine::state_machine(MapStateMachine::default()),
 		};
 
 		app.layers.0.push_back(Layer("EsriWorldImagery".into(), true));

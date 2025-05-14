@@ -20,8 +20,8 @@ use derive_new::new;
 use draw_list::DrawList;
 use egui::emath::Rot2;
 use egui::{
-	Color32, Frame, Galley, Id, Mesh, Painter, Pos2, Rect, Response, ScrollArea, Sense, TextureId, Vec2, Widget, pos2,
-	vec2,
+	Color32, Frame, Galley, Id, Mesh, Painter, Pos2, Rect, Response, ScrollArea, Sense, StrokeKind, TextureId, Vec2,
+	Widget, pos2, vec2,
 };
 use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape, TextShape};
 use glam::{DVec2, UVec2, dvec2, uvec2};
@@ -167,6 +167,7 @@ impl Widget for MapWidget<'_> {
 						response: response.clone(),
 						interactive: self.interactive,
 						map_data: self.map_data,
+						view: &view,
 						mem: self.mem,
 						world_delta,
 						edit_mode: self.edit_mode,
@@ -176,14 +177,14 @@ impl Widget for MapWidget<'_> {
 
 					self.map_state.handle_with_context(&(), &mut context);
 					dbgtxt!(self.debug_text, "MapState: {:?}", self.map_state.state());
+					dbgtxt!(self.debug_text, "Selection Box: {:?}", self.map_state.selection_box);
 
 					dbgtxt!(self.debug_text, "Closest element: {:?}", hover_element.map(|e| e.id));
 					dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");
 
 					let mut shapes = DrawList::new();
 					let fonts = ui.ctx().fonts(|f| f.clone());
-					let show_hover = self.mem.selection.elements.is_empty()
-						|| matches!(self.map_state.state(), MapState::Default { .. });
+					let show_hover = matches!(self.map_state.state(), MapState::Default { .. });
 
 					for element in &render_data {
 						let hovered = self.interactive && hover_element.is_some_and(|e| e.id == element.id);
@@ -200,6 +201,17 @@ impl Widget for MapWidget<'_> {
 					dbgtxt!(self.debug_text, "Drawn Elements: {}", shapes.count());
 
 					shapes.draw(&painter);
+
+					if let Some((start, end)) = self.map_state.selection_box {
+						let rect = Rect::from_two_pos(view.render_pos(&start), view.render_pos(&end));
+						painter.rect(
+							rect,
+							0,
+							Color32::WHITE.gamma_multiply(0.3),
+							(2.0, Color32::DARK_GRAY),
+							StrokeKind::Inside,
+						);
+					}
 
 					response
 				})
