@@ -14,6 +14,7 @@ use crate::map::map_data::{CIRCUMFERENCE_EARTH, Element, LatLon, MapData, latlon
 use crate::ui::debug_text::DebugText;
 use crate::ui::edit_bar::EditMode;
 use crate::util::convert::{ToDVec2, ToPos2};
+use crate::util::quick_set::QuickSet;
 use css::Styles;
 use css::context::StyleContext;
 use derive_new::new;
@@ -154,12 +155,13 @@ impl Widget for MapWidget<'_> {
 						}
 					}
 
-					let hover_element = {
+					let hover_elements = {
 						puffin::profile_scope!("Get hover element");
-						match (self.interactive, view.pointer_world_pos) {
-							(true, Some(_)) => closest_element(&render_data, &view.scale),
+						let single = match (self.interactive, view.pointer_world_pos) {
+							(true, Some(_)) => closest_element(&render_data, &view.scale).map(|e| e.id),
 							_ => None,
-						}
+						};
+						QuickSet::from(single)
 					};
 
 					let mut context = map_state::Context {
@@ -171,7 +173,7 @@ impl Widget for MapWidget<'_> {
 						mem: self.mem,
 						world_delta,
 						edit_mode: self.edit_mode,
-						hover_element,
+						hover_elements: &hover_elements,
 						messages: self.messages.clone(),
 					};
 
@@ -179,7 +181,11 @@ impl Widget for MapWidget<'_> {
 					dbgtxt!(self.debug_text, "MapState: {:?}", self.map_state.state());
 					dbgtxt!(self.debug_text, "Selection Box: {:?}", self.map_state.selection_box);
 
-					dbgtxt!(self.debug_text, "Closest element: {:?}", hover_element.map(|e| e.id));
+					dbgtxt!(
+						self.debug_text,
+						"Closest element: {:?}",
+						&hover_elements.iter().join(",")
+					);
 					dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");
 
 					let mut shapes = DrawList::new();
@@ -187,7 +193,7 @@ impl Widget for MapWidget<'_> {
 					let show_hover = matches!(self.map_state.state(), MapState::Default { .. });
 
 					for element in &render_data {
-						let hovered = self.interactive && hover_element.is_some_and(|e| e.id == element.id);
+						let hovered = self.interactive && hover_elements.contains(&element.id);
 						if hovered && show_hover {
 							draw_element(&element.hovered(), &mut shapes, &view, &fonts);
 						}

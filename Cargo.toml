@@ -57,6 +57,7 @@ itertools = "0.14"
 regex = "1.11"
 lasso = { version = "0.7", features = ["serialize"] }
 smallvec = "1.15"
+either = "1.15"
 
 statig = "0.3"
 

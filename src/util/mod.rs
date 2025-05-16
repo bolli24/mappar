@@ -1,5 +1,6 @@
 pub mod convert;
 pub mod history;
+pub mod quick_set;
 #[cfg(target_arch = "wasm32")]
 pub mod sleep;
 

@@ -3,12 +3,13 @@ use glam::DVec2;
 use statig::prelude::*;
 
 use crate::{
-	map::map_data::MapData,
+	map::map_data::{ElementId, MapData},
 	message_error,
 	ui::{edit_bar::EditMode, messages::Messages},
+	util::quick_set::QuickSet,
 };
 
-use super::{map_memory::MapMemory, render::DetailedElement, view::View};
+use super::{map_memory::MapMemory, view::View};
 
 #[derive(Debug, Clone, Default)]
 pub struct MapStateMachine {
@@ -25,7 +26,7 @@ pub struct Context<'a> {
 	pub mem: &'a mut MapMemory,
 	pub world_delta: DVec2,
 	pub edit_mode: EditMode,
-	pub hover_element: Option<&'a DetailedElement>,
+	pub hover_elements: &'a QuickSet<ElementId>,
 	pub messages: Messages,
 }
 
@@ -57,7 +58,7 @@ impl MapStateMachine {
 			mem,
 			world_delta,
 			edit_mode,
-			hover_element,
+			hover_elements,
 			messages: _,
 		} = context;
 
@@ -98,14 +99,14 @@ impl MapStateMachine {
 			&& ui_context.input(|i| i.pointer.button_down(PointerButton::Primary))
 			&& *edit_mode == EditMode::Select
 		{
-			if let Some(hover_element) = hover_element {
-				if !shift && !mem.selection.elements.contains(&hover_element.id) {
+			if let Some(hover_element) = hover_elements.single() {
+				if !shift && !mem.selection.elements.contains(hover_element) {
 					mem.selection.elements.clear();
 				}
-				mem.selection.elements.insert(hover_element.id);
+				mem.selection.elements.insert(*hover_element);
 			}
 		}
-		if *edit_mode == EditMode::Select && response.clicked_by(PointerButton::Primary) && hover_element.is_none() {
+		if *edit_mode == EditMode::Select && response.clicked_by(PointerButton::Primary) && hover_elements.is_empty() {
 			mem.selection.elements.clear();
 		}
 
