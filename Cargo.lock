@@ -2004,7 +2004,6 @@ dependencies = [
  "egui",
  "egui-phosphor",
  "egui_extras",
- "either",
  "epaint",
  "flate2",
  "glam",

@@ -1,27 +1,33 @@
-use either::Either::{self, Left, Right};
 use std::collections::HashSet;
 
-pub struct QuickSet<T>(Either<T, HashSet<T>>);
+/// A Type for a set of elements with efficient storage for a single element
+pub enum QuickSet<T> {
+	Empty,
+	Single(T),
+	Set(HashSet<T>),
+}
 
 impl<T: Eq + core::hash::Hash> QuickSet<T> {
 	pub fn new() -> Self {
-		Self(Right(HashSet::new()))
+		Self::Empty
 	}
 
 	pub fn from_single(element: T) -> Self {
-		Self(Left(element))
+		Self::Single(element)
 	}
 
 	pub fn insert(&mut self, new_element: T) {
-		match &mut self.0 {
-			Right(set) if set.is_empty() => self.0 = Left(new_element),
-			Right(set) => {
+		match self {
+			Self::Empty => *self = Self::Single(new_element),
+			Self::Set(set) => {
 				set.insert(new_element);
 			}
-			Left(existing) if *existing != new_element => {
-				let existing = std::mem::replace(&mut self.0, Right(HashSet::new()));
-				let Left(existing) = existing else { unreachable!() }; // We have to do this becaus unwrap_left/expect_left requires right to be Debug and vice versa
-				let Right(set) = &mut self.0 else { unreachable!() };
+			Self::Single(existing) if *existing != new_element => {
+				let existing = std::mem::replace(self, Self::Set(HashSet::new()));
+				let Self::Single(existing) = existing else {
+					unreachable!()
+				};
+				let Self::Set(set) = self else { unreachable!() };
 				*set = HashSet::from([existing, new_element]);
 			}
 			_ => {}
@@ -29,71 +35,79 @@ impl<T: Eq + core::hash::Hash> QuickSet<T> {
 	}
 
 	pub fn contains(&self, id: &T) -> bool {
-		match &self.0 {
-			Left(existing) => existing == id,
-			Right(set) => set.contains(id),
+		match self {
+			Self::Empty => false,
+			Self::Single(existing) => existing == id,
+			Self::Set(set) => set.contains(id),
 		}
 	}
 
 	pub fn iter(&self) -> Iter<T> {
-		match &self.0 {
-			Left(element) => Iter(Left(Some(element))),
-			Right(set) => Iter(Right(set.iter())),
+		match self {
+			Self::Empty => Iter::Empty,
+			Self::Single(element) => Iter::Single(Some(element)),
+			Self::Set(set) => Iter::Set(set.iter()),
 		}
 	}
 
-	/// Get the amount of elements in the set. We ensure that this can only be 1 when Left(_)
+	/// Get the amount of elements in the set.
 	pub fn len(&self) -> usize {
-		match &self.0 {
-			Left(_) => 1,
-			Right(set) => set.len(),
+		match self {
+			Self::Empty => 0,
+			Self::Single(_) => 1,
+			Self::Set(set) => set.len(),
 		}
 	}
 
 	pub fn remove(&mut self, value: &T) -> bool {
-		match &mut self.0 {
-			Left(element) if element == value => {
-				self.0 = Right(HashSet::new());
+		match self {
+			Self::Single(element) if element == value => {
+				*self = Self::Empty;
 				true
 			}
-			Right(set) => {
-				set.remove(value);
-				if set.len() == 1 {
-					let element = set.drain().next().expect("Set must contain one element");
-					self.0 = Left(element)
+			Self::Set(set) => {
+				if set.remove(value) {
+					if set.len() == 1 {
+						let single = set.drain().next().expect("Set must contain one element.");
+						*self = Self::Single(single)
+					}
+					true
+				} else {
+					false
 				}
-				true
 			}
 			_ => false,
 		}
 	}
 
 	pub fn single(&self) -> Option<&T> {
-		self.0.as_ref().left()
+		match self {
+			Self::Single(single) => Some(single),
+			_ => None,
+		}
 	}
 
 	pub fn is_empty(&self) -> bool {
-		match &self.0 {
-			Left(_) => false,
-			Right(set) => set.is_empty(),
-		}
+		matches!(self, Self::Empty)
 	}
 }
 
 impl<T: Eq + core::hash::Hash> From<QuickSet<T>> for HashSet<T> {
 	fn from(val: QuickSet<T>) -> Self {
-		match val.0 {
-			Left(element) => HashSet::from([element]),
-			Right(set) => set,
+		match val {
+			QuickSet::Empty => HashSet::new(),
+			QuickSet::Single(element) => HashSet::from([element]),
+			QuickSet::Set(set) => set,
 		}
 	}
 }
 
 impl<T: Eq + core::hash::Hash + Clone> Clone for QuickSet<T> {
 	fn clone(&self) -> Self {
-		match &self.0 {
-			Left(element) => Self(Left(element.clone())),
-			Right(set) => Self(Right(set.clone())),
+		match self {
+			Self::Empty => Self::Empty,
+			Self::Single(element) => Self::Single(element.clone()),
+			Self::Set(set) => Self::Set(set.clone()),
 		}
 	}
 }
@@ -107,7 +121,7 @@ impl<T: Eq + core::hash::Hash> Default for QuickSet<T> {
 impl<T: Eq + core::hash::Hash> From<Option<T>> for QuickSet<T> {
 	fn from(value: Option<T>) -> Self {
 		match value {
-			Some(value) => Self(Left(value)),
+			Some(value) => Self::Single(value),
 			None => Self::new(),
 		}
 	}
@@ -132,29 +146,39 @@ impl<'a, T: Eq + core::hash::Hash> IntoIterator for &'a QuickSet<T> {
 	}
 }
 
-pub struct Iter<'a, T>(Either<Option<&'a T>, std::collections::hash_set::Iter<'a, T>>);
+pub enum Iter<'a, T> {
+	Empty,
+	Single(Option<&'a T>),
+	Set(std::collections::hash_set::Iter<'a, T>),
+}
 
 impl<'a, T> Iterator for Iter<'a, T> {
 	type Item = &'a T;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		match &mut self.0 {
-			Left(value) => value.take(),
-			Right(iter) => iter.next(),
+		match self {
+			Self::Empty => None,
+			Self::Single(value) => value.take(),
+			Self::Set(iter) => iter.next(),
 		}
 	}
 }
 
-pub struct IntoIter<T>(Either<Option<T>, std::collections::hash_set::IntoIter<T>>);
+pub enum IntoIter<T> {
+	Empty,
+	Single(Option<T>),
+	Set(std::collections::hash_set::IntoIter<T>),
+}
 
 impl<T: Eq + core::hash::Hash> IntoIterator for QuickSet<T> {
 	type Item = T;
 	type IntoIter = IntoIter<T>;
 
 	fn into_iter(self) -> Self::IntoIter {
-		match self.0 {
-			Left(element) => IntoIter(Left(Some(element))),
-			Right(set) => IntoIter(Right(set.into_iter())),
+		match self {
+			Self::Empty => IntoIter::Empty,
+			Self::Single(element) => IntoIter::Single(Some(element)),
+			Self::Set(set) => IntoIter::Set(set.into_iter()),
 		}
 	}
 }
@@ -163,9 +187,10 @@ impl<T> Iterator for IntoIter<T> {
 	type Item = T;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		match &mut self.0 {
-			Left(value) => value.take(),
-			Right(iter) => iter.next(),
+		match self {
+			Self::Empty => None,
+			Self::Single(value) => value.take(),
+			Self::Set(iter) => iter.next(),
 		}
 	}
 }
