@@ -60,6 +60,20 @@ impl RenderElement {
 		})
 	}
 
+	pub fn in_box_selection(&self, rect: impl Into<Option<Rect>>) -> bool {
+		puffin::profile_function!();
+		let Some(rect) = rect.into() else {
+			return false;
+		};
+		match &self {
+			RenderElement::Node(pos) => rect.contains(pos.to_pos2()),
+			RenderElement::Path(nodes, _) | RenderElement::Area(nodes, _) => {
+				nodes.iter().all(|n| rect.contains(n.to_pos2()))
+			}
+			RenderElement::Collection(elements) => elements.iter().all(|e| e.element.in_box_selection(rect)),
+		}
+	}
+
 	fn distance_to_loop(pointer_pos: &DVec2, points: &[DVec2]) -> f64 {
 		points
 			.iter()
@@ -122,17 +136,6 @@ impl DetailedElement {
 			element,
 			style,
 		});
-	}
-
-	pub fn in_box_selection(&self, rect: Rect) -> bool {
-		puffin::profile_function!();
-		match &self.element {
-			RenderElement::Node(pos) => rect.contains(pos.to_pos2()),
-			RenderElement::Path(nodes, _) | RenderElement::Area(nodes, _) => {
-				nodes.iter().all(|n| rect.contains(n.to_pos2()))
-			}
-			RenderElement::Collection(elements) => elements.iter().all(|e| e.in_box_selection(rect)),
-		}
 	}
 
 	pub fn hovered(&self) -> Self {

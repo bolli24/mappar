@@ -6,10 +6,10 @@ use crate::{
 	map::map_data::{ElementId, MapData},
 	message_error,
 	ui::{edit_bar::EditMode, messages::Messages},
-	util::quick_set::QuickSet,
+	util::{convert::ToRect, quick_set::QuickSet},
 };
 
-use super::{map_memory::MapMemory, view::View};
+use super::{map_memory::MapMemory, render::DetailedElement, view::View};
 
 #[derive(Debug, Clone, Default)]
 pub struct MapStateMachine {
@@ -26,7 +26,8 @@ pub struct Context<'a> {
 	pub mem: &'a mut MapMemory,
 	pub world_delta: DVec2,
 	pub edit_mode: EditMode,
-	pub hover_elements: &'a QuickSet<ElementId>,
+	pub render_data: &'a [DetailedElement],
+	pub hover_elements: &'a mut QuickSet<ElementId>,
 	pub messages: Messages,
 }
 
@@ -52,14 +53,13 @@ impl MapStateMachine {
 		let Context {
 			ui_context,
 			response,
-			map_data: _,
 			view,
 			interactive,
 			mem,
 			world_delta,
 			edit_mode,
 			hover_elements,
-			messages: _,
+			..
 		} = context;
 
 		if !*interactive {
@@ -161,18 +161,28 @@ impl MapStateMachine {
 
 	#[state(exit_action = "exit_box_select")]
 	fn box_select(&mut self, context: &mut Context<'_>, pointer_down_pos: &mut Option<DVec2>) -> Response<State> {
-		let _selection_box = if let Some(pointer) = context.view.pointer_world_pos {
+		let selection_box = if let Some(pointer) = context.view.pointer_world_pos {
 			let selection_box = self
 				.selection_box
 				.get_or_insert((pointer_down_pos.unwrap_or(pointer), pointer));
 			selection_box.1 = pointer;
-			Some(selection_box)
+			Some(selection_box.to_rect())
 		} else {
 			None
 		};
 
+		*context.hover_elements = QuickSet::from_iter(
+			context
+				.render_data
+				.iter()
+				.filter_map(|e| e.element.in_box_selection(selection_box).then_some(e.id)),
+		);
+
 		if context.response.drag_stopped_by(PointerButton::Primary) {
-			// TODO: update selection
+			context.mem.selection.elements.clear();
+			for element in context.hover_elements.iter() {
+				context.mem.selection.elements.insert(*element);
+			}
 			Response::Transition(Self::default_default())
 		} else if context.response.clicked_by(PointerButton::Secondary) {
 			Response::Transition(Self::default_default())

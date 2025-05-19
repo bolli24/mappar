@@ -8,6 +8,10 @@ impl<T: Eq + core::hash::Hash> QuickSet<T> {
 		Self(Right(HashSet::new()))
 	}
 
+	pub fn from_single(element: T) -> Self {
+		Self(Left(element))
+	}
+
 	pub fn insert(&mut self, new_element: T) {
 		match &mut self.0 {
 			Right(set) if set.is_empty() => self.0 = Left(new_element),
@@ -76,15 +80,27 @@ impl<T: Eq + core::hash::Hash> QuickSet<T> {
 	}
 }
 
-impl<T: Eq + core::hash::Hash> Default for QuickSet<T> {
-	fn default() -> Self {
-		Self::new()
+impl<T: Eq + core::hash::Hash> From<QuickSet<T>> for HashSet<T> {
+	fn from(val: QuickSet<T>) -> Self {
+		match val.0 {
+			Left(element) => HashSet::from([element]),
+			Right(set) => set,
+		}
 	}
 }
 
-impl<T> From<T> for QuickSet<T> {
-	fn from(value: T) -> Self {
-		Self(Left(value))
+impl<T: Eq + core::hash::Hash + Clone> Clone for QuickSet<T> {
+	fn clone(&self) -> Self {
+		match &self.0 {
+			Left(element) => Self(Left(element.clone())),
+			Right(set) => Self(Right(set.clone())),
+		}
+	}
+}
+
+impl<T: Eq + core::hash::Hash> Default for QuickSet<T> {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 
@@ -94,6 +110,16 @@ impl<T: Eq + core::hash::Hash> From<Option<T>> for QuickSet<T> {
 			Some(value) => Self(Left(value)),
 			None => Self::new(),
 		}
+	}
+}
+
+impl<T: Eq + core::hash::Hash> FromIterator<T> for QuickSet<T> {
+	fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+		let mut set = Self::new();
+		for value in iter {
+			set.insert(value);
+		}
+		set
 	}
 }
 

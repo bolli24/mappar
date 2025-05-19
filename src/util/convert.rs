@@ -1,5 +1,5 @@
 use celes::Country;
-use egui::Pos2;
+use egui::{Pos2, Rect};
 use glam::{DVec2, dvec2};
 
 pub trait ToDVec2 {
@@ -39,6 +39,16 @@ impl CountryFlag for Country {
 		let one = char::from_u32((code.next()? as u32) + DIFF)?;
 		let two = char::from_u32((code.next()? as u32) + DIFF)?;
 		Some(format!("{one}{two}"))
+	}
+}
+
+pub trait ToRect {
+	fn to_rect(self) -> Rect;
+}
+
+impl ToRect for (DVec2, DVec2) {
+	fn to_rect(self) -> Rect {
+		Rect::from_two_pos(self.0.to_pos2(), self.1.to_pos2())
 	}
 }
 

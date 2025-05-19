@@ -155,8 +155,8 @@ impl Widget for MapWidget<'_> {
 						}
 					}
 
-					let hover_elements = {
-						puffin::profile_scope!("Get hover element");
+					let mut hover_elements = {
+						puffin::profile_scope!("Get hover elements");
 						let single = match (self.interactive, view.pointer_world_pos) {
 							(true, Some(_)) => closest_element(&render_data, &view.scale).map(|e| e.id),
 							_ => None,
@@ -173,7 +173,8 @@ impl Widget for MapWidget<'_> {
 						mem: self.mem,
 						world_delta,
 						edit_mode: self.edit_mode,
-						hover_elements: &hover_elements,
+						render_data: &render_data,
+						hover_elements: &mut hover_elements,
 						messages: self.messages.clone(),
 					};
 
@@ -181,16 +182,15 @@ impl Widget for MapWidget<'_> {
 					dbgtxt!(self.debug_text, "MapState: {:?}", self.map_state.state());
 					dbgtxt!(self.debug_text, "Selection Box: {:?}", self.map_state.selection_box);
 
-					dbgtxt!(
-						self.debug_text,
-						"Closest element: {:?}",
-						&hover_elements.iter().join(",")
-					);
+					dbgtxt!(self.debug_text, "Hovered elements: {:?}", &hover_elements.len());
 					dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");
 
 					let mut shapes = DrawList::new();
 					let fonts = ui.ctx().fonts(|f| f.clone());
-					let show_hover = matches!(self.map_state.state(), MapState::Default { .. });
+					let show_hover = matches!(
+						self.map_state.state(),
+						MapState::Default { .. } | MapState::BoxSelect { .. }
+					);
 
 					for element in &render_data {
 						let hovered = self.interactive && hover_elements.contains(&element.id);
