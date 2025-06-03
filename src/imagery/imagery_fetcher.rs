@@ -1,3 +1,7 @@
+use futures::StreamExt;
+use futures::channel::mpsc::{Receiver, Sender, channel};
+use futures::future::{Either, select};
+use futures::stream::FuturesUnordered;
 use std::collections::HashSet;
 use std::io::Cursor;
 use std::num::NonZeroUsize;
@@ -17,10 +21,6 @@ use log::{error, info};
 use lru::LruCache;
 use reqwest::Client;
 use reqwest::ClientBuilder;
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::task::JoinSet;
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::time;
 
 #[cfg(target_arch = "wasm32")]
 use crate::imagery::image_worker::ImageWorker;
@@ -43,8 +43,10 @@ pub struct ImageryFetcher {
 	memory_cache: MemoryCache,
 	texture_manager: Arc<RwLock<TextureManager>>,
 	imageries: Arc<Mutex<Imageries>>,
-	pending: Arc<Mutex<HashSet<Tile>>>,
+	pending: HashSet<Tile>,
 	persistent_cache: PersistentCache,
+	request_tx: Sender<Tile>,
+	exit: Receiver<()>,
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone, new, serde::Serialize, serde::Deserialize)]
@@ -100,6 +102,17 @@ pub enum Error {
 
 type MemoryCache = Arc<Mutex<LruCache<Tile, Option<TextureId>>>>;
 
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_CONCURRENT: usize = 16;
+#[cfg(target_arch = "wasm32")]
+const MAX_CONCURRENT: usize = 6;
+
+impl Drop for ImageryFetcher {
+	fn drop(&mut self) {
+		info!("Dropped imagery fetcher.");
+	}
+}
+
 impl ImageryFetcher {
 	pub fn new(
 		imageries: Arc<Mutex<Imageries>>,
@@ -109,8 +122,11 @@ impl ImageryFetcher {
 	) -> Self {
 		let memory_cache = Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(4192).unwrap())));
 
+		let (request_tx, request_rx) = channel(MAX_CONCURRENT);
+		let (exit_tx, exit_rx) = channel(0);
+
 		let fetcher = Self {
-			pending: Arc::new(Mutex::new(HashSet::new())),
+			pending: HashSet::new(),
 			#[cfg(not(target_arch = "wasm32"))]
 			persistent_cache: local_cache::LocalCache::new(cache_base_directory, messages, imageries.clone()),
 			#[cfg(target_arch = "wasm32")]
@@ -118,20 +134,22 @@ impl ImageryFetcher {
 			imageries,
 			memory_cache,
 			texture_manager: texture_manager.clone(),
+			request_tx,
+			exit: exit_rx,
 		};
 
-		let pending = fetcher.pending.clone();
 		let cache = fetcher.memory_cache.clone();
 		let imageries = fetcher.imageries.clone();
 		let persistent_cache = fetcher.persistent_cache.clone();
 		#[cfg(not(target_arch = "wasm32"))]
 		{
 			tokio::spawn(Self::fetching_loop(
-				pending,
+				request_rx,
 				cache,
 				imageries,
 				persistent_cache,
 				texture_manager,
+				exit_tx,
 			));
 		}
 
@@ -174,6 +192,8 @@ impl ImageryFetcher {
 			.spawn("./dummy_worker.js")
 	}
 
+	pub fn update(&mut self) {}
+
 	fn store_texture(
 		texture_manager: &Arc<RwLock<TextureManager>>,
 		memory_cache: &MemoryCache,
@@ -181,7 +201,7 @@ impl ImageryFetcher {
 		texture: TextureId,
 	) {
 		if let Some((tile_b, Some(texture_id))) = memory_cache.lock().unwrap().push(tile, Some(texture)) {
-			assert_ne!(tile, tile_b, "Mustn't store the same tile twice.");
+			debug_assert_ne!(tile, tile_b, "Mustn't store the same tile twice.");
 			texture_manager.write().free(texture_id);
 		}
 	}
@@ -192,25 +212,16 @@ impl ImageryFetcher {
 	}
 
 	async fn fetching_loop(
-		pending: Arc<Mutex<HashSet<Tile>>>,
+		mut request_rx: Receiver<Tile>,
 		memory_cache: MemoryCache,
 		imageries: Arc<Mutex<Imageries>>,
 		persistent_cache: PersistentCache,
 		texture_manager: Arc<RwLock<TextureManager>>,
+		exit: Sender<()>,
 	) {
 		#[cfg(not(target_arch = "wasm32"))]
-		const MAX_CONCURRENT: usize = 16;
-		#[cfg(not(target_arch = "wasm32"))]
-		const FETCH_INTERVAL: u64 = 5;
-		#[cfg(target_arch = "wasm32")]
-		const MAX_CONCURRENT: usize = 8;
-		#[cfg(target_arch = "wasm32")]
-		const FETCH_INTERVAL: u32 = 20;
-		#[cfg(not(target_arch = "wasm32"))]
-		let mut join_set: JoinSet<()> = JoinSet::new();
-
-		#[cfg(not(target_arch = "wasm32"))]
-		let mut interval = time::interval(time::Duration::from_millis(FETCH_INTERVAL));
+		// let mut join_set: JoinSet<()> = JoinSet::new();
+		let mut join_set/*: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>> */ = FuturesUnordered::new();
 
 		#[cfg(target_arch = "wasm32")]
 		let concurrent = Arc::new(Mutex::new(0));
@@ -221,45 +232,26 @@ impl ImageryFetcher {
 		)));
 
 		loop {
-			#[cfg(not(target_arch = "wasm32"))]
-			interval.tick().await;
-			#[cfg(target_arch = "wasm32")]
-			timer(FETCH_INTERVAL as i32).await.unwrap();
-
-			if pending.lock().unwrap().is_empty() {
-				continue;
+			if exit.is_closed() {
+				break;
 			}
 
-			#[cfg(not(target_arch = "wasm32"))]
-			while join_set.len() >= MAX_CONCURRENT {
-				// Maximum number of tasks reached: wait to join the next
-				let Some(result) = join_set.join_next().await else {
+			let tile = if join_set.len() >= MAX_CONCURRENT {
+				join_set.next().await;
+				continue;
+			} else if join_set.is_empty() {
+				let Some(tile) = request_rx.next().await else {
 					continue;
 				};
-				match result {
-					Ok(_) => {}
-					Err(err) if err.is_cancelled() => {
-						info!("{err}");
-					}
-					Err(err) if err.is_panic() => {
-						error!("{err}");
-					}
-					_ => {
-						unreachable!()
-					}
+				tile
+			} else {
+				match select(request_rx.next(), join_set.next()).await {
+					Either::Left((Some(tile), _)) => tile,
+					_ => continue,
 				}
-			}
+			};
 
-			#[cfg(target_arch = "wasm32")]
-			while *concurrent.lock().unwrap() >= MAX_CONCURRENT {
-				timer(FETCH_INTERVAL as i32).await.unwrap();
-			}
-
-			let mut pending = pending.lock().unwrap();
-			let tile = *pending.iter().next().unwrap();
-			pending.remove(&tile);
-			drop(pending);
-
+			// #[cfg(not(target_arch = "wasm32"))]
 			match memory_cache.lock().unwrap().push(tile, None) {
 				Some((tile_b, _)) if tile == tile_b => {
 					// Already fetched current tile
@@ -282,15 +274,12 @@ impl ImageryFetcher {
 			let concurrent_clone = concurrent.clone();
 			#[cfg(target_arch = "wasm32")]
 			let worker_bridge = worker_bridge.clone();
+			let client_builder = ClientBuilder::new().pool_max_idle_per_host(20);
 			#[cfg(not(target_arch = "wasm32"))]
-			let client = ClientBuilder::new()
-				.user_agent(crate::map::api::USER_AGENT)
-				.build()
-				.unwrap();
+			let client_builder = client_builder.user_agent(crate::map::api::USER_AGENT);
 			// Don't add user-agent on browser because of cors preflight shenanigans:
 			// https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#examples_of_access_control_scenarios
-			#[cfg(target_arch = "wasm32")]
-			let client = ClientBuilder::new().build().unwrap();
+			let client = client_builder.build().unwrap();
 
 			let closure = async move {
 				#[cfg(not(target_arch = "wasm32"))]
@@ -321,7 +310,7 @@ impl ImageryFetcher {
 				}
 			};
 			#[cfg(not(target_arch = "wasm32"))]
-			join_set.spawn(closure);
+			join_set.push(closure);
 			#[cfg(target_arch = "wasm32")]
 			{
 				wasm_bindgen_futures::spawn_local(closure);
@@ -429,14 +418,18 @@ impl ImageryFetcher {
 	}
 
 	// TODO: allow fetching of local tiles.
-	pub fn get_tile(&self, tile: Tile, fetch: bool) -> Option<TextureId> {
+	pub fn get_tile(&mut self, tile: Tile, fetch: bool) -> Option<TextureId> {
 		puffin::profile_function!("get_tile");
-		let mut pending = self.pending.lock().unwrap(); // Lock this before memory_cache
 		if let Some(texture) = self.memory_cache.lock().unwrap().get(&tile) {
 			return *texture;
 		}
 		if fetch {
-			pending.insert(tile);
+			match self.request_tx.try_send(tile) {
+				Err(err) if err.is_disconnected() => {
+					error!("Tile fetching task disconnected.");
+				}
+				_ => (),
+			}
 		}
 		None
 	}
@@ -446,7 +439,7 @@ impl ImageryFetcher {
 	}
 
 	pub fn pending_count(&self) -> usize {
-		self.pending.lock().unwrap().len()
+		self.pending.len()
 	}
 
 	pub fn memory_cached_count(&self) -> usize {
