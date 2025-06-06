@@ -1,3 +1,5 @@
 /target
 /dist
 api_data.xml
+
+/.direnv
