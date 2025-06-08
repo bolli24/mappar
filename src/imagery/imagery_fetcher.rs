@@ -29,8 +29,6 @@ use crate::imagery::local_cache;
 #[cfg(target_arch = "wasm32")]
 use crate::imagery::web_cache;
 use crate::ui::messages::Messages;
-#[cfg(target_arch = "wasm32")]
-use crate::util::sleep::timer;
 
 use super::{Imageries, ImageryRef};
 
@@ -132,26 +130,14 @@ impl ImageryFetcher {
 			exit: exit_rx,
 		};
 
-		#[cfg(not(target_arch = "wasm32"))]
-		{
-			tokio::spawn(Self::fetching_loop(
-				request_rx,
-				fetcher.memory_cache.clone(),
-				fetcher.imageries.clone(),
-				fetcher.pending.clone(),
-				fetcher.persistent_cache.clone(),
-				texture_manager,
-				exit_tx,
-			));
-		}
-
-		#[cfg(target_arch = "wasm32")]
-		wasm_bindgen_futures::spawn_local(Self::fetching_loop(
-			pending,
-			cache,
-			imageries,
-			persistent_cache,
+		crate::spawn_task!(Self::fetching_loop(
+			request_rx,
+			fetcher.memory_cache.clone(),
+			fetcher.imageries.clone(),
+			fetcher.pending.clone(),
+			fetcher.persistent_cache.clone(),
 			texture_manager,
+			exit_tx,
 		));
 
 		fetcher
@@ -212,12 +198,8 @@ impl ImageryFetcher {
 		texture_manager: Arc<RwLock<TextureManager>>,
 		exit: Sender<()>,
 	) {
-		#[cfg(not(target_arch = "wasm32"))]
-		// let mut join_set: JoinSet<()> = JoinSet::new();
 		let mut join_set/*: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>> */ = FuturesUnordered::new();
 
-		#[cfg(target_arch = "wasm32")]
-		let concurrent = Arc::new(Mutex::new(0));
 		#[cfg(target_arch = "wasm32")]
 		let worker_bridge = Arc::new(Mutex::new(Self::get_worker_bridge(
 			texture_manager.clone(),
@@ -267,10 +249,8 @@ impl ImageryFetcher {
 			let pending = pending.clone();
 			let persistent_cache = persistent_cache.clone();
 			#[cfg(target_arch = "wasm32")]
-			let concurrent_clone = concurrent.clone();
-			#[cfg(target_arch = "wasm32")]
 			let worker_bridge = worker_bridge.clone();
-			let client_builder = ClientBuilder::new().pool_max_idle_per_host(20);
+			let client_builder = ClientBuilder::new();
 			#[cfg(not(target_arch = "wasm32"))]
 			let client_builder = client_builder.user_agent(crate::map::api::USER_AGENT);
 			// Don't add user-agent on browser because of cors preflight shenanigans:
@@ -303,15 +283,14 @@ impl ImageryFetcher {
 				pending.fetch_sub(1, Ordering::Relaxed);
 				#[cfg(target_arch = "wasm32")]
 				{
-					*concurrent_clone.lock().unwrap() -= 1;
+					// *concurrent_clone.lock().unwrap() -= 1;
 				}
 			};
-			#[cfg(not(target_arch = "wasm32"))]
+			// #[cfg(not(target_arch = "wasm32"))]
 			join_set.push(closure);
 			#[cfg(target_arch = "wasm32")]
 			{
-				wasm_bindgen_futures::spawn_local(closure);
-				*concurrent.lock().unwrap() += 1;
+				//	wasm_bindgen_futures::spawn_local(closure);
 			}
 		}
 	}
