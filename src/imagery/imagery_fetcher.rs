@@ -2,11 +2,11 @@ use futures::StreamExt;
 use futures::channel::mpsc::{Receiver, Sender, channel};
 use futures::future::{Either, select};
 use futures::stream::FuturesUnordered;
-use std::collections::HashSet;
 use std::io::Cursor;
 use std::num::NonZeroUsize;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
@@ -17,7 +17,7 @@ use epaint::{ColorImage, ImageData, TextureId, TextureManager};
 #[cfg(target_arch = "wasm32")]
 use gloo_worker::{Spawnable, WorkerBridge};
 use image::{EncodableLayout, ImageFormat};
-use log::{error, info};
+use log::error;
 use lru::LruCache;
 use reqwest::Client;
 use reqwest::ClientBuilder;
@@ -43,7 +43,7 @@ pub struct ImageryFetcher {
 	memory_cache: MemoryCache,
 	texture_manager: Arc<RwLock<TextureManager>>,
 	imageries: Arc<Mutex<Imageries>>,
-	pending: HashSet<Tile>,
+	pending: Arc<AtomicU32>,
 	persistent_cache: PersistentCache,
 	request_tx: Sender<Tile>,
 	exit: Receiver<()>,
@@ -107,12 +107,6 @@ const MAX_CONCURRENT: usize = 16;
 #[cfg(target_arch = "wasm32")]
 const MAX_CONCURRENT: usize = 6;
 
-impl Drop for ImageryFetcher {
-	fn drop(&mut self) {
-		info!("Dropped imagery fetcher.");
-	}
-}
-
 impl ImageryFetcher {
 	pub fn new(
 		imageries: Arc<Mutex<Imageries>>,
@@ -126,28 +120,26 @@ impl ImageryFetcher {
 		let (exit_tx, exit_rx) = channel(0);
 
 		let fetcher = Self {
-			pending: HashSet::new(),
 			#[cfg(not(target_arch = "wasm32"))]
 			persistent_cache: local_cache::LocalCache::new(cache_base_directory, messages, imageries.clone()),
 			#[cfg(target_arch = "wasm32")]
 			persistent_cache: web_cache::WebCache::new(),
 			imageries,
+			pending: Arc::new(AtomicU32::new(0)),
 			memory_cache,
 			texture_manager: texture_manager.clone(),
 			request_tx,
 			exit: exit_rx,
 		};
 
-		let cache = fetcher.memory_cache.clone();
-		let imageries = fetcher.imageries.clone();
-		let persistent_cache = fetcher.persistent_cache.clone();
 		#[cfg(not(target_arch = "wasm32"))]
 		{
 			tokio::spawn(Self::fetching_loop(
 				request_rx,
-				cache,
-				imageries,
-				persistent_cache,
+				fetcher.memory_cache.clone(),
+				fetcher.imageries.clone(),
+				fetcher.pending.clone(),
+				fetcher.persistent_cache.clone(),
 				texture_manager,
 				exit_tx,
 			));
@@ -215,6 +207,7 @@ impl ImageryFetcher {
 		mut request_rx: Receiver<Tile>,
 		memory_cache: MemoryCache,
 		imageries: Arc<Mutex<Imageries>>,
+		pending: Arc<AtomicU32>,
 		persistent_cache: PersistentCache,
 		texture_manager: Arc<RwLock<TextureManager>>,
 		exit: Sender<()>,
@@ -251,24 +244,27 @@ impl ImageryFetcher {
 				}
 			};
 
-			// #[cfg(not(target_arch = "wasm32"))]
-			match memory_cache.lock().unwrap().push(tile, None) {
-				Some((tile_b, _)) if tile == tile_b => {
-					// Already fetched current tile
-					continue;
-				}
-				Some((tile_b, Some(texture_id))) if tile != tile_b => {
-					// Different tile removed from LRU
+			let mut cache = memory_cache.lock().unwrap();
+			if cache.get(&tile).is_some() {
+				continue;
+			}
+
+			pending.fetch_add(1, Ordering::Relaxed);
+
+			if let Some((evicted_tile, Some(texture_id))) = cache.push(tile, None) {
+				if tile != evicted_tile {
 					texture_manager.write().free(texture_id);
 				}
-				_ => {}
 			}
+
+			drop(cache);
 
 			#[cfg(not(target_arch = "wasm32"))]
 			let memory_cache = memory_cache.clone();
 			#[cfg(not(target_arch = "wasm32"))]
 			let texture_manager = texture_manager.clone();
 			let imageries = imageries.clone();
+			let pending = pending.clone();
 			let persistent_cache = persistent_cache.clone();
 			#[cfg(target_arch = "wasm32")]
 			let concurrent_clone = concurrent.clone();
@@ -304,6 +300,7 @@ impl ImageryFetcher {
 						error!("Error fetching tile {tile:?}: {error}");
 					}
 				}
+				pending.fetch_sub(1, Ordering::Relaxed);
 				#[cfg(target_arch = "wasm32")]
 				{
 					*concurrent_clone.lock().unwrap() -= 1;
@@ -438,8 +435,8 @@ impl ImageryFetcher {
 		self.memory_cache.lock().unwrap().contains(tile)
 	}
 
-	pub fn pending_count(&self) -> usize {
-		self.pending.len()
+	pub fn pending_count(&self) -> u32 {
+		self.pending.load(Ordering::Relaxed)
 	}
 
 	pub fn memory_cached_count(&self) -> usize {

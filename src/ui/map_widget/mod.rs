@@ -442,7 +442,7 @@ fn draw_tiles(
 
 const MAX_STEP: i32 = 2;
 const MIN_STEP: i32 = -MAX_STEP;
-const RENDER_EXTRA_TILE: bool = false;
+const RENDER_EXTRA_TILE: bool = true;
 
 // TODO: use UV to render extra tiles so that they don't overlap
 fn draw_tile(

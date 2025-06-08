@@ -133,16 +133,17 @@ fn init_logger() {
 	update_log_time(&latest_file).expect("Failed to update log file time");
 
 	// Remove annoying messages of wgpu 22.1.0
-	let config = ConfigBuilder::new().add_filter_ignore_str("wgpu_core::device").build();
+	let config = ConfigBuilder::new().build();
+
+	let log_level = if cfg!(debug_assertions) {
+		LevelFilter::Info
+	} else {
+		LevelFilter::Warn
+	};
 
 	CombinedLogger::init(vec![
-		TermLogger::new(
-			LevelFilter::Info,
-			config.clone(),
-			TerminalMode::Mixed,
-			ColorChoice::Auto,
-		),
-		WriteLogger::new(LevelFilter::Info, config, latest_file),
+		TermLogger::new(log_level, config.clone(), TerminalMode::Mixed, ColorChoice::Auto),
+		WriteLogger::new(log_level, config, latest_file),
 	])
 	.expect("Error initializing logger");
 }
