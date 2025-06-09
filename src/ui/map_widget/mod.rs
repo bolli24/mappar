@@ -117,10 +117,7 @@ impl Widget for MapWidget<'_> {
 
 					dbgtxt!(self.debug_text, "Active imagery: {active_imagery_name:?}");
 
-					if let Some(active_imagery_ref) = self.active_imagery_ref
-					/* && self.imagery_fetcher.lock().unwrap().imageries().lock().unwrap().get(reference)*/
-					{
-						// log::info!("{:?}", self.imagery_fetcher.lock().unwrap().imageries().lock().unwrap());
+					if let Some(active_imagery_ref) = self.active_imagery_ref {
 						draw_tiles(
 							&painter,
 							active_imagery_ref,

@@ -132,7 +132,7 @@ impl DetailedElement {
 			id: map_element.id,
 			bounding_box,
 			pointer_distance: element.distance(view.pointer_world_pos),
-			pointer_threshold: f64::from(style.size),
+			pointer_threshold: f64::from(style.size * 1.2),
 			element,
 			style,
 		});

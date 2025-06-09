@@ -3,7 +3,7 @@ use glam::DVec2;
 use statig::prelude::*;
 
 use crate::{
-	map::map_data::{ElementId, MapData},
+	map::map_data::{Element, ElementId, MapData},
 	message_error,
 	ui::{edit_bar::EditMode, messages::Messages},
 	util::{convert::ToRect, quick_set::QuickSet},
@@ -31,16 +31,13 @@ pub struct Context<'a> {
 	pub messages: Messages,
 }
 
-#[state_machine(
-	initial = "State::default(DVec2::ZERO, None)",
-	state(derive(Debug)),
-	superstate(derive(Debug))
-)]
+#[state_machine(initial = "Self::default_default()", state(derive(Debug)), superstate(derive(Debug)))]
 impl MapStateMachine {
-	fn default_default() -> State {
+	const fn default_default() -> State {
 		State::Default {
 			pointer_down_delta: DVec2::ZERO,
 			pointer_down_pos: None,
+			last_clicked_element: None,
 		}
 	}
 
@@ -49,6 +46,7 @@ impl MapStateMachine {
 		context: &mut Context<'_>,
 		pointer_down_delta: &mut DVec2,
 		pointer_down_pos: &mut Option<DVec2>,
+		last_clicked_element: &mut Option<ElementId>,
 	) -> Response<State> {
 		let Context {
 			ui_context,
@@ -86,11 +84,13 @@ impl MapStateMachine {
 				return Response::Transition(State::BoxSelect {
 					pointer_down_pos: *pointer_down_pos,
 				});
-			} else {
-				return Response::Transition(State::MoveElements {
-					total_delta: DVec2::ZERO,
-					initial_delta: *pointer_down_delta,
-				});
+			} else if let Some(last) = last_clicked_element {
+				if mem.selection.elements.contains(last) {
+					return Response::Transition(State::MoveElements {
+						total_delta: DVec2::ZERO,
+						initial_delta: *pointer_down_delta,
+					});
+				}
 			}
 		}
 
@@ -100,6 +100,7 @@ impl MapStateMachine {
 			&& *edit_mode == EditMode::Select
 		{
 			if let Some(hover_element) = hover_elements.single() {
+				*last_clicked_element = Some(*hover_element);
 				if !shift && !mem.selection.elements.contains(hover_element) {
 					mem.selection.elements.clear();
 				}
