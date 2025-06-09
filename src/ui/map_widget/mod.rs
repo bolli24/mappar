@@ -12,7 +12,6 @@ use crate::imagery::imagery_fetcher::{ImageryFetcher, Tile};
 use crate::imagery::{Imagery, ImageryRef};
 use crate::map::map_data::{CIRCUMFERENCE_EARTH, Element, LatLon, MapData, latlon};
 use crate::ui::debug_text::DebugText;
-use crate::ui::edit_bar::EditMode;
 use crate::util::convert::{ToDVec2, ToPos2};
 use crate::util::quick_set::QuickSet;
 use css::Styles;
@@ -28,7 +27,7 @@ use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape, TextShape};
 use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
 use map_memory::MapMemory;
-use map_state::{MapStateMachine, State as MapState};
+use map_state::{EditMode, MapStateMachine, State as MapState};
 use render::{DetailedElement, RenderElement};
 use statig::prelude::StateMachine;
 use std::cmp::Ordering;
@@ -53,9 +52,9 @@ pub struct MapWidget<'a> {
 	mem: &'a mut MapMemory,
 	interactive: bool,
 	active_imagery_ref: Option<ImageryRef>,
-	edit_mode: EditMode,
 	messages: Messages,
 	map_state: &'a mut StateMachine<MapStateMachine>,
+	update_edit_mode: Option<EditMode>,
 }
 
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
@@ -169,10 +168,10 @@ impl Widget for MapWidget<'_> {
 						view: &view,
 						mem: self.mem,
 						world_delta,
-						edit_mode: self.edit_mode,
 						render_data: &render_data,
 						hover_elements: &mut hover_elements,
 						messages: self.messages.clone(),
+						update_edit_mode: self.update_edit_mode,
 					};
 
 					self.map_state.handle_with_context(&(), &mut context);
@@ -186,7 +185,7 @@ impl Widget for MapWidget<'_> {
 					let fonts = ui.ctx().fonts(|f| f.clone());
 					let show_hover = matches!(
 						self.map_state.state(),
-						MapState::Default { .. } | MapState::BoxSelect { .. }
+						MapState::Select { .. } | MapState::BoxSelect { .. }
 					);
 
 					for element in &render_data {

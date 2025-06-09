@@ -1,11 +1,9 @@
-use super::edit_bar::EditMode;
 use super::imagery_widget::ImageriesWidget;
 use super::key_value_table::KeyValueTable;
 use super::layer_list::Layers;
 use super::map_widget::MapWidget;
 use super::map_widget::css::Styles;
 use super::map_widget::map_state::MapStateMachine;
-use super::map_widget::render::DetailedElement;
 use super::messages::Messages;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::imagery::{Imageries, get_imagery};
@@ -22,29 +20,16 @@ use log::{error, info};
 use statig::prelude::{IntoStateMachineExt, StateMachine};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::watch::{Receiver, Sender, channel};
 use web_time::Instant;
 
 #[cfg(not(target_arch = "wasm32"))]
 use directories::ProjectDirs;
-
-pub struct Channel<T> {
-	sender: Sender<T>,
-	receiver: Receiver<T>,
-}
-
-impl<T> From<(Sender<T>, Receiver<T>)> for Channel<T> {
-	fn from((sender, receiver): (Sender<T>, Receiver<T>)) -> Self {
-		Self { sender, receiver }
-	}
-}
 
 const MAX_RECENT_FRAME_COUNT: usize = 1000;
 
 pub struct MyApp {
 	map_data: Arc<Mutex<MapData>>,
 	styles: Option<Styles>,
-	render_data: Channel<Vec<DetailedElement>>,
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	imageries: Arc<Mutex<Imageries>>,
@@ -60,7 +45,6 @@ pub struct MyApp {
 	imagery_settings: bool,
 	#[cfg(not(target_arch = "wasm32"))]
 	project_dirs: ProjectDirs,
-	edit_mode: EditMode,
 	map_state: StateMachine<MapStateMachine>,
 }
 
@@ -114,7 +98,6 @@ impl MyApp {
 		let mut app = Self {
 			map_data: Arc::new(Mutex::new(MapData::new())),
 			styles: get_default_styles(cc.egui_ctx.tex_manager().clone()),
-			render_data: channel(Vec::new()).into(),
 			imagery_fetcher,
 			imageries,
 			layers: Layers::new(),
@@ -130,7 +113,6 @@ impl MyApp {
 			imagery_settings: false,
 			#[cfg(not(target_arch = "wasm32"))]
 			project_dirs,
-			edit_mode: EditMode::Select,
 			map_state: MapStateMachine::state_machine(MapStateMachine::default()),
 		};
 
@@ -232,6 +214,8 @@ impl eframe::App for MyApp {
 			self.imageries.lock().unwrap().entries.len()
 		);
 
+		let mut update_edit_mode = None;
+
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
 			egui::menu::bar(ui, |ui| {
 				ui.menu_button("File", |ui| {
@@ -291,7 +275,8 @@ impl eframe::App for MyApp {
 			});
 
 			ui.add(EditBar::new(
-				&mut self.edit_mode,
+				self.map_state.edit_mode(),
+				&mut update_edit_mode,
 				&mut self.map_memory,
 				&mut self.map_data.lock().unwrap(),
 			));
@@ -368,9 +353,9 @@ impl eframe::App for MyApp {
 					&mut self.map_memory,
 					true,
 					active_imagery_ref,
-					self.edit_mode,
 					self.messages.clone(),
 					&mut self.map_state,
+					update_edit_mode,
 				))
 				.rect;
 			rect.min += egui::Vec2::new(5.0, 5.0);
