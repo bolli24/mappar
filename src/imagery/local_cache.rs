@@ -9,7 +9,6 @@ use log::{error, warn};
 use regex::Regex;
 use tokio::fs::{DirBuilder, File};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio_stream::StreamExt;
 
 use crate::imagery::ImageryId;
 use crate::imagery::imagery_fetcher::Tile;
@@ -46,15 +45,9 @@ impl LocalCache {
 				.create(&file_path)
 				.expect("Failed to create cache directory");
 
-			let mut dirs = tokio_stream::wrappers::ReadDirStream::new(
-				tokio::fs::read_dir(&file_path)
-					.await
-					.expect("Failed to read cache directory"),
-			);
-
 			let file_regex = Regex::new(r"^\d+_\d+_\d+\.(png|jpg)$").expect("Failed to create regex");
 
-			while let Some(dir) = dirs.next().await {
+			for dir in std::fs::read_dir(&file_path).unwrap() {
 				let dir_path = match dir {
 					Ok(dir) => {
 						let path = dir.path();
@@ -69,19 +62,15 @@ impl LocalCache {
 					}
 				};
 
-				let mut files = tokio_stream::wrappers::ReadDirStream::new(
-					tokio::fs::read_dir(&dir_path)
-						.await
-						.expect("Failed to read cache directory"),
-				);
-
 				let imagery_id = ImageryId(dir_path.file_name().unwrap().to_string_lossy().to_string());
 				let imagery_ref = imageries.lock().unwrap().get_ref_unchecked(&imagery_id);
 
-				while let Some(file) = files.next().await {
+				let mut cached_images = cached_images.lock().await;
+
+				for file in std::fs::read_dir(&dir_path).expect("Failed to read cache directory") {
 					if let Some((coords, image_format)) = try_get_file(file, &file_regex) {
 						let tile = Tile::new(imagery_ref, coords);
-						cached_images.lock().await.insert(tile, image_format);
+						cached_images.insert(tile, image_format);
 					}
 				}
 			}
@@ -153,7 +142,7 @@ impl LocalCache {
 
 // TODO: Maybe better error handling
 fn try_get_file(
-	file: Result<tokio::fs::DirEntry, std::io::Error>,
+	file: Result<std::fs::DirEntry, std::io::Error>,
 	file_regex: &Regex,
 ) -> Option<((u32, u32, u32), ImageFormat)> {
 	puffin::profile_function!();
