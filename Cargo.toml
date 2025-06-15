@@ -114,7 +114,7 @@ wasm-bindgen-futures = "0.4.50"
 gloo-worker = "0.5.0"
 
 [build-dependencies]
-vergen-gitcl = "1"
+vergen-git2 = "1"
 
 [[bin]] # This is used for gloo-worker
 name = "dummy_worker"
