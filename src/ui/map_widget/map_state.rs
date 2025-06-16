@@ -114,18 +114,18 @@ impl MapStateMachine {
 			self.pointer_down_delta = DVec2::ZERO;
 		}
 
-		if response.drag_started_by(PointerButton::Primary) {
-			if mem.selection.elements.is_empty() {
-				return Response::Transition(State::BoxSelect {
-					pointer_down_pos: self.pointer_down_pos,
-				});
-			} else if let Some(last) = last_clicked_element {
+		if response.drag_started_by(PointerButton::Primary) && !response.ctx.input(|i| i.modifiers == Modifiers::ALT) {
+			if let Some(last) = last_clicked_element {
 				if mem.selection.elements.contains(last) {
 					return Response::Transition(State::MoveElements {
 						total_delta: DVec2::ZERO,
 						initial_delta: self.pointer_down_delta,
 					});
 				}
+			} else {
+				return Response::Transition(State::BoxSelect {
+					pointer_down_pos: self.pointer_down_pos,
+				});
 			}
 		}
 
@@ -133,10 +133,16 @@ impl MapStateMachine {
 		if response.contains_pointer() && ui_context.input(|i| i.pointer.button_down(PointerButton::Primary)) {
 			if let Some(hover_element) = hover_elements.single() {
 				*last_clicked_element = Some(*hover_element);
-				if !shift && !mem.selection.elements.contains(hover_element) {
-					mem.selection.elements.clear();
+				if response.ctx.input(|i| i.modifiers.shift_only()) {
+					mem.selection.elements.insert(*hover_element);
+				} else if response.ctx.input(|i| i.modifiers.command_only()) {
+					mem.selection.elements.remove(hover_element);
+				} else {
+					if !shift && !mem.selection.elements.contains(hover_element) {
+						mem.selection.elements.clear();
+					}
+					mem.selection.elements.insert(*hover_element);
 				}
-				mem.selection.elements.insert(*hover_element);
 			}
 		}
 		if response.clicked_by(PointerButton::Primary) && hover_elements.is_empty() {
@@ -212,10 +218,21 @@ impl MapStateMachine {
 		);
 
 		if context.response.drag_stopped_by(PointerButton::Primary) {
-			context.mem.selection.elements.clear();
-			for element in context.hover_elements.iter() {
-				context.mem.selection.elements.insert(*element);
+			if context.response.ctx.input(|i| i.modifiers.shift_only()) {
+				for element in context.hover_elements.iter() {
+					context.mem.selection.elements.insert(*element);
+				}
+			} else if context.response.ctx.input(|i| i.modifiers.command_only()) {
+				for element in context.hover_elements.iter() {
+					context.mem.selection.elements.remove(element);
+				}
+			} else {
+				context.mem.selection.elements.clear();
+				for element in context.hover_elements.iter() {
+					context.mem.selection.elements.insert(*element);
+				}
 			}
+
 			Response::Transition(Self::select_default())
 		} else if context.response.clicked_by(PointerButton::Secondary) {
 			Response::Transition(Self::select_default())
