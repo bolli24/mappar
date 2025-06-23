@@ -1,4 +1,4 @@
-use super::map_data::{ElementId, MapData, MapElement};
+use super::map_data::{Element, ElementId, MapData, MapElement};
 use crate::unreachable_log;
 use glam::DVec2;
 use indexmap::map::Entry;
@@ -41,6 +41,12 @@ pub enum Action {
 		value: String,
 	},
 	Move(DVec2, bool),
+	NewElement {
+		element: Element,
+	},
+	AddNodeToWayEnd {
+		node: ElementId,
+	},
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -56,11 +62,9 @@ impl undo::Edit for Edit {
 
 	fn edit(&mut self, target: &mut Self::Target) -> Self::Output {
 		for element_id in &self.0 {
-			let Some(element) = target.get_mut(element_id) else {
-				unreachable_log!("Element {} must exist", element_id);
-			};
 			match &self.1 {
 				Action::AddNewTag { key, value } | Action::AddTag { key, value } => {
+					let element = target.get_mut(element_id).expect("Element must exist");
 					element.new_tag = None;
 					match element.tags.entry(key.clone()) {
 						// FIXME: handle error, especially for multiple elements
@@ -71,18 +75,41 @@ impl undo::Edit for Edit {
 					}
 				}
 				Action::OverrideTag { key, value, .. } => {
+					let element = target.get_mut(element_id).expect("Element must exist");
 					element.tags.insert(key.clone(), value.clone());
 				}
 				Action::UpdateValue { key, value, .. } => {
+					let element = target.get_mut(element_id).expect("Element must exist");
 					element.tags.insert(key.clone(), value.clone());
 				}
 				Action::RemoveTag { key, .. } => {
+					let element = target.get_mut(element_id).expect("Element must exist");
 					element.tags.shift_remove(key);
 				}
 				Action::UpdateNewTag { current, .. } => {
+					let element = target.get_mut(element_id).expect("Element must exist");
 					element.new_tag = Some(current.clone());
 				}
 				Action::Move(_, _) => {}
+				Action::NewElement { element } => {
+					target.insert(
+						*element_id,
+						MapElement {
+							id: *element_id,
+							element: element.clone(),
+							tags: Default::default(),
+							info: Default::default(),
+							new_tag: None,
+						},
+					);
+				}
+				Action::AddNodeToWayEnd { node } => {
+					let element = target.get_mut(element_id).expect("Element must exist");
+					let Element::Way { nodes } = &mut element.element else {
+						unreachable_log!("Element must be way");
+					};
+					nodes.push(*node);
+				}
 			}
 		}
 
@@ -121,6 +148,15 @@ impl undo::Edit for Edit {
 					element.new_tag = Some((key.clone(), value.clone()))
 				}
 				Action::Move(_, _) => {}
+				Action::NewElement { .. } => {
+					target.remove(element_id);
+				}
+				Action::AddNodeToWayEnd { .. } => {
+					let Element::Way { nodes } = &mut element.element else {
+						unreachable_log!("Element must be way");
+					};
+					nodes.pop();
+				}
 			}
 		}
 		if let Action::Move(delta, _) = &self.1 {

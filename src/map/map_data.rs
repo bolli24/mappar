@@ -31,6 +31,7 @@ pub type Elements = HashMap<ElementId, MapElement>;
 pub struct MapData {
 	pub elements: Elements,
 	history: Record<Edit>,
+	last_new_ids: (i64, i64, i64),
 }
 
 impl MapData {
@@ -38,6 +39,7 @@ impl MapData {
 		Self {
 			elements: HashMap::new(),
 			history: Record::new(),
+			last_new_ids: (0, 0, 0),
 		}
 	}
 
@@ -139,7 +141,6 @@ impl MapData {
 		)
 	}
 
-	// TODO: use Edit
 	pub fn raw_move_by<'a>(elements: &mut Elements, ids: impl IntoIterator<Item = &'a ElementId>, delta: DVec2) {
 		let mut moved = HashSet::with_capacity(100);
 
@@ -175,6 +176,52 @@ impl MapData {
 				// TODO: Do I even have to do this?
 			}
 		}
+	}
+
+	pub fn new_node(&mut self, pos: DVec2) -> Edit {
+		let id = self.new_element_id(ElementType::Node);
+		Edit(
+			smallvec![id],
+			Action::NewElement {
+				element: Element::Node {
+					pos: Cell::new(LatLon::from_web_mercator(pos)),
+				},
+			},
+		)
+	}
+
+	pub fn new_way(&mut self, nodes: Vec<ElementId>) -> Edit {
+		let id = self.new_element_id(ElementType::Way);
+		Edit(
+			smallvec![id],
+			Action::NewElement {
+				element: Element::Way { nodes },
+			},
+		)
+	}
+
+	pub fn add_node_to_way_end(&mut self, way: ElementId, node: ElementId) -> Edit {
+		debug_assert_eq!(ElementType::Way, way.1);
+		debug_assert_eq!(ElementType::Node, node.1);
+		Edit(smallvec![way], Action::AddNodeToWayEnd { node })
+	}
+
+	fn new_element_id(&mut self, e_type: ElementType) -> ElementId {
+		let id = match e_type {
+			ElementType::Node => {
+				self.last_new_ids.0 -= 1;
+				self.last_new_ids.0
+			}
+			ElementType::Way => {
+				self.last_new_ids.1 -= 1;
+				self.last_new_ids.1
+			}
+			ElementType::Relation => {
+				self.last_new_ids.2 -= 1;
+				self.last_new_ids.2
+			}
+		};
+		return ElementId(id, e_type);
 	}
 
 	/// # Safety:
@@ -447,7 +494,7 @@ pub struct Member {
 	pub role: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Element {
 	Node { pos: Cell<LatLon> },
 	Way { nodes: Vec<ElementId> },

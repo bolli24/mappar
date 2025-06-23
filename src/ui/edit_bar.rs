@@ -21,7 +21,7 @@ const MODE_BUTTONS: [EditButton; 2] = [
 		egui_phosphor::bold::PEN_NIB,
 		"Draw nodes and ways",
 		EditMode::DrawPen,
-		Key::A,
+		Key::D,
 	),
 ];
 

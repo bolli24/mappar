@@ -3,7 +3,7 @@ use glam::DVec2;
 use statig::prelude::*;
 
 use crate::{
-	map::map_data::{ElementId, MapData},
+	map::map_data::{ElementId, ElementType, MapData},
 	message_error,
 	ui::messages::Messages,
 	util::{convert::ToRect, quick_set::QuickSet},
@@ -74,7 +74,7 @@ impl MapStateMachine {
 				EditMode::Select => Response::Transition(State::Select {
 					last_clicked_element: None,
 				}),
-				EditMode::DrawPen => Response::Handled,
+				EditMode::DrawPen => Response::Transition(State::Draw { last_new_element: None }),
 			};
 		}
 
@@ -244,5 +244,45 @@ impl MapStateMachine {
 	#[action]
 	fn exit_box_select(&mut self) {
 		self.selection_box = None;
+	}
+
+	#[state(superstate = "default")]
+	fn draw(&mut self, context: &mut Context<'_>, last_new_element: &mut Option<ElementId>) -> Response<State> {
+		let Context {
+			response,
+			view,
+			mem,
+			map_data,
+			..
+		} = context;
+
+		if response.clicked_by(PointerButton::Primary) {
+			if let Some(pos) = view.pointer_world_pos {
+				// Add new node
+				let edit = map_data.new_node(pos);
+				let new_node_id = edit.0[0];
+				mem.selection.elements.insert(new_node_id);
+				map_data.edit(edit).expect("Creating node must not error.");
+
+				match *last_new_element {
+					Some(ElementId(_, ElementType::Node)) => {
+						let edit = map_data.new_way(vec![last_new_element.unwrap(), new_node_id]);
+						*last_new_element = Some(edit.0[0]);
+						map_data.edit(edit).expect("Creating way must not error.");
+					}
+					Some(ElementId(_, ElementType::Way)) => {
+						let edit = map_data.add_node_to_way_end(last_new_element.unwrap(), new_node_id);
+						*last_new_element = Some(edit.0[0]);
+						map_data.edit(edit).expect("Adding node to way end must not error.");
+					}
+					None => {
+						*last_new_element = Some(new_node_id);
+					}
+					_ => unreachable!(),
+				}
+			}
+		}
+
+		Response::Super
 	}
 }

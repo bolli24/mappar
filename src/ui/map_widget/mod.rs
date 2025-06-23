@@ -185,7 +185,7 @@ impl Widget for MapWidget<'_> {
 					let fonts = ui.ctx().fonts(|f| f.clone());
 					let show_hover = matches!(
 						self.map_state.state(),
-						MapState::Select { .. } | MapState::BoxSelect { .. }
+						MapState::Select { .. } | MapState::BoxSelect { .. } | MapState::Draw { .. }
 					);
 
 					for element in &render_data {
