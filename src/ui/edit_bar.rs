@@ -16,7 +16,7 @@ pub struct EditBar<'a> {
 struct EditButton<'a>(&'a str, &'a str, EditMode, Key);
 
 const MODE_BUTTONS: [EditButton; 2] = [
-	EditButton(egui_phosphor::bold::SELECTION, "Select stuff", EditMode::Select, Key::S),
+	EditButton(egui_phosphor::bold::CURSOR, "Select stuff", EditMode::Select, Key::S),
 	EditButton(
 		egui_phosphor::bold::PEN_NIB,
 		"Draw nodes and ways",
