@@ -27,10 +27,10 @@ pub fn show_as_window<R>(
 				)
 			},
 		);
-		if !minimized {
-			Some(InnerResponse::new(Some(response.inner), response.response))
-		} else {
+		if minimized {
 			None
+		} else {
+			Some(InnerResponse::new(Some(response.inner), response.response))
 		}
 	} else {
 		None

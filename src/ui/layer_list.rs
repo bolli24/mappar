@@ -15,7 +15,7 @@ impl Layers {
 		self.0.iter().find(|layer| layer.1).map(|layer| &layer.0)
 	}
 
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self(VecDeque::new())
 	}
 

@@ -29,7 +29,7 @@ use std::collections::VecDeque;
 
 /// This struct tracks recent values of some time series.
 ///
-/// THIS IS THE SAME AS egui::util::History BUT THE TYPE DOES NOT HAVE TO BE COPY
+/// THIS IS THE SAME AS `egui::util::History` BUT THE TYPE DOES NOT HAVE TO BE COPY
 ///
 /// It can be used as a smoothing filter for e.g. latency, fps etc,
 /// or to show a log or graph of recent events.

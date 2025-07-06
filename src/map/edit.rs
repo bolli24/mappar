@@ -74,11 +74,7 @@ impl undo::Edit for Edit {
 						}
 					}
 				}
-				Action::OverrideTag { key, value, .. } => {
-					let element = target.get_mut(element_id).expect("Element must exist");
-					element.tags.insert(key.clone(), value.clone());
-				}
-				Action::UpdateValue { key, value, .. } => {
+				Action::OverrideTag { key, value, .. } | Action::UpdateValue { key, value, .. } => {
 					let element = target.get_mut(element_id).expect("Element must exist");
 					element.tags.insert(key.clone(), value.clone());
 				}
@@ -141,11 +137,11 @@ impl undo::Edit for Edit {
 					element.tags.insert_before(*index, key.clone(), value.clone());
 				}
 				Action::UpdateNewTag { previous, .. } => {
-					element.new_tag = previous.clone();
+					element.new_tag.clone_from(previous);
 				}
 				Action::AddNewTag { key, value } => {
 					element.tags.shift_remove(key);
-					element.new_tag = Some((key.clone(), value.clone()))
+					element.new_tag = Some((key.clone(), value.clone()));
 				}
 				Action::Move(_, _) => {}
 				Action::NewElement { .. } => {

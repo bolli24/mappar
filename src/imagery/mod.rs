@@ -50,7 +50,7 @@ pub fn get_imagery(
 		.await
 		{
 			message_info!(messages, "Found local imagery info.");
-			let _ = imageries_from_str(&xml, messages, imageries).await;
+			let _ = imageries_from_str(&xml, messages, imageries);
 		} else {
 			message_info!(messages, "Could not find local imagery info. Fetching...");
 			update_josm_imagery(
@@ -102,18 +102,18 @@ pub fn update_josm_imagery(
 
 		// TODO: Wasm32: Cache iamgery locally
 		#[cfg(not(target_arch = "wasm32"))]
-		if imageries_from_str(&xml, messages.clone(), imageries).await.is_ok() {
+		if imageries_from_str(&xml, messages.clone(), imageries).is_ok() {
 			if let Err(err) = std::fs::write(josm_xml_path, &xml) {
 				message_error!(messages, "Unable to write JOSM imagery data to file: {err}");
-			};
+			}
 		}
 
 		#[cfg(target_arch = "wasm32")]
-		let _ = imageries_from_str(&xml, messages, imageries).await;
+		let _ = imageries_from_str(&xml, messages, imageries);
 	});
 }
 
-async fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mutex<Imageries>>) -> Result<(), ()> {
+fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mutex<Imageries>>) -> Result<(), ()> {
 	let start = Instant::now();
 
 	let mut deserializer = Deserializer::from_str(xml);
@@ -141,7 +141,7 @@ async fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mu
 
 impl From<&str> for Name {
 	fn from(text: &str) -> Self {
-		Name {
+		Self {
 			lang: None,
 			text: text.to_string(),
 		}
@@ -219,6 +219,7 @@ pub struct Imageries {
 }
 
 impl Imageries {
+	#[must_use]
 	pub fn new() -> Self {
 		Self {
 			entries: IndexMap::new(),
@@ -235,8 +236,12 @@ impl Imageries {
 	}
 
 	pub fn get(&self, reference: ImageryRef) -> Option<&Imagery> {
-		self.entries
-			.get(&ImageryId(self.ids.try_resolve(&reference.0).unwrap().to_string()))
+		self.entries.get(&ImageryId(
+			self.ids
+				.try_resolve(&reference.0)
+				.expect("Imagery reference must be valid.")
+				.to_string(),
+		))
 	}
 
 	/* pub fn get_ref(&self, id: &ImageryId) -> Option<ImageryRef> {
@@ -302,7 +307,7 @@ pub struct Description {
 
 impl Display for Description {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.text.as_ref().unwrap_or(&"".to_string()))
+		write!(f, "{}", self.text.as_ref().unwrap_or(&String::new()))
 	}
 }
 
@@ -426,7 +431,7 @@ fn imagery_url_parser<'a>() -> impl Parser<'a, &'a str, ImageryUrl, chumsky::ext
 
 	let switch_options = string // Can be replaced with 'text::ascii::ident()' once chumsky updates past
 		.map(String::from)
-		.or(empty().map(|()| "".to_string()))
+		.or(empty().map(|()| String::new()))
 		.separated_by(just(','))
 		.at_least(1)
 		.collect::<Vec<String>>();
@@ -461,8 +466,8 @@ impl<'de> Deserialize<'de> for ImageryUrl {
 		match parse_result.into_result() {
 			Ok(url) => Ok(url),
 			Err(err) => {
-				error!("Failed to parse imagery URL '{url_str}': \n{:?}", err);
-				Ok(ImageryUrl(vec![UrlSegment::String(url_str.to_string())]))
+				error!("Failed to parse imagery URL '{url_str}': \n{err:?}");
+				Ok(Self(vec![UrlSegment::String(url_str.to_string())]))
 			}
 		}
 	}
@@ -471,7 +476,7 @@ impl Display for ImageryUrl {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		for segment in &self.0 {
 			match segment {
-				UrlSegment::String(s) => write!(f, "{}", s)?,
+				UrlSegment::String(s) => write!(f, "{s}")?,
 				UrlSegment::Placeholder(p) => {
 					let p_str = match p {
 						Placeholder::X => "x",
@@ -489,7 +494,7 @@ impl Display for ImageryUrl {
 						Placeholder::WkId => "wkid",
 						Placeholder::Time => "time",
 					};
-					write!(f, "{{{}}}", p_str)?
+					write!(f, "{{{p_str}}}")?;
 				}
 				UrlSegment::Switch(options) => write!(f, "{{switch:{}}}", options.join(","))?,
 			}
@@ -522,13 +527,13 @@ mod tests {
 
 		match result {
 			Ok(imageries) => {
-				info!("Success: {} sources parsed.", imageries.entries.len())
+				info!("Success: {} sources parsed.", imageries.entries.len());
 			}
 			Err(err) => {
 				let path = err.path().to_string();
 				error!("Unable to parse JOSM imagery data: <{path}> - {err}");
 			}
-		};
+		}
 	}
 
 	#[test]

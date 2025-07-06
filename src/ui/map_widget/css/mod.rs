@@ -24,7 +24,7 @@ pub mod icon;
 // TODO: maybe use sparse set instead of hashmap
 pub struct Styles {
 	css: CSS,
-	styles: HashMap<ElementId, MapStyle>,
+	style_mapping: HashMap<ElementId, MapStyle>,
 	class_assignments: HashMap<Selectors, Vec<String>>,
 	icons: Arc<RwLock<HashMap<String, Icon>>>,
 	texture_manager: Arc<RwLock<TextureManager>>,
@@ -46,9 +46,9 @@ impl Drop for Styles {
 }
 
 pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Option<Styles> {
-	info!("Getting default MapCSS styles.");
-
 	const PATH: &str = "./assets/styles/default.mapcss";
+
+	info!("Getting default MapCSS styles.");
 	#[cfg(not(target_arch = "wasm32"))]
 	let css_string = std::fs::read_to_string(PATH)
 		.map_err(|err| {
@@ -62,7 +62,7 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 
 	let mut styles = Styles {
 		css: parse_str(&css_string, PATH)?,
-		styles: HashMap::new(),
+		style_mapping: HashMap::new(),
 		class_assignments: HashMap::new(),
 		icons: Arc::new(RwLock::new(HashMap::new())),
 		texture_manager,
@@ -95,7 +95,7 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 }
 
 impl Styles {
-	pub fn get_style(&mut self, element: &MapElement, context: &StyleContext) -> MapStyle {
+	pub fn get_style(&self, element: &MapElement, context: &StyleContext) -> MapStyle {
 		/* if !self.styles.contains_key(&element.id) {
 			let style = self.create_style(element, map_data);
 			self.styles.insert(element.id, style);
@@ -105,7 +105,7 @@ impl Styles {
 		self.create_style(element, context)
 	}
 
-	fn create_style(&mut self, element: &MapElement, context: &StyleContext) -> MapStyle {
+	fn create_style(&self, element: &MapElement, context: &StyleContext) -> MapStyle {
 		let mut style = MapStyle::default();
 
 		let stylesets = matching_rules(&self.css, element, context);
@@ -159,7 +159,7 @@ impl Styles {
 	}
 
 	fn error(&self, error: Error, span: SimpleSpan) {
-		self.reporting.borrow_mut().report(error, span)
+		self.reporting.borrow_mut().report(error, span);
 	}
 
 	fn try_assign_enum<'a, T: TryFrom<&'a str> + strum::VariantNames>(
@@ -313,8 +313,8 @@ fn matches_selector(selector: &Selector, element: &MapElement, context: &StyleCo
 fn matches_subselector(subselector: &SubSelector, element: &MapElement, context: &StyleContext) -> bool {
 	let matching = match subselector {
 		SubSelector::Object(object, zoom, conditions, _pseudo_class) => {
-			matches_object(object, element, context)
-				&& matches_zoom(zoom, context)
+			matches_object(*object, element, context)
+				&& matches_zoom(*zoom, context)
 				&& matches_conditions(conditions, element, context)
 		}
 		_ => todo!(),
@@ -322,11 +322,11 @@ fn matches_subselector(subselector: &SubSelector, element: &MapElement, context:
 	matching && (subselector.pseudo_class() != Some("closed") || element.is_closed())
 }
 
-fn matches_zoom(zoom: &Option<Zoom>, context: &StyleContext) -> bool {
-	zoom.is_none_or(|zoom| context.zoom_level > zoom.0 as f32 && context.zoom_level < zoom.1 as f32)
+fn matches_zoom(zoom: Option<Zoom>, context: &StyleContext) -> bool {
+	zoom.is_none_or(|zoom| context.zoom_level > f32::from(zoom.0) && context.zoom_level < f32::from(zoom.1))
 }
 
-fn matches_object(object: &Object, element: &MapElement, _context: &StyleContext) -> bool {
+fn matches_object(object: Object, element: &MapElement, _context: &StyleContext) -> bool {
 	match object {
 		Object::Node => matches!(element.element, Element::Node { .. }),
 		Object::Way => matches!(element.element, Element::Way { .. }),
@@ -341,7 +341,7 @@ fn matches_conditions(conditions: &[Condition], element: &MapElement, _context: 
 		Condition::Binary(tag_key, BinaryOp::Eq, Expression::Identifier(tag_value)) => {
 			element.get_tag_with_new(tag_key) == Some(tag_value)
 		}
-		Condition::Tag(tag) => element.get_tag_with_new(&tag).is_some(),
+		Condition::Tag(tag) => element.get_tag_with_new(tag).is_some(),
 		_ => todo!(),
 	})
 }

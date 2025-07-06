@@ -14,7 +14,7 @@ use undo::Record;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ElementId(pub i64, pub ElementType);
 
-impl std::fmt::Display for ElementId {
+impl Display for ElementId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}:{}", self.0, self.1)
 	}
@@ -144,7 +144,7 @@ impl MapData {
 	pub fn raw_move_by<'a>(elements: &mut Elements, ids: impl IntoIterator<Item = &'a ElementId>, delta: DVec2) {
 		let mut moved = HashSet::with_capacity(100);
 
-		for element_id in ids.into_iter() {
+		for element_id in ids {
 			Self::move_element(elements, &mut moved, element_id, &delta);
 		}
 	}
@@ -200,13 +200,13 @@ impl MapData {
 		)
 	}
 
-	pub fn add_node_to_way_end(&mut self, way: ElementId, node: ElementId) -> Edit {
+	pub fn add_node_to_way_end(&self, way: ElementId, node: ElementId) -> Edit {
 		debug_assert_eq!(ElementType::Way, way.1);
 		debug_assert_eq!(ElementType::Node, node.1);
 		Edit(smallvec![way], Action::AddNodeToWayEnd { node })
 	}
 
-	fn new_element_id(&mut self, e_type: ElementType) -> ElementId {
+	const fn new_element_id(&mut self, e_type: ElementType) -> ElementId {
 		let id = match e_type {
 			ElementType::Node => {
 				self.last_new_ids.0 -= 1;
@@ -221,7 +221,7 @@ impl MapData {
 				self.last_new_ids.2
 			}
 		};
-		return ElementId(id, e_type);
+		ElementId(id, e_type)
 	}
 
 	/// # Safety:
@@ -299,10 +299,10 @@ impl LatLon {
 }
 
 impl Add<DVec2> for LatLon {
-	type Output = LatLon;
+	type Output = Self;
 
 	fn add(self, rhs: DVec2) -> Self::Output {
-		LatLon::from_web_mercator(self.to_web_mercator() + rhs)
+		Self::from_web_mercator(self.to_web_mercator() + rhs)
 	}
 }
 
@@ -312,43 +312,43 @@ pub struct Bounds {
 	pub max: LatLon,
 }
 
-pub fn latlon(lat: f64, lon: f64) -> LatLon {
+pub const fn latlon(lat: f64, lon: f64) -> LatLon {
 	LatLon { lat, lon }
 }
 
 impl Bounds {
-	pub fn center(&self) -> LatLon {
-		latlon((self.top() + self.bottom()) / 2.0, (self.left() + self.right()) / 2.0)
+	pub const fn center(&self) -> LatLon {
+		latlon(self.top().midpoint(self.bottom()), self.left().midpoint(self.right()))
 	}
-	pub fn left(&self) -> f64 {
+	pub const fn left(&self) -> f64 {
 		f64::min(self.min.lon, self.max.lon)
 	}
 
-	pub fn right(&self) -> f64 {
+	pub const fn right(&self) -> f64 {
 		f64::max(self.min.lon, self.max.lon)
 	}
 
-	pub fn top(&self) -> f64 {
+	pub const fn top(&self) -> f64 {
 		f64::max(self.min.lat, self.max.lat)
 	}
 
-	pub fn bottom(&self) -> f64 {
+	pub const fn bottom(&self) -> f64 {
 		f64::min(self.min.lat, self.max.lat)
 	}
 
-	pub fn top_left(&self) -> LatLon {
+	pub const fn top_left(&self) -> LatLon {
 		latlon(self.top(), self.left())
 	}
 
-	pub fn top_right(&self) -> LatLon {
+	pub const fn top_right(&self) -> LatLon {
 		latlon(self.top(), self.right())
 	}
 
-	pub fn bottom_left(&self) -> LatLon {
+	pub const fn bottom_left(&self) -> LatLon {
 		latlon(self.bottom(), self.left())
 	}
 
-	pub fn bottom_right(&self) -> LatLon {
+	pub const fn bottom_right(&self) -> LatLon {
 		latlon(self.bottom(), self.right())
 	}
 
@@ -514,7 +514,7 @@ mod tests {
 			lon: 12.19731,
 		};
 		let web_mercator = lat_lon.to_web_mercator();
-		info!("Web Mercator: {:?}", web_mercator);
+		info!("Web Mercator: {web_mercator:?}");
 		let lat_lon2 = LatLon::from_web_mercator(web_mercator);
 		let diff = (lat_lon.lat - lat_lon2.lat).abs() + (lat_lon.lon - lat_lon2.lon).abs();
 		assert!(diff < 0.0001);

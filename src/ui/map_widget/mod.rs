@@ -61,7 +61,7 @@ const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 
 impl Widget for MapWidget<'_> {
 	#[allow(clippy::too_many_lines)]
-	fn ui(mut self, ui: &mut egui::Ui) -> egui::Response {
+	fn ui(mut self, ui: &mut egui::Ui) -> Response {
 		ScrollArea::neither()
 			.show(ui, |ui| {
 				Frame::canvas(ui.style()).show(ui, |ui| {
@@ -74,7 +74,7 @@ impl Widget for MapWidget<'_> {
 					dbgtxt!(self.debug_text, "Viewport: {viewport:?}");
 
 					if self.interactive {
-						let zoom = response.ctx.input(|i| i.smooth_scroll_delta).y as f64;
+						let zoom = f64::from(response.ctx.input(|i| i.smooth_scroll_delta).y);
 						if zoom != 0.0 && response.contains_pointer() {
 							// TODO: fix zoom speed on chrome
 							let zoom_diff = zoom / 1000.0 * ZOOM_SPEED;
@@ -154,7 +154,7 @@ impl Widget for MapWidget<'_> {
 					let mut hover_elements = {
 						puffin::profile_scope!("Get hover elements");
 						let single = match (self.interactive, view.pointer_world_pos) {
-							(true, Some(_)) => closest_element(&render_data, &view.scale).map(|e| e.id),
+							(true, Some(_)) => closest_element(&render_data, view.scale).map(|e| e.id),
 							_ => None,
 						};
 						QuickSet::from(single)
@@ -182,7 +182,7 @@ impl Widget for MapWidget<'_> {
 					dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");
 
 					let mut shapes = DrawList::new();
-					let fonts = ui.ctx().fonts(|f| f.clone());
+					let fonts = ui.ctx().fonts(Clone::clone);
 					let show_hover = matches!(
 						self.map_state.state(),
 						MapState::Select { .. } | MapState::BoxSelect { .. } | MapState::Draw { .. }
@@ -195,7 +195,7 @@ impl Widget for MapWidget<'_> {
 						}
 						let selected = self.mem.selection.elements.contains(&element.id);
 						if selected {
-							draw_element(&element.selected(), &mut shapes, &view, &fonts)
+							draw_element(&element.selected(), &mut shapes, &view, &fonts);
 						}
 						draw_element(element, &mut shapes, &view, &fonts);
 					}
@@ -260,7 +260,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 			if let Some(icon) = element.style.icon {
 				shapes
 					.images
-					.push(icon_shape(icon.0, rect, element.style.icon_rotation))
+					.push(icon_shape(icon.0, rect, element.style.icon_rotation));
 			} else {
 				shapes.nodes.push(Shape::rect_filled(rect, CornerRadius::ZERO, color));
 			}
@@ -273,7 +273,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 					&text.text,
 					text.font_id(),
 					text.color,
-				))
+				));
 			}
 		}
 		RenderElement::Path(nodes, is_closed) => {
@@ -315,7 +315,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 							override_text_color: None,
 							opacity_factor: 1.0,
 							angle,
-						}))
+						}));
 					}
 				}
 			} else if *is_closed && text.position == TextPosition::Center && !text.text.is_empty() {
@@ -333,7 +333,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 						override_text_color: None,
 						opacity_factor: 1.0,
 						angle: 0.0,
-					}))
+					}));
 				}
 			}
 
@@ -361,7 +361,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 				draw_element(e, shapes, view, fonts);
 			}
 		}
-	};
+	}
 }
 
 fn draw_tiles(
@@ -371,7 +371,6 @@ fn draw_tiles(
 	view: &View,
 	debug_text: &mut Option<&mut DebugText>,
 ) {
-	puffin::profile_function!();
 	#[cfg(not(target_arch = "wasm32"))]
 	const ZOOM_ADJUST: f64 = 0.0;
 	#[cfg(target_arch = "wasm32")]
@@ -521,7 +520,7 @@ fn draw_tile(
 	}
 }
 
-fn closest_element<'a>(render_data: &'a [DetailedElement], scale: &f64) -> Option<&'a DetailedElement> {
+fn closest_element(render_data: &[DetailedElement], scale: f64) -> Option<&DetailedElement> {
 	render_data
 		.iter()
 		.filter(|e| matches!(e.pointer_distance, Some(dist) if dist < e.pointer_threshold * scale))

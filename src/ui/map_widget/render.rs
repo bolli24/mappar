@@ -66,11 +66,9 @@ impl RenderElement {
 			return false;
 		};
 		match &self {
-			RenderElement::Node(pos) => rect.contains(pos.to_pos2()),
-			RenderElement::Path(nodes, _) | RenderElement::Area(nodes, _) => {
-				nodes.iter().all(|n| rect.contains(n.to_pos2()))
-			}
-			RenderElement::Collection(elements) => elements.iter().all(|e| e.element.in_box_selection(rect)),
+			Self::Node(pos) => rect.contains(pos.to_pos2()),
+			Self::Path(nodes, _) | Self::Area(nodes, _) => nodes.iter().all(|n| rect.contains(n.to_pos2())),
+			Self::Collection(elements) => elements.iter().all(|e| e.element.in_box_selection(rect)),
 		}
 	}
 

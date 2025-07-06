@@ -110,7 +110,7 @@ impl LocalCache {
 		self.last_count
 	}
 
-	pub async fn save_image(&mut self, tile: &Tile, image_data: &Bytes, image_format: ImageFormat) -> Option<()> {
+	pub async fn save_image(&self, tile: &Tile, image_data: &Bytes, image_format: ImageFormat) -> Option<()> {
 		let file_path = self.file_path(tile, image_format);
 
 		DirBuilder::new()
@@ -151,7 +151,7 @@ fn try_get_file(
 	let file_name = file.file_name();
 	let file_name = file_name.to_str()?;
 	if !file_regex.is_match(file_name) {
-		warn!("Cache: Skipping invalid file: {}", file_name);
+		warn!("Cache: Skipping invalid file: {file_name}");
 		return None;
 	}
 	let image_format = ImageFormat::from_extension(file_path.extension()?)?;

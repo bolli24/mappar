@@ -23,7 +23,7 @@ impl DrawList {
 		painter.extend(self.text);
 	}
 
-	pub fn count(&self) -> usize {
+	pub const fn count(&self) -> usize {
 		self.paths.len() + self.areas.len() + self.nodes.len() + self.images.len() + self.text.len()
 	}
 }

@@ -49,8 +49,8 @@ impl MapStateMachine {
 	}
 
 	#[state]
-	fn initial() -> Response<State> {
-		Response::Transition(State::Select {
+	fn initial() -> Outcome<State> {
+		Transition(State::Select {
 			last_clicked_element: None,
 		})
 	}
@@ -60,7 +60,7 @@ impl MapStateMachine {
 	}
 
 	#[superstate]
-	fn default(&mut self, context: &mut Context<'_>) -> Response<State> {
+	fn default(&mut self, context: &mut Context<'_>) -> Outcome<State> {
 		let Context {
 			response,
 			update_edit_mode,
@@ -71,10 +71,10 @@ impl MapStateMachine {
 			self.edit_mode = new_mode;
 
 			return match self.edit_mode {
-				EditMode::Select => Response::Transition(State::Select {
+				EditMode::Select => Transition(State::Select {
 					last_clicked_element: None,
 				}),
-				EditMode::DrawPen => Response::Transition(State::Draw { last_new_element: None }),
+				EditMode::DrawPen => Transition(State::Draw { last_new_element: None }),
 			};
 		}
 
@@ -82,14 +82,14 @@ impl MapStateMachine {
 			|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
 				&& response.drag_started_by(PointerButton::Primary))
 		{
-			return Response::Transition(State::MoveView {});
+			return Transition(State::MoveView {});
 		}
 
-		Response::Handled
+		Handled
 	}
 
 	#[state(superstate = "default")]
-	fn select(&mut self, context: &mut Context<'_>, last_clicked_element: &mut Option<ElementId>) -> Response<State> {
+	fn select(&mut self, context: &mut Context<'_>, last_clicked_element: &mut Option<ElementId>) -> Outcome<State> {
 		let Context {
 			ui_context,
 			response,
@@ -102,7 +102,7 @@ impl MapStateMachine {
 		} = context;
 
 		if !*interactive {
-			return Response::Handled;
+			return Handled;
 		}
 
 		if ui_context.input(|i| i.pointer.button_down(PointerButton::Primary)) {
@@ -117,13 +117,13 @@ impl MapStateMachine {
 		if response.drag_started_by(PointerButton::Primary) && !response.ctx.input(|i| i.modifiers == Modifiers::ALT) {
 			if let Some(last) = last_clicked_element {
 				if mem.selection.elements.contains(last) {
-					return Response::Transition(State::MoveElements {
+					return Transition(State::MoveElements {
 						total_delta: DVec2::ZERO,
 						initial_delta: self.pointer_down_delta,
 					});
 				}
 			} else {
-				return Response::Transition(State::BoxSelect {
+				return Transition(State::BoxSelect {
 					pointer_down_pos: self.pointer_down_pos,
 				});
 			}
@@ -149,25 +149,25 @@ impl MapStateMachine {
 			mem.selection.elements.clear();
 		}
 
-		Response::Super
+		Super
 	}
 
 	#[state(superstate = "default")]
-	fn move_view(context: &mut Context<'_>) -> Response<State> {
+	fn move_view(context: &mut Context<'_>) -> Outcome<State> {
 		context.mem.camera_pos -= context.world_delta;
 		let response = &context.response;
 
 		if response.dragged_by(PointerButton::Middle)
 			|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT) && response.dragged_by(PointerButton::Primary))
 		{
-			Response::Handled
+			Handled
 		} else {
-			Response::Transition(Self::select_default())
+			Transition(Self::select_default())
 		}
 	}
 
 	#[state]
-	fn move_elements(context: &mut Context<'_>, total_delta: &mut DVec2, initial_delta: &mut DVec2) -> Response<State> {
+	fn move_elements(context: &mut Context<'_>, total_delta: &mut DVec2, initial_delta: &mut DVec2) -> Outcome<State> {
 		*total_delta += context.world_delta + *initial_delta;
 		MapData::raw_move_by(
 			&mut context.map_data.elements,
@@ -185,21 +185,21 @@ impl MapStateMachine {
 			if let Err(err) = result {
 				message_error!(context.messages, "Error moving elements: {err}");
 			}
-			Response::Transition(Self::select_default())
+			Transition(Self::select_default())
 		} else if context.response.clicked_by(PointerButton::Secondary) {
 			MapData::raw_move_by(
 				&mut context.map_data.elements,
 				&context.mem.selection.elements,
 				-*total_delta,
 			);
-			Response::Transition(Self::select_default())
+			Transition(Self::select_default())
 		} else {
-			Response::Handled
+			Handled
 		}
 	}
 
 	#[state(exit_action = "exit_box_select")]
-	fn box_select(&mut self, context: &mut Context<'_>, pointer_down_pos: &mut Option<DVec2>) -> Response<State> {
+	fn box_select(&mut self, context: &mut Context<'_>, pointer_down_pos: &Option<DVec2>) -> Outcome<State> {
 		let selection_box = if let Some(pointer) = context.view.pointer_world_pos {
 			let selection_box = self
 				.selection_box
@@ -210,12 +210,11 @@ impl MapStateMachine {
 			None
 		};
 
-		*context.hover_elements = QuickSet::from_iter(
-			context
-				.render_data
-				.iter()
-				.filter_map(|e| e.element.in_box_selection(selection_box).then_some(e.id)),
-		);
+		*context.hover_elements = context
+			.render_data
+			.iter()
+			.filter_map(|e| e.element.in_box_selection(selection_box).then_some(e.id))
+			.collect::<QuickSet<_>>();
 
 		if context.response.drag_stopped_by(PointerButton::Primary) {
 			if context.response.ctx.input(|i| i.modifiers.shift_only()) {
@@ -233,11 +232,11 @@ impl MapStateMachine {
 				}
 			}
 
-			Response::Transition(Self::select_default())
+			Transition(Self::select_default())
 		} else if context.response.clicked_by(PointerButton::Secondary) {
-			Response::Transition(Self::select_default())
+			Transition(Self::select_default())
 		} else {
-			Response::Handled
+			Handled
 		}
 	}
 
@@ -247,7 +246,7 @@ impl MapStateMachine {
 	}
 
 	#[state(superstate = "default")]
-	fn draw(&mut self, context: &mut Context<'_>, last_new_element: &mut Option<ElementId>) -> Response<State> {
+	fn draw(&self, context: &mut Context<'_>, last_new_element: &mut Option<ElementId>) -> Outcome<State> {
 		let Context {
 			response,
 			view,
@@ -283,6 +282,6 @@ impl MapStateMachine {
 			}
 		}
 
-		Response::Super
+		Super
 	}
 }

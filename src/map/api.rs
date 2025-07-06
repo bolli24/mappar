@@ -27,7 +27,7 @@ pub enum Error {
 	#[error("API error: {0} - {1}")]
 	Api(StatusCode, String),
 	#[error("XML error")]
-	XML,
+	Xml,
 }
 
 pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
@@ -45,13 +45,13 @@ pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 	}
 
 	info!("Status: {:?}", response.status());
-	info!("Response: {:?}", response);
+	info!("Response: {response:?}");
 	let xml = response.text().await?;
 
 	info!("Time taken: {:?}", start.elapsed());
 	let start = Instant::now();
 
-	let data = parse_osm_xml(&xml).ok_or(Error::XML)?;
+	let data = parse_osm_xml(&xml).ok_or(Error::Xml)?;
 
 	#[cfg(not(target_arch = "wasm32"))]
 	if cfg!(debug_assertions) {
@@ -73,7 +73,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 			Ok(event) => match event {
 				Event::Start(ref e) => {
 					if !matches!(e.name().as_ref(), b"node" | b"way" | b"relation") {
-						warn!("Unknown element: {:?}", e);
+						warn!("Unknown element: {e:?}");
 						continue;
 					}
 					let attributes = e.attributes();
@@ -151,7 +151,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 				_ => {}
 			},
 			Err(e) => {
-				error!("Error: {:?}", e);
+				error!("Error: {e:?}");
 				break;
 			}
 		}
@@ -188,7 +188,7 @@ fn parse_tag(tags: &mut IndexMap<String, String>, e: &BytesStart) -> Result<(), 
 	let mut value = String::new();
 
 	for a in e.attributes() {
-		let a = a.unwrap();
+		let a = a?;
 		match a.key.as_ref() {
 			b"k" => key = a.unescape_value()?.to_string(),
 			b"v" => value = a.unescape_value()?.to_string(),
@@ -239,7 +239,7 @@ fn parse_attributes(attributes: Attributes) -> Option<(i64, Option<LatLon>, Elem
 				info.timestamp = from_utf8(&attr.value).ok()?.parse().ok()?;
 			}
 			_ => {
-				warn!("Unknown attribute: {:?}", attr);
+				warn!("Unknown attribute: {attr:?}");
 			}
 		}
 	}

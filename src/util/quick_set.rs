@@ -12,7 +12,7 @@ impl<T: Eq + core::hash::Hash> QuickSet<T> {
 		Self::Empty
 	}
 
-	pub fn from_single(element: T) -> Self {
+	pub const fn from_single(element: T) -> Self {
 		Self::Single(element)
 	}
 
@@ -30,7 +30,7 @@ impl<T: Eq + core::hash::Hash> QuickSet<T> {
 				let Self::Set(set) = self else { unreachable!() };
 				*set = HashSet::from([existing, new_element]);
 			}
-			_ => {}
+			Self::Single(_) => {}
 		}
 	}
 
@@ -69,7 +69,7 @@ impl<T: Eq + core::hash::Hash> QuickSet<T> {
 				if set.remove(value) {
 					if set.len() == 1 {
 						let single = set.drain().next().expect("Set must contain one element.");
-						*self = Self::Single(single)
+						*self = Self::Single(single);
 					}
 					true
 				} else {
@@ -80,14 +80,14 @@ impl<T: Eq + core::hash::Hash> QuickSet<T> {
 		}
 	}
 
-	pub fn single(&self) -> Option<&T> {
+	pub const fn single(&self) -> Option<&T> {
 		match self {
 			Self::Single(single) => Some(single),
 			_ => None,
 		}
 	}
 
-	pub fn is_empty(&self) -> bool {
+	pub const fn is_empty(&self) -> bool {
 		matches!(self, Self::Empty)
 	}
 }
@@ -120,10 +120,7 @@ impl<T: Eq + core::hash::Hash> Default for QuickSet<T> {
 
 impl<T: Eq + core::hash::Hash> From<Option<T>> for QuickSet<T> {
 	fn from(value: Option<T>) -> Self {
-		match value {
-			Some(value) => Self::Single(value),
-			None => Self::new(),
-		}
+		value.map_or_else(Self::new, |value| Self::Single(value))
 	}
 }
 

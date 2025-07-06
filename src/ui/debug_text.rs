@@ -20,10 +20,10 @@ impl DebugText {
 		Self { text: Vec::new() }
 	}
 
-	fn add(&mut self, line: impl Into<String>) -> Option<i32> {
+	fn add(&mut self, line: impl Into<String>) -> i32 {
 		let lowest_priority = *self.text.iter().map(|(p, _)| p).min().unwrap_or(&0);
 		self.text.push((lowest_priority - 10, line.into()));
-		Some(lowest_priority - 10)
+		lowest_priority - 10
 	}
 
 	pub fn add_at(&mut self, line: &str, priority: i32) {
@@ -53,18 +53,18 @@ pub trait AddDebugText {
 
 impl AddDebugText for DebugText {
 	fn add_text(&mut self, line: impl Into<String>) -> Option<i32> {
-		self.add(line)
+		Some(self.add(line))
 	}
 }
 
 impl AddDebugText for Option<DebugText> {
 	fn add_text(&mut self, line: impl Into<String>) -> Option<i32> {
-		self.as_mut().and_then(|debug_text| debug_text.add(line))
+		self.as_mut().map(|debug_text| debug_text.add(line))
 	}
 }
 
 impl AddDebugText for Option<&mut DebugText> {
 	fn add_text(&mut self, line: impl Into<String>) -> Option<i32> {
-		self.as_mut().and_then(|debug_text| debug_text.add(line))
+		self.as_mut()?.add_text(line)
 	}
 }

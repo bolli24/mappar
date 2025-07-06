@@ -97,7 +97,7 @@ impl MyApp {
 
 		let mut app = Self {
 			map_data: Arc::new(Mutex::new(MapData::new())),
-			styles: get_default_styles(cc.egui_ctx.tex_manager().clone()),
+			styles: get_default_styles(cc.egui_ctx.tex_manager()),
 			imagery_fetcher,
 			imageries,
 			layers: Layers::new(),
@@ -134,10 +134,7 @@ impl MyApp {
 
 		get_imagery(
 			#[cfg(not(target_arch = "wasm32"))]
-			app.project_dirs
-				.data_dir()
-				.join(crate::imagery::JOSM_FILE)
-				.to_path_buf(),
+			app.project_dirs.data_dir().join(crate::imagery::JOSM_FILE),
 			app.messages.clone(),
 			app.imageries.clone(),
 		);
@@ -153,7 +150,7 @@ impl MyApp {
 				}
 				Err(err) => {
 					error!("Error fetching data:");
-					error!("{:?}", err);
+					error!("{err:?}");
 				}
 			}
 		});
@@ -183,7 +180,7 @@ impl eframe::App for MyApp {
 					pressed: true,
 					key: egui::Key::F5,
 					repeat: false,
-					modifiers: egui::Modifiers::NONE,
+					modifiers: Modifiers::NONE,
 					..
 				} = e
 				{
@@ -193,7 +190,7 @@ impl eframe::App for MyApp {
 					pressed: true,
 					key: egui::Key::F3,
 					repeat: false,
-					modifiers: egui::Modifiers::NONE,
+					modifiers: Modifiers::NONE,
 					..
 				} = e
 				{
@@ -225,7 +222,7 @@ impl eframe::App for MyApp {
 					{
 						if ui.button("Reload Styles").clicked() {
 							ui.close_menu();
-							reload_styles = true
+							reload_styles = true;
 						}
 						if ui.button("Open Config Directory").clicked() {
 							ui.close_menu();
@@ -261,10 +258,7 @@ impl eframe::App for MyApp {
 						ui.close_menu();
 						crate::imagery::update_josm_imagery(
 							#[cfg(not(target_arch = "wasm32"))]
-							self.project_dirs
-								.data_dir()
-								.join(crate::imagery::JOSM_FILE)
-								.to_path_buf(),
+							self.project_dirs.data_dir().join(crate::imagery::JOSM_FILE),
 							self.messages.clone(),
 							self.imageries.clone(),
 						);
@@ -285,7 +279,7 @@ impl eframe::App for MyApp {
 		#[cfg(not(target_arch = "wasm32"))]
 		if reload_styles {
 			info!("Reloading MapCSS styles.");
-			self.styles = get_default_styles(ctx.tex_manager())
+			self.styles = get_default_styles(ctx.tex_manager());
 		}
 
 		egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {

@@ -47,10 +47,7 @@ impl Widget for ImageriesWidget<'_> {
 				if ui.button("Update JOSM imagery").clicked() {
 					crate::imagery::update_josm_imagery(
 						#[cfg(not(target_arch = "wasm32"))]
-						self.project_dirs
-							.data_dir()
-							.join(crate::imagery::JOSM_FILE)
-							.to_path_buf(),
+						self.project_dirs.data_dir().join(crate::imagery::JOSM_FILE),
 						self.messages.clone(),
 						self.imageries.clone(),
 					);
@@ -79,7 +76,7 @@ impl Widget for ImageriesWidget<'_> {
 						row.set_selected(Some(row.index()) == selected_index);
 
 						row.col(|ui| {
-							ui.label(imagery.country.and_then(|c| c.flag()).unwrap_or("".to_string()));
+							ui.label(imagery.country.and_then(|c| c.flag()).unwrap_or(String::new()));
 						});
 						row.col(|ui| {
 							Label::new(imagery.name()).selectable(false).ui(ui);

@@ -72,10 +72,10 @@ impl Tile {
 		} else {
 			let zoom = self.coords.2 + 1;
 			Some([
-				Tile::new(self.imagery_ref, (self.coords.0 * 2, self.coords.1 * 2, zoom)),
-				Tile::new(self.imagery_ref, (self.coords.0 * 2 + 1, self.coords.1 * 2, zoom)),
-				Tile::new(self.imagery_ref, (self.coords.0 * 2, self.coords.1 * 2 + 1, zoom)),
-				Tile::new(self.imagery_ref, (self.coords.0 * 2 + 1, self.coords.1 * 2 + 1, zoom)),
+				Self::new(self.imagery_ref, (self.coords.0 * 2, self.coords.1 * 2, zoom)),
+				Self::new(self.imagery_ref, (self.coords.0 * 2 + 1, self.coords.1 * 2, zoom)),
+				Self::new(self.imagery_ref, (self.coords.0 * 2, self.coords.1 * 2 + 1, zoom)),
+				Self::new(self.imagery_ref, (self.coords.0 * 2 + 1, self.coords.1 * 2 + 1, zoom)),
 			])
 		}
 	}
@@ -170,15 +170,14 @@ impl ImageryFetcher {
 			.spawn("./dummy_worker.js")
 	}
 
-	pub fn update(&mut self) {}
-
 	fn store_texture(
 		texture_manager: &Arc<RwLock<TextureManager>>,
 		memory_cache: &MemoryCache,
 		tile: Tile,
 		texture: TextureId,
 	) {
-		if let Some((tile_b, Some(texture_id))) = memory_cache.lock().unwrap().push(tile, Some(texture)) {
+		let value = memory_cache.lock().unwrap().push(tile, Some(texture));
+		if let Some((tile_b, Some(texture_id))) = value {
 			debug_assert_ne!(tile, tile_b, "Mustn't store the same tile twice.");
 			texture_manager.write().free(texture_id);
 		}

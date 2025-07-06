@@ -23,8 +23,8 @@ impl Multipolygon {
 		self.0
 			.iter()
 			.filter(|p| !p.is_hole)
-			.map(|p| p.bounding_box())
-			.fold(Rect::NOTHING, |acc, r| acc.union(r))
+			.map(Polygon::bounding_box)
+			.fold(Rect::NOTHING, Rect::union)
 	}
 }
 
@@ -72,7 +72,7 @@ impl Default for PartitionVertex<'_> {
 
 impl From<Triangle> for Polygon {
 	fn from(t: Triangle) -> Self {
-		Polygon::new(vec![t.0, t.1, t.2], false)
+		Self::new(vec![t.0, t.1, t.2], false)
 	}
 }
 
@@ -117,7 +117,7 @@ impl Polygon {
 	}
 
 	pub fn invert(&mut self) {
-		self.points.reverse()
+		self.points.reverse();
 	}
 
 	pub fn is_valid(&self) -> bool {
@@ -264,7 +264,6 @@ impl Polygon {
 				}
 
 				i11_outer -= 1;
-				continue;
 			}
 		}
 		Some(triangles)
@@ -626,7 +625,7 @@ mod tests {
 		let poly = Polygon::new(points, false);
 		let triangles = poly.triangulate().unwrap();
 
-		for t in triangles.iter() {
+		for t in &triangles {
 			print!("[x: {}, y: {}]\t\t", t.0.x, t.0.y);
 			print!("[x: {}, y: {}]\t\t", t.0.x, t.0.y);
 			print!("[x: {}, y: {}]\t\t", t.0.x, t.0.y);

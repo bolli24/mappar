@@ -51,7 +51,7 @@ pub fn try_get_icon_texture(
 			.ok_or(IconError::InvalidFileExtension(file_name.to_string()))?
 			.to_lowercase();
 
-		let color_image = decode_or_render(&extension, bytes)?;
+		let color_image = decode_or_render(&extension, &bytes)?;
 
 		Ok(imagery_fetcher::ImageryFetcher::create_texture_from_decoded(
 			texture_manager,
@@ -106,7 +106,7 @@ pub async fn fetch_icon(
 	log::info!("{response:?}");
 
 	let bytes = response.bytes().await.map_err(imagery_fetcher::Error::Reqwest)?;
-	let color_image = decode_or_render(&extension, bytes)?;
+	let color_image = decode_or_render(&extension, &bytes)?;
 	Ok(imagery_fetcher::ImageryFetcher::create_texture_from_decoded(
 		texture_manager,
 		format!("icon {file_name}"),
@@ -114,11 +114,11 @@ pub async fn fetch_icon(
 	))
 }
 
-fn decode_or_render(extension: &str, bytes: bytes::Bytes) -> Result<ColorImage, IconError> {
+fn decode_or_render(extension: &str, bytes: &bytes::Bytes) -> Result<ColorImage, IconError> {
 	if extension == "svg" {
-		Ok(render_svg(&bytes)?)
+		Ok(render_svg(bytes)?)
 	} else {
-		Ok(imagery_fetcher::ImageryFetcher::decode_image(&bytes)?.0)
+		Ok(imagery_fetcher::ImageryFetcher::decode_image(bytes)?.0)
 	}
 }
 
@@ -130,7 +130,7 @@ fn render_svg(bytes: &[u8]) -> Result<ColorImage, IconError> {
 
 	const SVG_MIN_SIZE: f32 = 100.0; // TODO: Config
 
-	let tree = Tree::from_data(bytes, &Options { ..Default::default() })?;
+	let tree = Tree::from_data(bytes, &Options::default())?;
 
 	let size = tree.size();
 	let scaled_size = size.scale_to(Size::from_wh(SVG_MIN_SIZE, SVG_MIN_SIZE).unwrap());

@@ -20,7 +20,7 @@ impl Messages {
 		}
 	}
 
-	pub fn add(&mut self, message: impl ToString) {
+	pub fn add(&mut self, message: &(impl ToString + ?Sized)) {
 		self.messages.lock().unwrap().add(self.now(), message.to_string());
 	}
 

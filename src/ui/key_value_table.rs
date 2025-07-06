@@ -15,7 +15,7 @@ pub struct KeyValueTable<'a> {
 }
 
 impl Widget for KeyValueTable<'_> {
-	fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+	fn ui(self, ui: &mut Ui) -> egui::Response {
 		// const COLUMN_MARGIN: f32 = 20.0; // FIXME: Make it so we don't need this for the side panel to be able to shrink
 		const ACTION_COLUMN: f32 = 36.0;
 		let panel = ui.response().rect;
@@ -67,7 +67,7 @@ impl Widget for KeyValueTable<'_> {
 									table_field(&mut update_value, ui);
 								});
 								if update_value != *value {
-									edit = Some(map_data.update_value(id, key.clone(), update_value))
+									edit = Some(map_data.update_value(id, key.clone(), update_value));
 								}
 								row.col(|ui| {
 									if ui.small_button(RichText::new(egui_phosphor::bold::TRASH)).clicked() {
@@ -110,7 +110,7 @@ impl Widget for KeyValueTable<'_> {
 			.response;
 
 		if let Some(Err(err)) = edit.map(|edit| map_data.edit(edit)) {
-			self.messages.add(err);
+			self.messages.add(&err);
 		}
 
 		response

@@ -15,7 +15,7 @@ where
 	S: std::hash::BuildHasher + Default,
 {
 	fn with_capacity(capacity: usize) -> Self {
-		std::collections::HashMap::with_capacity_and_hasher(capacity, S::default())
+		Self::with_capacity_and_hasher(capacity, S::default())
 	}
 }
 
@@ -24,7 +24,7 @@ where
 	S: std::hash::BuildHasher + Default,
 {
 	fn with_capacity(capacity: usize) -> Self {
-		std::collections::HashSet::with_capacity_and_hasher(capacity, S::default())
+		Self::with_capacity_and_hasher(capacity, S::default())
 	}
 }
 
