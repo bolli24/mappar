@@ -42,7 +42,7 @@ futures = "0.3"
 
 reqwest = "0.12"
 url = "2.5"
-quick-xml = { version = "0.37", features = [
+quick-xml = { version = "0.38", features = [
     "serialize",
     "overlapped-lists",
 ], default-features = false }
@@ -53,14 +53,14 @@ chrono = { version = "0.4", features = ["wasmbind"] }
 web-time = "1.1.0"
 
 undo = { version = "0.52", default-features = false, features = ["alloc"] }
-lru = "0.14"
+lru = "0.16"
 indexmap = "2.9"
 itertools = "0.14"
 regex = "1.11"
 lasso = { version = "0.7", features = ["serialize"] }
 smallvec = "1.15"
 
-statig = "0.3"
+statig = "0.4"
 
 chumsky = "0.10.1"
 
