@@ -297,7 +297,7 @@ impl ImageryFetcher {
 	async fn fetch_tile(
 		texture_manager: &Arc<RwLock<TextureManager>>,
 		imageries: Arc<Mutex<Imageries>>,
-		mut persistent_cache: local_cache::LocalCache,
+		persistent_cache: local_cache::LocalCache,
 		tile: &Tile,
 		client: Client,
 	) -> Result<TextureId, Error> {

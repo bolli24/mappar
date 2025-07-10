@@ -238,6 +238,7 @@ impl MapWidget<'_> {
 	}
 }
 
+// TODO: maybe use egui's native svg rendering.
 fn icon_shape(texture_id: TextureId, rect: Rect, angle: f32) -> Shape {
 	let mut mesh = Mesh::with_texture(texture_id);
 	mesh.add_rect_with_uv(rect, UV, Color32::WHITE);

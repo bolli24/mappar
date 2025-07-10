@@ -4,7 +4,7 @@ use crate::util::convert::CountryFlag;
 use derive_new::new;
 #[cfg(not(target_arch = "wasm32"))]
 use directories::ProjectDirs;
-use egui::{CentralPanel, Label, Response, Sense, SidePanel, TopBottomPanel, Ui, Widget, menu};
+use egui::{CentralPanel, Label, MenuBar, Response, Sense, SidePanel, TopBottomPanel, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -43,7 +43,7 @@ impl Widget for ImageriesWidget<'_> {
 		let imageries = self.imageries.lock().unwrap();
 
 		TopBottomPanel::top("top_panel").show_inside(ui, |ui| {
-			menu::bar(ui, |ui| {
+			MenuBar::new().ui(ui, |ui| {
 				if ui.button("Update JOSM imagery").clicked() {
 					crate::imagery::update_josm_imagery(
 						#[cfg(not(target_arch = "wasm32"))]

@@ -214,33 +214,33 @@ impl eframe::App for MyApp {
 		let mut update_edit_mode = None;
 
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-			egui::menu::bar(ui, |ui| {
+			egui::MenuBar::new().ui(ui, |ui| {
 				ui.menu_button("File", |ui| {
 					ui.checkbox(&mut self.debug_panel, "Debug Panel");
 					ui.checkbox(&mut self.inspection, "Egui Inspector");
 					#[cfg(not(target_arch = "wasm32"))]
 					{
 						if ui.button("Reload Styles").clicked() {
-							ui.close_menu();
+							ui.close();
 							reload_styles = true;
 						}
 						if ui.button("Open Config Directory").clicked() {
-							ui.close_menu();
+							ui.close();
 							open::that(self.project_dirs.config_dir())
 								.unwrap_or_else(|e| error!("Couldn't open config directory: {e}"));
 						}
 						if ui.button("Open Data Directory").clicked() {
-							ui.close_menu();
+							ui.close();
 							open::that(self.project_dirs.data_dir())
 								.unwrap_or_else(|e| error!("Couldn't open data directory: {e}"));
 						}
 						if ui.button("Open Cache Directory").clicked() {
-							ui.close_menu();
+							ui.close();
 							open::that(self.project_dirs.cache_dir())
 								.unwrap_or_else(|e| error!("Couldn't open config directory: {e}"));
 						}
 						if ui.button("Open Logs Directory").clicked() {
-							ui.close_menu();
+							ui.close();
 							open::that(self.project_dirs.data_local_dir().join("logs"))
 								.unwrap_or_else(|e| error!("Couldn't open logs directory: {e}"));
 						}
@@ -251,11 +251,11 @@ impl eframe::App for MyApp {
 				});
 				ui.menu_button("Imagery", |ui| {
 					if ui.button("Imagery Settings").clicked() {
-						ui.close_menu();
+						ui.close();
 						self.imagery_settings = !self.imagery_settings;
 					}
 					if ui.button("Update JOSM imagery").clicked() {
-						ui.close_menu();
+						ui.close();
 						crate::imagery::update_josm_imagery(
 							#[cfg(not(target_arch = "wasm32"))]
 							self.project_dirs.data_dir().join(crate::imagery::JOSM_FILE),

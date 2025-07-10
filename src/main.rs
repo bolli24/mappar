@@ -13,6 +13,8 @@ async fn main() -> eframe::Result<()> {
 	init_logger();
 	info!("Logger initialized in {:?}", start.elapsed());
 
+	dbg!(eframe::wgpu::Instance::enabled_backend_features());
+
 	let server_addr = format!("127.0.0.1:{}", puffin_http::DEFAULT_PORT);
 	match puffin_http::Server::new(&server_addr) {
 		Ok(server) => {

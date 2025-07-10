@@ -349,6 +349,7 @@ fn matches_conditions(conditions: &[Condition], element: &MapElement, _context: 
 fn init_fallback_texture(texture_manager: &Arc<RwLock<TextureManager>>) -> TextureId {
 	let fallback_image = egui::ColorImage {
 		size: [2, 2],
+		source_size: [2.0, 2.0].into(),
 		pixels: vec![
 			Color32::from_rgb(255, 0, 255),
 			Color32::BLACK,

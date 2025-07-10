@@ -8,7 +8,7 @@ edition = "2024"
 [dependencies]
 chumsky = { version = "0.10.1" }
 logos = "0.15"
-ecolor = "0.31"
+ecolor = "0.32"
 ariadne = "0.5"
 phf = { version = "0.12", features = ["macros"] }
 color-hex = "0.2.0"
