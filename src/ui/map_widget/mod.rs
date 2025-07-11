@@ -78,17 +78,20 @@ impl Widget for MapWidget<'_> {
 						if zoom != 0.0 && response.contains_pointer() {
 							// TODO: fix zoom speed on chrome
 							let zoom_diff = zoom / 1000.0 * ZOOM_SPEED;
+							let old_zoom = self.mem.zoom_level;
 							self.mem.zoom_level += zoom_diff;
 							self.mem.zoom_level = self.mem.zoom_level.clamp(1.0, 25.0);
+
 							if let Some(pointer_world_pos) =
-								pointer_world_pos(self.mem.camera_pos, &response, viewport, scale(self.mem.zoom_level))
+								pointer_world_pos(self.mem.camera_pos, &response, viewport, scale(old_zoom))
 							{
-								let camera_diff = pointer_world_pos - self.mem.camera_pos;
-								self.mem.camera_pos += camera_diff * zoom_diff * 0.69; // No idea why the funny number is right here
+								// Move camera so that the world position under the cursor remains fixed
+								let delta = pointer_world_pos - self.mem.camera_pos;
+								let new_delta = delta * (scale(self.mem.zoom_level) / scale(old_zoom));
+								self.mem.camera_pos = pointer_world_pos - new_delta;
 							}
 						}
 					}
-
 					let view = View::new(&response, self.mem.camera_pos, self.mem.zoom_level);
 
 					let world_delta = {
