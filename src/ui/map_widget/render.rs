@@ -137,8 +137,29 @@ impl DetailedElement {
 	}
 
 	pub fn hovered(&self) -> Self {
+		self.highlight(Color32::YELLOW)
+	}
+
+	pub fn selected(&self) -> Self {
+		self.highlight(Color32::RED)
+	}
+
+	pub fn hovered_and_selected(&self) -> Self {
+		self.highlight(Color32::ORANGE)
+	}
+
+	pub fn maybe_highlighted(&self, hovered: bool, selected: bool) -> Option<Self> {
+		Some(match (hovered, selected) {
+			(true, false) => self.hovered(),
+			(false, true) => self.selected(),
+			(true, true) => self.hovered_and_selected(),
+			(false, false) => return None,
+		})
+	}
+
+	fn highlight(&self, color: Color32) -> Self {
 		let mut element = self.clone();
-		element.style.color = Color32::YELLOW.gamma_multiply(0.75);
+		element.style.color = color.gamma_multiply(0.75);
 		element.style.size += 2.0;
 		element.style.text.text = String::new();
 
@@ -149,27 +170,6 @@ impl DetailedElement {
 			RenderElement::Collection(elements) => {
 				for sub_element in elements {
 					*sub_element = sub_element.hovered();
-				}
-			}
-			_ => (),
-		}
-
-		element
-	}
-
-	pub fn selected(&self) -> Self {
-		let mut element = self.clone();
-		element.style.color = Color32::RED.gamma_multiply(0.75);
-		element.style.size += 2.0;
-		element.style.text.text = String::new();
-
-		match &mut element.element {
-			RenderElement::Node(_) => {
-				element.style.icon = None;
-			}
-			RenderElement::Collection(elements) => {
-				for sub_element in elements {
-					*sub_element = sub_element.selected();
 				}
 			}
 			_ => (),

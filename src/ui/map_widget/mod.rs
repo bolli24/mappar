@@ -189,13 +189,10 @@ impl Widget for MapWidget<'_> {
 					);
 
 					for element in &render_data {
-						let hovered = self.interactive && hover_elements.contains(&element.id);
-						if hovered && show_hover {
-							draw_element(&element.hovered(), &mut shapes, &view, &fonts);
-						}
+						let hovered = show_hover && self.interactive && hover_elements.contains(&element.id);
 						let selected = self.mem.selection.elements.contains(&element.id);
-						if selected {
-							draw_element(&element.selected(), &mut shapes, &view, &fonts);
+						if let Some(hightlighted) = element.maybe_highlighted(hovered, selected) {
+							draw_element(&hightlighted, &mut shapes, &view, &fonts);
 						}
 						draw_element(element, &mut shapes, &view, &fonts);
 					}
