@@ -44,7 +44,6 @@ impl RenderElement {
 	}
 
 	pub fn distance(&self, pointer_pos: Option<DVec2>) -> Option<f64> {
-		puffin::profile_function!();
 		pointer_pos.map(|pointer_pos| match &self {
 			Self::Node(pos) => (pointer_pos - *pos).length(),
 			Self::Path(nodes, false) => nodes
@@ -61,7 +60,6 @@ impl RenderElement {
 	}
 
 	pub fn in_box_selection(&self, rect: impl Into<Option<Rect>>) -> bool {
-		puffin::profile_function!();
 		let Some(rect) = rect.into() else {
 			return false;
 		};
@@ -90,7 +88,7 @@ impl DetailedElement {
 		view: &View,
 		style_context: &StyleContext,
 	) {
-		puffin::profile_function!(map_element.id.to_string());
+		// puffin::profile_function!(map_element.id.to_string());
 
 		let element = match &map_element.element {
 			Element::Node { pos } => RenderElement::Node(pos.get().to_web_mercator()),

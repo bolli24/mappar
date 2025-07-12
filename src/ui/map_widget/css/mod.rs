@@ -137,7 +137,7 @@ impl Styles {
 		style_rule: &Spanned<CssStyle>,
 		_context: &StyleContext,
 	) {
-		puffin::profile_function!();
+		// puffin::profile_function!();
 		let specifier = &style_rule.0.specifier;
 		let key = &style_rule.0.key;
 		match key.as_str() {
@@ -299,7 +299,7 @@ fn matching_rules<'a>(
 	element: &'a MapElement,
 	context: &StyleContext,
 ) -> impl Iterator<Item = &'a Styleset> {
-	puffin::profile_function!();
+	// puffin::profile_function!();
 	css.0.iter().filter(|styleset| matches_rule(styleset, element, context))
 }
 
