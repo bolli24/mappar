@@ -5,6 +5,7 @@ use strum::{EnumString, VariantNames};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Style {
 	pub color: Color32,
+	pub fill_color: Color32,
 	pub size: f32,
 	pub icon: Option<Icon>,
 	pub icon_rotation: f32,
@@ -15,6 +16,7 @@ impl Default for Style {
 	fn default() -> Self {
 		Self {
 			color: Color32::LIGHT_RED,
+			fill_color: Color32::TRANSPARENT,
 			size: 2.0,
 			icon: None,
 			icon_rotation: 0.0,

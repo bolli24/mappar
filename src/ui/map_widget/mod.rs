@@ -12,7 +12,7 @@ use crate::imagery::imagery_fetcher::{ImageryFetcher, Tile};
 use crate::imagery::{Imagery, ImageryRef};
 use crate::map::map_data::{CIRCUMFERENCE_EARTH, Element, LatLon, MapData, latlon};
 use crate::ui::debug_text::DebugText;
-use crate::util::convert::{ToDVec2, ToPos2};
+use crate::util::convert::{ToDVec2, ToLyonPoint, ToPos2};
 use crate::util::quick_set::QuickSet;
 use css::Styles;
 use css::context::StyleContext;
@@ -26,6 +26,10 @@ use egui::{
 use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape, TextShape};
 use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
+use lyon_tessellation::path::Path;
+use lyon_tessellation::{
+	BuffersBuilder, FillOptions, FillTessellator, FillVertex, FillVertexConstructor, VertexBuffers,
+};
 use map_memory::MapMemory;
 use map_state::{EditMode, MapStateMachine, State as MapState};
 use render::{DetailedElement, RenderElement};
@@ -92,6 +96,7 @@ impl Widget for MapWidget<'_> {
 							}
 						}
 					}
+
 					let view = View::new(&response, self.mem.camera_pos, self.mem.zoom_level);
 
 					let world_delta = {
@@ -281,61 +286,9 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 			let vertices: Vec<Pos2> = nodes.iter().map(|pos| view.render_pos(pos)).collect();
 
 			if !is_closed && text.position == TextPosition::Line && !text.text.is_empty() {
-				let galley = fonts.layout_no_wrap(text.text.to_string(), text.font_id(), text.color);
-				let len_sq = galley.size().x.powi(2);
-
-				use std::f32::consts::{FRAC_PI_2, PI};
-				for (a, b) in vertices.iter().tuple_windows() {
-					if a.distance_sq(*b) > len_sq {
-						let vec = b.to_vec2() - a.to_vec2();
-						let midpoint = *a + (vec * 0.5);
-
-						if !view.viewport.contains(midpoint) {
-							continue;
-						}
-
-						let normalized = vec.normalized();
-						let mut angle = vec.angle();
-						let mut flip = 0.5;
-
-						if angle > FRAC_PI_2 {
-							angle -= PI;
-						} else if angle < -FRAC_PI_2 {
-							angle += PI;
-						} else {
-							flip = -0.5;
-						}
-						let pos =
-							midpoint + flip * (galley.size().x * normalized - galley.size().y * normalized.rot90());
-
-						shapes.text.push(Shape::Text(TextShape {
-							pos,
-							galley: galley.clone(),
-							underline: egui::Stroke::NONE,
-							fallback_color: text.color,
-							override_text_color: None,
-							opacity_factor: 1.0,
-							angle,
-						}));
-					}
-				}
+				draw_text_on_line(shapes, view, fonts, text, &vertices);
 			} else if *is_closed && text.position == TextPosition::Center && !text.text.is_empty() {
-				let galley = fonts.layout_no_wrap(text.text.to_string(), text.font_id(), text.color);
-				let bounds = Rect::from_points(&vertices);
-				let pos = find_label_pos(bounds, &galley, &vertices);
-
-				if let Some(pos) = pos {
-					let pos = pos - galley.size() * 0.5;
-					shapes.text.push(Shape::Text(TextShape {
-						pos,
-						galley: galley.clone(),
-						underline: egui::Stroke::NONE,
-						fallback_color: text.color,
-						override_text_color: None,
-						opacity_factor: 1.0,
-						angle: 0.0,
-					}));
-				}
+				draw_text_in_area(shapes, fonts, text, &vertices);
 			}
 
 			let stroke = PathStroke::new(size * view.ui_scale, color);
@@ -346,21 +299,130 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 				closed: *is_closed,
 			}));
 		}
-		RenderElement::Area(_, polygons) => {
-			for polygon in polygons {
-				let nodes: Vec<Pos2> = polygon.iter().map(|pos| view.render_pos(pos)).collect();
+		RenderElement::Area(nodes) => {
+			let mut buffers: VertexBuffers<Pos2, u16> = VertexBuffers::new();
+			let mut vertex_builder = BuffersBuilder::new(&mut buffers, Ctor);
+			let mut tessellator = FillTessellator::new();
+
+			let mut path_builder = Path::builder();
+			let (first, rest) = nodes.split_first().expect("There must be at least one node.");
+
+			path_builder.begin(view.render_pos(first).to_lyon_point());
+
+			for pos in rest.iter().map(|p| view.render_pos(p).to_lyon_point()) {
+				path_builder.line_to(pos);
+			}
+
+			path_builder.end(true);
+
+			let path = path_builder.build();
+
+			{
+				puffin::profile_scope!("Tessellate path.");
+				tessellator
+					.tessellate_path(&path, &FillOptions::default(), &mut vertex_builder)
+					.unwrap();
+			}
+
+			for triangle in buffers.indices.chunks_exact(3) {
+				let points = triangle
+					.iter()
+					.map(|i| buffers.vertices[*i as usize])
+					.collect::<Vec<_>>();
+
+				const MINIMUM_TRIANGLE_SIZE: f32 = 10.0; // Don't render very small triangles
+				if triangle_area(&points) < MINIMUM_TRIANGLE_SIZE {
+					continue;
+				}
+
 				shapes.areas.push(Shape::convex_polygon(
-					nodes,
-					color,
-					PathStroke::NONE,
-					//	PathStroke::new(1.0, Color32::LIGHT_BLUE),
+					points,
+					element.style.fill_color,
+					(0.0, Color32::TRANSPARENT),
 				));
 			}
+
+			let path_element = DetailedElement {
+				element: RenderElement::Path(nodes.clone(), true),
+				style: element.style.clone(),
+				..*element
+			};
+			draw_element(&path_element, shapes, view, fonts);
 		}
 		RenderElement::Collection(elements) => {
 			for e in elements {
 				draw_element(e, shapes, view, fonts);
 			}
+		}
+	}
+}
+
+#[inline]
+fn triangle_area(triangle: &[Pos2]) -> f32 {
+	debug_assert!(triangle.len() == 3);
+
+	let a = triangle[0];
+	let b = triangle[1];
+	let c = triangle[2];
+
+	0.5 * ((a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y)).abs())
+}
+
+fn draw_text_in_area(shapes: &mut DrawList, fonts: &Fonts, text: &style::Text, vertices: &[Pos2]) {
+	let galley = fonts.layout_no_wrap(text.text.to_string(), text.font_id(), text.color);
+	let bounds = Rect::from_points(vertices);
+	let pos = find_label_pos(bounds, &galley, vertices);
+
+	if let Some(pos) = pos {
+		let pos = pos - galley.size() * 0.5;
+		shapes.text.push(Shape::Text(TextShape {
+			pos,
+			galley: galley.clone(),
+			underline: egui::Stroke::NONE,
+			fallback_color: text.color,
+			override_text_color: None,
+			opacity_factor: 1.0,
+			angle: 0.0,
+		}));
+	}
+}
+
+fn draw_text_on_line(shapes: &mut DrawList, view: &View, fonts: &Fonts, text: &style::Text, vertices: &[Pos2]) {
+	let galley = fonts.layout_no_wrap(text.text.to_string(), text.font_id(), text.color);
+	let len_sq = galley.size().x.powi(2);
+
+	use std::f32::consts::{FRAC_PI_2, PI};
+	for (a, b) in vertices.iter().tuple_windows() {
+		if a.distance_sq(*b) > len_sq {
+			let vec = b.to_vec2() - a.to_vec2();
+			let midpoint = *a + (vec * 0.5);
+
+			if !view.viewport.contains(midpoint) {
+				continue;
+			}
+
+			let normalized = vec.normalized();
+			let mut angle = vec.angle();
+			let mut flip = 0.5;
+
+			if angle > FRAC_PI_2 {
+				angle -= PI;
+			} else if angle < -FRAC_PI_2 {
+				angle += PI;
+			} else {
+				flip = -0.5;
+			}
+			let pos = midpoint + flip * (galley.size().x * normalized - galley.size().y * normalized.rot90());
+
+			shapes.text.push(Shape::Text(TextShape {
+				pos,
+				galley: galley.clone(),
+				underline: egui::Stroke::NONE,
+				fallback_color: text.color,
+				override_text_color: None,
+				opacity_factor: 1.0,
+				angle,
+			}));
 		}
 	}
 }
@@ -675,4 +737,15 @@ pub fn rect_inside_polygon(rect: Rect, points: &[Pos2]) -> bool {
 fn is_left(p0: Pos2, p1: Pos2, p2: Pos2) -> bool {
 	debug_assert_ne!((p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y), 0.0);
 	(p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y) > 0.0
+}
+
+struct Ctor;
+impl FillVertexConstructor<Pos2> for Ctor {
+	fn new_vertex(&mut self, vertex: FillVertex) -> Pos2 {
+		let position = vertex.position();
+		Pos2 {
+			x: position.x,
+			y: position.y,
+		}
+	}
 }

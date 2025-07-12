@@ -142,6 +142,7 @@ impl Styles {
 		let key = &style_rule.0.key;
 		match key.as_str() {
 			"color" | "colour" => self.try_assign_color(&mut style.color, specifier, key),
+			"fill-color" | "fill-colour" => self.try_assign_color(&mut style.fill_color, specifier, key),
 			"width" | "size" => self.try_assign_number(&mut style.size, specifier, key),
 			"icon-image" => {
 				if let Some(icon_file) = self.try_eval_string(specifier, key) {
@@ -323,14 +324,25 @@ fn matches_selector(selector: &Selector, element: &MapElement, context: &StyleCo
 
 fn matches_subselector(subselector: &SubSelector, element: &MapElement, context: &StyleContext) -> bool {
 	let matching = match subselector {
-		SubSelector::Object(object, zoom, conditions, _pseudo_class) => {
+		SubSelector::Object(object, zoom, conditions, pseudo_class) => {
 			matches_object(*object, element, context)
 				&& matches_zoom(*zoom, context)
 				&& matches_conditions(conditions, element, context)
+				&& matches_pseudo_class(pseudo_class, element, context)
 		}
-		_ => todo!(),
+		_ => todo!("Sub Selector type: {subselector:?}"),
 	};
 	matching && (subselector.pseudo_class() != Some("closed") || element.is_closed())
+}
+
+fn matches_pseudo_class(pseudo_class: &Option<String>, element: &MapElement, _context: &StyleContext) -> bool {
+	let Some(name) = pseudo_class else {
+		return true;
+	};
+	match name.as_str() {
+		"closed" => element.is_closed(),
+		name => todo!("Unknow pseudo class: {name}"), // TODO: add reporting
+	}
 }
 
 fn matches_zoom(zoom: Option<Zoom>, context: &StyleContext) -> bool {
@@ -342,8 +354,9 @@ fn matches_object(object: Object, element: &MapElement, _context: &StyleContext)
 		Object::Node => matches!(element.element, Element::Node { .. }),
 		Object::Way => matches!(element.element, Element::Way { .. }),
 		Object::Relation => matches!(element.element, Element::Relation { .. }),
+		Object::Area => matches!(element.element, Element::Way { .. } | Element::Relation { .. }), // TODO: add warning if :closed pseudo class is not present
 		Object::All => true,
-		_ => todo!(),
+		_ => todo!("Object type: {object:?}"),
 	}
 }
 
@@ -353,7 +366,7 @@ fn matches_conditions(conditions: &[Condition], element: &MapElement, _context: 
 			element.get_tag_with_new(tag_key) == Some(tag_value)
 		}
 		Condition::Tag(tag) => element.get_tag_with_new(tag).is_some(),
-		_ => todo!(),
+		_ => todo!("Condtion type: {condition:?}"),
 	})
 }
 

@@ -22,6 +22,7 @@ image = { version = "0.25", default-features = false, features = [
 ] }
 resvg = { version = "0.45", default-features = false }
 glam = { version = "0.30", features = ["serde"] }
+lyon_tessellation = "1.0"
 egui-phosphor = { version = "0.10", default-features = false, features = [
     "bold",
 ] }

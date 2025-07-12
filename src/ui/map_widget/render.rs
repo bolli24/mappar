@@ -24,7 +24,7 @@ pub struct DetailedElement {
 pub enum RenderElement {
 	Node(DVec2),
 	Path(Vec<DVec2>, bool),
-	Area(Vec<DVec2>, Vec<RenderPolygon>),
+	Area(Vec<DVec2>),
 	Collection(Vec<DetailedElement>),
 }
 
@@ -38,7 +38,7 @@ impl RenderElement {
 				assert!(!nodes.is_empty(), "Empty way");
 				bounding_box_from_points(nodes)
 			}
-			Self::Area(perimeter, _) => bounding_box_from_points(perimeter),
+			Self::Area(perimeter) => bounding_box_from_points(perimeter),
 			Self::Collection(elements) => elements.iter().map(|p| p.bounding_box).fold(Rect::NOTHING, Rect::union),
 		}
 	}
@@ -52,7 +52,7 @@ impl RenderElement {
 				.map(|(a, b)| distance_point_to_segment(a, b, &pointer_pos))
 				.fold(f64::INFINITY, f64::min),
 			Self::Path(nodes, true) => Self::distance_to_loop(&pointer_pos, nodes),
-			Self::Area(_perimeter, _) => todo!(), // Self::distance_to_loop(&pointer_pos, perimeter),
+			Self::Area(perimeter) => Self::distance_to_loop(&pointer_pos, perimeter),
 			Self::Collection(elements) => elements.iter().fold(f64::INFINITY, |a, b| {
 				a.min(b.pointer_distance.expect("No pointer distance"))
 			}),
@@ -65,7 +65,7 @@ impl RenderElement {
 		};
 		match &self {
 			Self::Node(pos) => rect.contains(pos.to_pos2()),
-			Self::Path(nodes, _) | Self::Area(nodes, _) => nodes.iter().all(|n| rect.contains(n.to_pos2())),
+			Self::Path(nodes, _) | Self::Area(nodes) => nodes.iter().all(|n| rect.contains(n.to_pos2())),
 			Self::Collection(elements) => elements.iter().all(|e| e.element.in_box_selection(rect)),
 		}
 	}
@@ -90,6 +90,11 @@ impl DetailedElement {
 	) {
 		// puffin::profile_function!(map_element.id.to_string());
 
+		let style = styles
+			.as_mut()
+			.map(|styles| styles.get_style(map_element, style_context))
+			.unwrap_or_default();
+
 		let element = match &map_element.element {
 			Element::Node { pos } => RenderElement::Node(pos.get().to_web_mercator()),
 			Element::Way { nodes: node_indices } => {
@@ -107,7 +112,11 @@ impl DetailedElement {
 
 				// TODO: Area rendering
 				let is_closed = map_data::is_closed(node_indices.as_slice());
-				RenderElement::Path(nodes, is_closed)
+				if style.fill_color != Color32::TRANSPARENT && is_closed {
+					RenderElement::Area(nodes)
+				} else {
+					RenderElement::Path(nodes, is_closed)
+				}
 			}
 			Element::Relation { .. } => {
 				todo!()
@@ -118,11 +127,6 @@ impl DetailedElement {
 		if !bounding_box.intersects(view.world_view_rect) {
 			return;
 		}
-
-		let style = styles
-			.as_mut()
-			.map(|styles| styles.get_style(map_element, style_context))
-			.unwrap_or_default();
 
 		render_data.push(Self {
 			id: map_element.id,

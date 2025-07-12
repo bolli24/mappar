@@ -44,3 +44,12 @@ node|z16-[natural=tree] {
 node[natural=tree] {
     color: green
 }
+
+area:closed[leisure=golf_course] {
+    color: #779c48;
+    fill-color: #dff6c188;
+}
+
+area:closed[building] {
+    fill-color: #dc6e6488;
+}

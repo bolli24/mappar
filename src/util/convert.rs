@@ -10,6 +10,10 @@ pub trait ToPos2 {
 	fn to_pos2(self) -> Pos2;
 }
 
+pub trait ToLyonPoint {
+	fn to_lyon_point(self) -> lyon_tessellation::math::Point;
+}
+
 impl ToDVec2 for Pos2 {
 	fn to_dvec2(self) -> DVec2 {
 		dvec2(self.x as f64, self.y as f64)
@@ -25,6 +29,12 @@ impl ToDVec2 for egui::Vec2 {
 impl ToPos2 for DVec2 {
 	fn to_pos2(self) -> Pos2 {
 		Pos2::new(self.x as f32, self.y as f32)
+	}
+}
+
+impl ToLyonPoint for Pos2 {
+	fn to_lyon_point(self) -> lyon_tessellation::math::Point {
+		lyon_tessellation::math::Point::new(self.x, self.y)
 	}
 }
 
