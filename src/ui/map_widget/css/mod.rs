@@ -117,6 +117,7 @@ impl Styles {
 		style
 	}
 
+	#[inline]
 	fn apply_rules(&self, element: &MapElement, style: &mut MapStyle, rules: &[Rule], context: &StyleContext) {
 		for rule in rules {
 			match rule {
@@ -128,6 +129,7 @@ impl Styles {
 		}
 	}
 
+	#[inline]
 	fn apply_style_rule(
 		&self,
 		element: &MapElement,
@@ -158,10 +160,12 @@ impl Styles {
 		}
 	}
 
+	#[inline]
 	fn error(&self, error: Error, span: SimpleSpan) {
 		self.reporting.borrow_mut().report(error, span);
 	}
 
+	#[inline]
 	fn try_assign_enum<'a, T: TryFrom<&'a str> + strum::VariantNames>(
 		&self,
 		value: &mut T,
@@ -188,6 +192,7 @@ impl Styles {
 		}
 	}
 
+	#[inline]
 	fn try_assing_rotation(&self, number: &mut f32, specifier: &Spanned<Specifier>, key: &str) {
 		if let Specifier::Rotation(rotation) = specifier.0 {
 			*number = rotation as f32;
@@ -196,34 +201,40 @@ impl Styles {
 		}
 	}
 
+	#[inline]
 	fn try_assign_number(&self, number: &mut f32, specifier: &Spanned<Specifier>, key: &str) {
 		if let Some(value) = self.try_eval_number(specifier, key) {
 			*number = value as f32;
 		}
 	}
 
+	#[inline]
 	fn try_assign_string(&self, string: &mut String, specifier: &Spanned<Specifier>, key: &str) {
 		if let Some(value) = self.try_eval_string(specifier, key) {
 			*string = value;
 		}
 	}
 
+	#[inline]
 	fn try_assign_color(&self, color: &mut Color32, specifier: &Spanned<Specifier>, key: &str) {
 		if let Some(value) = self.try_eval_color(specifier, key) {
 			*color = value;
 		}
 	}
 
+	#[inline]
 	fn try_eval_number(&self, specifier: &Spanned<Specifier>, key: &str) -> Option<f64> {
 		self.try_eval_as(specifier, key, ValueType::Number)
 			.map(Value::unrwap_number)
 	}
 
+	#[inline]
 	fn try_eval_string(&self, specifier: &Spanned<Specifier>, key: &str) -> Option<String> {
 		self.try_eval_as(specifier, key, ValueType::String)
 			.map(Value::unwrap_string)
 	}
 
+	#[inline]
 	fn try_eval_color(&self, specifier: &Spanned<Specifier>, key: &str) -> Option<Color32> {
 		match &specifier.0 {
 			Specifier::Color(color, _name) => Some(*color),
