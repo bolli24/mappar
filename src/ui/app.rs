@@ -287,8 +287,14 @@ impl eframe::App for MyApp {
 				ui,
 				|ui| ui.hyperlink("https://gitlab.com/bolli24/mappar"),
 				|ui| {
-					ui.label(format!("({})", env!("VERGEN_GIT_COMMIT_DATE")));
-					ui.spacing_mut().item_spacing.x = 0.0;
+					if env!("VERGEN_GIT_DIRTY") == "true" {
+						ui.spacing_mut().item_spacing.x = 0.0;
+						ui.label("+dirty");
+					} else {
+						ui.label(format!("({})", env!("VERGEN_GIT_COMMIT_DATE")));
+						ui.spacing_mut().item_spacing.x = 0.0;
+					}
+
 					let commit_hash = env!("VERGEN_GIT_SHA");
 					ui.hyperlink_to(
 						&commit_hash[0..7],
