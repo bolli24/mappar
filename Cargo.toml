@@ -79,9 +79,7 @@ eframe = { version = "0.32", default-features = false, features = [
     "wayland",
     "persistence",
 ] }
-wgpu = { version = "25", default-features = false, features = [
-    "vulkan",
-] } # FIXME: remove once eframe gets updated.
+wgpu = { version = "25", default-features = false, features = ["vulkan"] }
 tokio = { version = "1.45", features = [
     "macros",
     "sync",
