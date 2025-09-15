@@ -33,7 +33,7 @@ thiserror = "2"
 ariadne = "0.5"
 
 serde = { version = "1.0", features = ["derive"] }
-serde-inline-default = "0.2"
+serde-inline-default = "1.0.0"
 serde_path_to_error = "0.1"
 strum = { version = "0.27", features = ["derive"] }
 
@@ -63,7 +63,7 @@ smallvec = "1.15"
 
 statig = "0.4"
 
-chumsky = "0.10.1"
+chumsky = "0.11.1"
 
 puffin = "0.19"
 puffin_http = "0.16"

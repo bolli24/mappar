@@ -411,6 +411,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "chumsky"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cd3ef0a728f561e3b4157213d178ae7523cbc405423f862da757447588ae103"
+dependencies = [
+ "hashbrown 0.15.5",
+ "regex-automata 0.3.9",
+ "serde",
+ "stacker",
+ "unicode-ident",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "5.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2078,7 +2092,7 @@ dependencies = [
  "bytes",
  "celes",
  "chrono",
- "chumsky",
+ "chumsky 0.11.1",
  "derive-new",
  "directories",
  "eframe",
@@ -2132,7 +2146,7 @@ name = "mappar-css"
 version = "0.1.0"
 dependencies = [
  "ariadne",
- "chumsky",
+ "chumsky 0.10.1",
  "color-hex",
  "ecolor",
  "logos",
@@ -3436,9 +3450,9 @@ dependencies = [
 
 [[package]]
 name = "serde-inline-default"
-version = "0.2.3"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59fb1bedd774187d304179493b0d3c41fbe97b04b14305363f68d2bdf5e47cb9"
+checksum = "92d48532bc0781ac622a5fea0f16502d3b4f1af0fcebe56d618120969f35d315"
 dependencies = [
  "proc-macro2",
  "quote",
