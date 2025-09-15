@@ -78,7 +78,10 @@ impl Widget for MapWidget<'_> {
 					dbgtxt!(self.debug_text, "Viewport: {viewport:?}");
 
 					if self.interactive {
-						let zoom = f64::from(response.ctx.input(|i| i.smooth_scroll_delta).y);
+						let zoom = f64::from(
+							response.ctx.input(|i| i.smooth_scroll_delta).x
+								+ response.ctx.input(|i| i.smooth_scroll_delta).y,
+						);
 						if zoom != 0.0 && response.contains_pointer() {
 							// TODO: fix zoom speed on chrome
 							let zoom_diff = zoom / 1000.0 * ZOOM_SPEED;
