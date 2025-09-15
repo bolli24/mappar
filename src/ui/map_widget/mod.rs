@@ -179,10 +179,11 @@ impl Widget for MapWidget<'_> {
 						view: &view,
 						mem: self.mem,
 						world_delta,
-						render_data: &render_data,
+						render_data: &mut render_data,
 						hover_elements: &mut hover_elements,
 						messages: self.messages.clone(),
 						update_edit_mode: self.update_edit_mode,
+						debug_text: self.debug_text.as_deref_mut(),
 					};
 
 					self.map_state.handle_with_context(&(), &mut context);

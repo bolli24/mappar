@@ -1,12 +1,20 @@
-use egui::{Modifiers, PointerButton};
+use egui::{Color32, Modifiers, PointerButton};
 use glam::DVec2;
 use statig::prelude::*;
 
 use crate::{
-	map::map_data::{ElementId, ElementType, MapData},
+	dbgtxt,
+	map::map_data::{Element, ElementId, ElementType, MapData, is_closed},
 	message_error,
-	ui::messages::Messages,
-	util::{convert::ToRect, quick_set::QuickSet},
+	ui::{
+		debug_text::DebugText,
+		map_widget::render::{RenderElement, point_in_polygon},
+		messages::Messages,
+	},
+	util::{
+		convert::{ToPos2, ToRect},
+		quick_set::QuickSet,
+	},
 };
 
 use super::{map_memory::MapMemory, render::DetailedElement, view::View};
@@ -34,10 +42,11 @@ pub struct Context<'a> {
 	pub interactive: bool,
 	pub mem: &'a mut MapMemory,
 	pub world_delta: DVec2,
-	pub render_data: &'a [DetailedElement],
+	pub render_data: &'a mut [DetailedElement],
 	pub hover_elements: &'a mut QuickSet<ElementId>,
 	pub messages: Messages,
 	pub update_edit_mode: Option<EditMode>,
+	pub debug_text: Option<&'a mut DebugText>,
 }
 
 #[state_machine(initial = "State::initial()", state(derive(Debug)), superstate(derive(Debug)))]
@@ -98,8 +107,20 @@ impl MapStateMachine {
 			mem,
 			world_delta,
 			hover_elements,
+			debug_text,
+			map_data,
 			..
 		} = context;
+
+		if let Some(element_id) = last_clicked_element
+			&& element_id.1 == ElementType::Way
+		{
+			let element = &map_data.elements[element_id];
+			if let Element::Way { nodes } = &element.element {
+				let closed = is_closed(nodes);
+				dbgtxt!(debug_text, "Closed: {closed}");
+			}
+		}
 
 		if !*interactive {
 			return Handled;
@@ -129,21 +150,57 @@ impl MapStateMachine {
 			}
 		}
 
-		let shift = ui_context.input(|i| i.modifiers.shift);
-		if response.contains_pointer() && ui_context.input(|i| i.pointer.button_down(PointerButton::Primary)) {
-			if let Some(hover_element) = hover_elements.single() {
-				*last_clicked_element = Some(*hover_element);
-				if response.ctx.input(|i| i.modifiers.shift_only()) {
-					mem.selection.elements.insert(*hover_element);
-				} else if response.ctx.input(|i| i.modifiers.command_only()) {
-					mem.selection.elements.remove(hover_element);
-				} else {
-					if !shift && !mem.selection.elements.contains(hover_element) {
-						mem.selection.elements.clear();
-					}
-					mem.selection.elements.insert(*hover_element);
+		if !response.contains_pointer() {
+			return Super;
+		}
+
+		let mut add_element = |element: ElementId| {
+			if response.ctx.input(|i| i.modifiers.shift_only()) {
+				mem.selection.elements.insert(element);
+			} else if response.ctx.input(|i| i.modifiers.command_only()) {
+				mem.selection.elements.remove(&element);
+			} else {
+				if !ui_context.input(|i| i.modifiers.shift) && !mem.selection.elements.contains(&element) {
+					mem.selection.elements.clear();
 				}
+				mem.selection.elements.insert(element);
 			}
+		};
+
+		if let Some(pointer_pos) = view.pointer_world_pos
+			&& response.clicked_by(PointerButton::Secondary)
+			&& hover_elements.is_empty()
+		{
+			let pointer_pos2 = pointer_pos.to_pos2();
+			let mut elements = context
+				.render_data
+				.iter_mut()
+				.filter(|element| match &element.element {
+					RenderElement::Area(verts) | RenderElement::Path(verts, true) => {
+						element.bounding_box.contains(pointer_pos2) && point_in_polygon(pointer_pos, verts)
+					}
+					_ => false,
+				})
+				.map(|element| {
+					let area = element.bounding_box.area();
+					debug_assert_ne!(area, 0.0);
+					(element, area)
+				})
+				.collect::<Vec<_>>();
+			elements.sort_by(|a, b| f32::total_cmp(&a.1, &b.1));
+
+			if let Some((first, _)) = elements.iter_mut().next() {
+				add_element(first.id)
+			}
+
+			return Super;
+		}
+
+		if let Some(hover_element) = hover_elements.single()
+			&& ui_context.input(|i| i.pointer.button_down(PointerButton::Primary))
+		{
+			add_element(*hover_element);
+			*last_clicked_element = Some(*hover_element);
 		}
 		if response.clicked_by(PointerButton::Primary) && hover_elements.is_empty() {
 			mem.selection.elements.clear();
