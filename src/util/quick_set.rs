@@ -50,7 +50,6 @@ impl<T: Eq + core::hash::Hash> QuickSet<T> {
 		}
 	}
 
-	/// Get the amount of elements in the set.
 	pub fn len(&self) -> usize {
 		match self {
 			Self::Empty => 0,
