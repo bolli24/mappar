@@ -1,4 +1,4 @@
-use egui::{Color32, Modifiers, PointerButton};
+use egui::{Modifiers, PointerButton};
 use glam::DVec2;
 use statig::prelude::*;
 
@@ -312,30 +312,30 @@ impl MapStateMachine {
 			..
 		} = context;
 
-		if response.clicked_by(PointerButton::Primary) {
-			if let Some(pos) = view.pointer_world_pos {
-				// Add new node
-				let edit = map_data.new_node(pos);
-				let new_node_id = edit.0[0];
-				mem.selection.elements.insert(new_node_id);
-				map_data.edit(edit).expect("Creating node must not error.");
+		if let Some(pos) = view.pointer_world_pos
+			&& response.clicked_by(PointerButton::Primary)
+		{
+			// Add new node
+			let edit = map_data.new_node(pos);
+			let new_node_id = edit.0[0];
+			mem.selection.elements.insert(new_node_id);
+			map_data.edit(edit).expect("Creating node must not error.");
 
-				match *last_new_element {
-					Some(ElementId(_, ElementType::Node)) => {
-						let edit = map_data.new_way(vec![last_new_element.unwrap(), new_node_id]);
-						*last_new_element = Some(edit.0[0]);
-						map_data.edit(edit).expect("Creating way must not error.");
-					}
-					Some(ElementId(_, ElementType::Way)) => {
-						let edit = map_data.add_node_to_way_end(last_new_element.unwrap(), new_node_id);
-						*last_new_element = Some(edit.0[0]);
-						map_data.edit(edit).expect("Adding node to way end must not error.");
-					}
-					None => {
-						*last_new_element = Some(new_node_id);
-					}
-					_ => unreachable!(),
+			match *last_new_element {
+				Some(ElementId(_, ElementType::Node)) => {
+					let edit = map_data.new_way(vec![last_new_element.unwrap(), new_node_id]);
+					*last_new_element = Some(edit.0[0]);
+					map_data.edit(edit).expect("Creating way must not error.");
 				}
+				Some(ElementId(_, ElementType::Way)) => {
+					let edit = map_data.add_node_to_way_end(last_new_element.unwrap(), new_node_id);
+					*last_new_element = Some(edit.0[0]);
+					map_data.edit(edit).expect("Adding node to way end must not error.");
+				}
+				None => {
+					*last_new_element = Some(new_node_id);
+				}
+				_ => unreachable!(),
 			}
 		}
 
