@@ -83,7 +83,9 @@ impl MapStateMachine {
 				EditMode::Select => Transition(State::Select {
 					last_clicked_element: None,
 				}),
-				EditMode::DrawPen => Transition(State::Draw { last_new_element: None }),
+				EditMode::DrawPen => Transition(State::Draw {
+					first_node_or_way: None,
+				}),
 			};
 		}
 
@@ -303,37 +305,80 @@ impl MapStateMachine {
 	}
 
 	#[state(superstate = "default")]
-	fn draw(&self, context: &mut Context<'_>, last_new_element: &mut Option<ElementId>) -> Outcome<State> {
+	fn draw(&self, context: &mut Context<'_>, first_node_or_way: &mut Option<ElementId>) -> Outcome<State> {
 		let Context {
 			response,
 			view,
 			mem,
 			map_data,
+			hover_elements,
 			..
 		} = context;
+
+		if response.clicked_by(PointerButton::Secondary) || response.ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+			return Transition(State::Draw {
+				first_node_or_way: None,
+			});
+		}
 
 		if let Some(pos) = view.pointer_world_pos
 			&& response.clicked_by(PointerButton::Primary)
 		{
-			// Add new node
-			let edit = map_data.new_node(pos);
-			let new_node_id = edit.0[0];
-			mem.selection.elements.insert(new_node_id);
-			map_data.edit(edit).expect("Creating node must not error.");
+			let node_id = if let Some(hover_element) = hover_elements.single() {
+				match &hover_element {
+					ElementId(_, ElementType::Node) => {
+						if Some(*hover_element) == *first_node_or_way {
+							return Transition(State::Draw {
+								first_node_or_way: None,
+							});
+						}
 
-			match *last_new_element {
-				Some(ElementId(_, ElementType::Node)) => {
-					let edit = map_data.new_way(vec![last_new_element.unwrap(), new_node_id]);
-					*last_new_element = Some(edit.0[0]);
-					map_data.edit(edit).expect("Creating way must not error.");
+						*hover_element
+					}
+					ElementId(_, ElementType::Way) => todo!(),
+					_ => unreachable!("Must never hover over relation."),
 				}
-				Some(ElementId(_, ElementType::Way)) => {
-					let edit = map_data.add_node_to_way_end(last_new_element.unwrap(), new_node_id);
-					*last_new_element = Some(edit.0[0]);
+			} else {
+				// Add new node
+				let edit = map_data.new_node(pos);
+				let new_node_id = edit.0[0];
+				map_data.edit(edit).expect("Creating node must not error.");
+				new_node_id
+			};
+
+			match *first_node_or_way {
+				Some(ElementId(_, ElementType::Node)) => {
+					let edit = map_data.new_way(vec![first_node_or_way.unwrap(), node_id]);
+					let new_way_id = edit.0[0];
+					*first_node_or_way = Some(new_way_id);
+					map_data.edit(edit).expect("Creating way must not error.");
+					mem.selection.elements.clear();
+					mem.selection.elements.insert(new_way_id);
+				}
+				Some(ElementId(id, ElementType::Way)) => {
+					let edit = map_data.add_node_to_way_end(first_node_or_way.unwrap(), node_id);
+					let way_id = edit.0[0];
+					debug_assert_eq!(id, way_id.0);
+					*first_node_or_way = Some(way_id);
+
+					let mut child_node = false;
+					if let Element::Way { nodes } = &map_data.get(&way_id).expect("Last new element must exist").element
+						&& nodes.contains(&node_id)
+					{
+						child_node = true
+					}
+
 					map_data.edit(edit).expect("Adding node to way end must not error.");
+
+					if child_node {
+						return Transition(State::Draw {
+							first_node_or_way: None,
+						});
+					}
 				}
 				None => {
-					*last_new_element = Some(new_node_id);
+					*first_node_or_way = Some(node_id);
+					mem.selection.elements.insert(node_id);
 				}
 				_ => unreachable!(),
 			}
