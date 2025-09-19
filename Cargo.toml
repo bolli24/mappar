@@ -55,7 +55,7 @@ web-time = "1.1.0"
 
 undo = { version = "0.52", default-features = false, features = ["alloc"] }
 lru = "0.16"
-indexmap = "2.9"
+indexmap = "2.11"
 itertools = "0.14"
 regex = "1.11"
 lasso = { version = "0.7", features = ["serialize"] }
@@ -80,7 +80,7 @@ eframe = { version = "0.32", default-features = false, features = [
     "persistence",
 ] }
 wgpu = { version = "25", default-features = false, features = ["vulkan"] }
-tokio = { version = "1.45", features = [
+tokio = { version = "1.47", features = [
     "macros",
     "sync",
     "rt-multi-thread",
@@ -98,21 +98,21 @@ eframe = { version = "0.32", default-features = false, features = [
     "glow",          # Use instead of wgpu because eframe does not support webgl with wgpu by default
     "persistence",
 ] }
-tokio = { version = "1.45", default-features = false, features = [
+tokio = { version = "1.47", default-features = false, features = [
     "macros",
     "sync",
     "rt",
 ] }
-js-sys = "0.3.77"
-web-sys = { version = "0.3.77", features = [
+js-sys = "0.3.80"
+web-sys = { version = "0.3.80", features = [
     "Navigator",
     "StorageManager",
     "IdbFactory",
     "IdbOpenDbRequest",
     "Location",
 ] }
-wasm-bindgen = "0.2.100"
-wasm-bindgen-futures = "0.4.50"
+wasm-bindgen = "0.2.103"
+wasm-bindgen-futures = "0.4.53"
 gloo-worker = "0.5.0"
 
 [build-dependencies]
