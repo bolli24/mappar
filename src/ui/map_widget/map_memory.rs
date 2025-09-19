@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::map::map_data::{ElementId, MapData};
+use crate::map::map_data::{ElementId, ElementType, MapData};
 use glam::DVec2;
 
 #[derive(Debug, Clone)]
@@ -32,5 +32,26 @@ impl Selection {
 			map_data.get_mut(&element).unwrap().new_tag = None;
 		}
 		self.tags.clear();
+	}
+
+	pub fn node_count(&self) -> usize {
+		self.elements
+			.iter()
+			.filter(|element_id| element_id.1 == ElementType::Node)
+			.count()
+	}
+
+	pub fn way_count(&self) -> usize {
+		self.elements
+			.iter()
+			.filter(|element_id| element_id.1 == ElementType::Way)
+			.count()
+	}
+
+	pub fn relation_count(&self) -> usize {
+		self.elements
+			.iter()
+			.filter(|element_id| element_id.1 == ElementType::Relation)
+			.count()
 	}
 }

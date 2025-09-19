@@ -20,8 +20,8 @@ use derive_new::new;
 use draw_list::DrawList;
 use egui::emath::Rot2;
 use egui::{
-	Color32, Frame, Galley, Id, Mesh, Painter, Pos2, Rect, Response, ScrollArea, Sense, StrokeKind, TextureId, Vec2,
-	Widget, pos2, vec2,
+	Color32, Frame, Galley, Id, Mesh, Painter, Pos2, Rect, Response, ScrollArea, Sense, StrokeKind, TextureId,
+	TopBottomPanel, Vec2, Widget, pos2, vec2,
 };
 use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape, TextShape};
 use glam::{DVec2, UVec2, dvec2, uvec2};
@@ -66,10 +66,11 @@ const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 impl Widget for MapWidget<'_> {
 	#[allow(clippy::too_many_lines)]
 	fn ui(mut self, ui: &mut egui::Ui) -> Response {
-		ScrollArea::neither()
+		let frame_response = ScrollArea::neither()
 			.show(ui, |ui| {
 				Frame::canvas(ui.style()).show(ui, |ui| {
 					puffin::profile_function!("Draw Map");
+					// FIXME: overlap with info bar
 					let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 					ui.ctx().request_repaint();
 					let clip_rect = ui.clip_rect();
@@ -223,12 +224,20 @@ impl Widget for MapWidget<'_> {
 							StrokeKind::Inside,
 						);
 					}
-
 					response
 				})
 			})
 			.inner
-			.response
+			.response;
+		TopBottomPanel::bottom("map_info_bar").show(ui.ctx(), |ui| {
+			ui.monospace(format!(
+				"{} nodes, {} ways, {} relations",
+				self.mem.selection.node_count(),
+				self.mem.selection.way_count(),
+				self.mem.selection.relation_count()
+			))
+		});
+		frame_response
 	}
 }
 
