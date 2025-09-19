@@ -377,6 +377,7 @@ impl MapStateMachine {
 					}
 				}
 				None => {
+					mem.selection.elements.clear();
 					*first_node_or_way = Some(node_id);
 					mem.selection.elements.insert(node_id);
 				}
