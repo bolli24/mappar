@@ -23,7 +23,7 @@ use egui::{
 	Color32, Frame, Galley, Id, Mesh, Painter, Pos2, Rect, Response, ScrollArea, Sense, StrokeKind, TextureId,
 	TopBottomPanel, Vec2, Widget, pos2, vec2,
 };
-use epaint::{CornerRadius, Fonts, PathShape, PathStroke, Shape, TextShape};
+use epaint::{CornerRadius, FontsView, PathShape, PathStroke, Shape, TextShape};
 use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
 use lyon_tessellation::path::Path;
@@ -195,20 +195,21 @@ impl Widget for MapWidget<'_> {
 					dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");
 
 					let mut shapes = DrawList::new();
-					let fonts = ui.ctx().fonts(Clone::clone);
 					let show_hover = matches!(
 						self.map_state.state(),
 						MapState::Select { .. } | MapState::BoxSelect { .. } | MapState::Draw { .. }
 					);
 
-					for element in &render_data {
-						let hovered = show_hover && self.interactive && hover_elements.contains(&element.id);
-						let selected = self.mem.selection.elements.contains(&element.id);
-						if let Some(hightlighted) = element.maybe_highlighted(hovered, selected) {
-							draw_element(&hightlighted, &mut shapes, &view, &fonts);
+					ui.ctx().fonts_mut(|fonts| {
+						for element in &render_data {
+							let hovered = show_hover && self.interactive && hover_elements.contains(&element.id);
+							let selected = self.mem.selection.elements.contains(&element.id);
+							if let Some(hightlighted) = element.maybe_highlighted(hovered, selected) {
+								draw_element(&hightlighted, &mut shapes, &view, fonts);
+							}
+							draw_element(element, &mut shapes, &view, fonts);
 						}
-						draw_element(element, &mut shapes, &view, &fonts);
-					}
+					});
 
 					dbgtxt!(self.debug_text, "Drawn Elements: {}", shapes.count());
 
@@ -267,7 +268,7 @@ fn icon_shape(texture_id: TextureId, rect: Rect, angle: f32) -> Shape {
 }
 
 #[inline]
-fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, fonts: &Fonts) {
+fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, fonts: &mut FontsView) {
 	let color = element.style.color;
 	let size = element.style.size;
 	let text = &element.style.text;
@@ -381,7 +382,7 @@ fn triangle_area(triangle: &[Pos2]) -> f32 {
 	0.5 * ((a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y)).abs())
 }
 
-fn draw_text_in_area(shapes: &mut DrawList, fonts: &Fonts, text: &style::Text, vertices: &[Pos2]) {
+fn draw_text_in_area(shapes: &mut DrawList, fonts: &mut FontsView, text: &style::Text, vertices: &[Pos2]) {
 	let galley = fonts.layout_no_wrap(text.text.to_string(), text.font_id(), text.color);
 	let bounds = Rect::from_points(vertices);
 	let pos = find_label_pos(bounds, &galley, vertices);
@@ -400,7 +401,7 @@ fn draw_text_in_area(shapes: &mut DrawList, fonts: &Fonts, text: &style::Text, v
 	}
 }
 
-fn draw_text_on_line(shapes: &mut DrawList, view: &View, fonts: &Fonts, text: &style::Text, vertices: &[Pos2]) {
+fn draw_text_on_line(shapes: &mut DrawList, view: &View, fonts: &mut FontsView, text: &style::Text, vertices: &[Pos2]) {
 	let galley = fonts.layout_no_wrap(text.text.to_string(), text.font_id(), text.color);
 	let len_sq = galley.size().x.powi(2);
 
