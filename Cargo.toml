@@ -9,9 +9,6 @@ default-run = "mappar"
 [workspace]
 members = ["src/macros", "css"]
 
-[patch.crates-io]
-egui-phosphor = { git = "https://github.com/bircni/egui-phosphor.git", rev = "d13688738478ecd12b426e3e74c59d6577a85b59" }
-
 [dependencies]
 mappar-macros = { path = "src/macros" }
 mappar-css = { path = "css" }
@@ -26,14 +23,14 @@ image = { version = "0.25", default-features = false, features = [
 resvg = { version = "0.45", default-features = false }
 glam = { version = "0.30", features = ["serde"] }
 lyon_tessellation = "1.0"
-egui-phosphor = { version = "0.10", default-features = false, features = [
+egui-phosphor = { version = "0.11", default-features = false, features = [
     "bold",
 ] }
 
 log = { version = "0.4", features = ["release_max_level_info"] }
 simplelog = "0.12"
 thiserror = "2"
-ariadne = "0.5"
+ariadne = "0.6"
 
 serde = { version = "1.0", features = ["derive"] }
 serde-inline-default = "1.0.0"

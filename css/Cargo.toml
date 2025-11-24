@@ -9,7 +9,7 @@ edition = "2024"
 chumsky = { version = "0.11.1" }
 logos = "0.15"
 ecolor = "0.33"
-ariadne = "0.5"
+ariadne = "0.6"
 phf = { version = "0.13", features = ["macros"] }
 color-hex = "0.2.0"
 thiserror = "2.0"
