@@ -120,7 +120,7 @@ fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mutex<Im
 	deserializer.event_buffer_size(Some(NonZeroUsize::new(10000).unwrap()));
 	let result = serde_path_to_error::deserialize(&mut deserializer);
 
-	let parsed: Imageries = match result {
+	let mut parsed: Imageries = match result {
 		Ok(imageries) => imageries,
 		Err(err) => {
 			let path = err.path().to_string();
@@ -128,6 +128,18 @@ fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mutex<Im
 			return Err(());
 		}
 	};
+
+	let mut to_remove = Vec::new();
+
+	for (id, imagery) in &parsed.entries {
+		if imagery.imagery_type != ImageryType::Tms || imagery.tile_url(0, 0, 0).is_none() {
+			to_remove.push(id.clone());
+		}
+	}
+
+	for id in to_remove {
+		parsed.entries.shift_remove(&id);
+	}
 
 	message_info!(
 		messages,
@@ -324,7 +336,7 @@ impl Imagery {
 		self.min_zoom
 	}
 
-	pub fn tile_url(&self, x: u32, y: u32, zoom: u32) -> String {
+	pub fn tile_url(&self, x: u32, y: u32, zoom: u32) -> Option<String> {
 		let mut url = String::new();
 		for segment in &self.url.0 {
 			match segment {
@@ -336,12 +348,13 @@ impl Imagery {
 				UrlSegment::Placeholder(placeholder) => match placeholder {
 					Placeholder::X => url.push_str(&x.to_string()),
 					Placeholder::Y => url.push_str(&y.to_string()),
+					Placeholder::MinusY => url.push_str(&(2i32.pow(zoom) - 1 - (y as i32)).to_string()),
 					Placeholder::Zoom(offset) => url.push_str(&(zoom as i8 + offset).to_string()),
-					_ => todo!(),
+					_ => return None, // TODO: Support all url placeholders
 				},
 			}
 		}
-		url
+		Some(url)
 	}
 
 	pub fn name(&self) -> &str {

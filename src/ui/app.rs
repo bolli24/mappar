@@ -382,6 +382,7 @@ impl eframe::App for MyApp {
 					&self.messages,
 					#[cfg(not(target_arch = "wasm32"))]
 					&self.project_dirs,
+					&mut self.layers,
 				))
 			});
 

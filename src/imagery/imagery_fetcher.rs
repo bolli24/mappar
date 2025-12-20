@@ -310,7 +310,8 @@ impl ImageryFetcher {
 			.unwrap()
 			.get(tile.imagery_ref)
 			.expect("Imagery reference should be valid.")
-			.tile_url(tile.coords.0, tile.coords.1, tile.coords.2);
+			.tile_url(tile.coords.0, tile.coords.1, tile.coords.2)
+			.expect("Tile url must be valid. Invalid imagery must not be layer.");
 
 		let response = client.get(url.clone()).send().await?;
 		match response.error_for_status() {

@@ -1,10 +1,11 @@
 use crate::imagery::{Imageries, ImageryId};
+use crate::ui::layer_list::{Layer, Layers};
 use crate::ui::memory::Memory;
 use crate::util::convert::CountryFlag;
 use derive_new::new;
 #[cfg(not(target_arch = "wasm32"))]
 use directories::ProjectDirs;
-use egui::{CentralPanel, Label, MenuBar, Response, Sense, SidePanel, TopBottomPanel, Ui, Widget};
+use egui::{Button, CentralPanel, Label, MenuBar, Response, Sense, SidePanel, TopBottomPanel, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -35,6 +36,7 @@ pub struct ImageriesWidget<'a> {
 	messages: &'a Messages,
 	#[cfg(not(target_arch = "wasm32"))]
 	project_dirs: &'a ProjectDirs,
+	layers: &'a mut Layers,
 }
 
 impl Widget for ImageriesWidget<'_> {
@@ -91,8 +93,21 @@ impl Widget for ImageriesWidget<'_> {
 
 		let response = CentralPanel::default()
 			.show_inside(ui, |ui| match &mem.selected {
-				Some(selected) => ui.heading(imageries.entries.get(selected).unwrap().name()),
-				None => ui.label("Nothing is selected"),
+				Some(selected) => {
+					ui.heading(imageries.entries.get(selected).unwrap().name());
+					if ui
+						.add_enabled(
+							!self.layers.0.iter().any(|l| l.0 == *selected),
+							Button::new("Add To Layers"),
+						)
+						.clicked()
+					{
+						self.layers.0.push_back(Layer(selected.clone(), true));
+					}
+				}
+				None => {
+					ui.label("Nothing is selected");
+				}
 			})
 			.response;
 
