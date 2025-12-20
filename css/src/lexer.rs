@@ -64,7 +64,7 @@ pub enum Token<'a> {
 	#[regex(r"[[^[:ascii:]][[:alpha:]]_][[^[:ascii:]][[:alnum:]]_-]*", |lex| lex.slice(), priority = 1)]
 	Identifier(&'a str),
 
-	#[regex(r"[-+]?(?:0|[1-9]\d*)?(?:\.\d+)?(?:[eE][+-]?\d+)?", |lex| lex.slice(), priority = 2)]
+	#[regex(r"[-+]?(?:(?:0|[1-9]\d*)(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?", |lex| lex.slice(), priority = 2)]
 	// Number(F64),
 	Number(&'a str),
 
