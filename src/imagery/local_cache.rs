@@ -26,8 +26,24 @@ pub struct LocalCache {
 }
 
 impl LocalCache {
-	pub fn new(file_path: PathBuf, mut messages: Messages, imageries: Arc<std::sync::Mutex<Imageries>>) -> Self {
+	pub fn new(
+		file_path: PathBuf,
+		mut messages: Messages,
+		imageries: Arc<std::sync::Mutex<Imageries>>,
+		no_cache: bool,
+	) -> Self {
 		message_info!(messages, "Using cache directory: {}", file_path.to_str().unwrap());
+
+		if no_cache {
+			message_info!(messages, "Cache disabled via --no-cache flag");
+			let cached_images = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+			return Self {
+				file_path,
+				cached_images,
+				last_count: 0,
+				imageries,
+			};
+		}
 
 		let cached_images = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 

@@ -9,6 +9,9 @@ use mappar::MyApp;
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
+	let mut args = pico_args::Arguments::from_env();
+	let no_cache = args.contains("--no-cache");
+
 	let start = web_time::Instant::now();
 	init_logger();
 	info!("Logger initialized in {:?}", start.elapsed());
@@ -49,7 +52,7 @@ async fn main() -> eframe::Result<()> {
 	eframe::run_native(
 		MyApp::APP_NAME,
 		native_options,
-		Box::new(|cc| Ok(Box::new(MyApp::new(cc)))),
+		Box::new(|cc| Ok(Box::new(MyApp::new(cc, no_cache)))),
 	)
 }
 
@@ -76,7 +79,7 @@ fn main() {
 			.expect("the_canvas_id is not a canvas element");
 
 		let result = eframe::WebRunner::new()
-			.start(canvas, web_options, Box::new(|cc| Ok(Box::new(MyApp::new(cc)))))
+			.start(canvas, web_options, Box::new(|cc| Ok(Box::new(MyApp::new(cc, false)))))
 			.await;
 
 		let loading_text = document.get_element_by_id("loading_text");

@@ -4,7 +4,7 @@ use image::ImageFormat;
 use js_sys::Reflect;
 use log::{error, info};
 use std::collections::HashMap;
-use std::sync::{Arc};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
@@ -26,7 +26,7 @@ enum Error {
 pub struct WebCache {
 	cached_images: Arc<Mutex<HashMap<Tile, ImageFormat>>>,
 	estimate: Arc<Mutex<(f64, f64)>>,
-    last_count: usize,
+	last_count: usize,
 }
 
 impl WebCache {
@@ -49,7 +49,7 @@ impl WebCache {
 		Self {
 			cached_images,
 			estimate,
-            last_count: 0
+			last_count: 0,
 		}
 	}
 

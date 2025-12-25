@@ -9,14 +9,14 @@ use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::imagery::{Imageries, get_imagery};
 use crate::map::api::get_data;
 use crate::map::map_data::{Bounds, LatLon, MapData, latlon};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::message_error;
 use crate::ui::debug_text::DebugText;
 use crate::ui::edit_bar::EditBar;
 use crate::ui::layer_list::{Layer, LayerList};
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
 use crate::{dbgtxt, unreachable_log};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::message_error;
 use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
 use statig::prelude::{IntoStateMachineExt, StateMachine};
@@ -49,11 +49,12 @@ pub struct MyApp {
 	project_dirs: ProjectDirs,
 	map_state: StateMachine<MapStateMachine>,
 	backend: String,
+	no_cache: bool,
 }
 
 impl MyApp {
 	pub const APP_NAME: &'static str = "mappar";
-	pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+	pub fn new(cc: &eframe::CreationContext<'_>, no_cache: bool) -> Self {
 		#[cfg(not(target_arch = "wasm32"))]
 		cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
 
@@ -93,6 +94,7 @@ impl MyApp {
 				#[cfg(not(target_arch = "wasm32"))]
 				project_dirs.cache_dir().to_path_buf(),
 				messages.clone(),
+				no_cache,
 			)))
 		};
 
@@ -122,6 +124,7 @@ impl MyApp {
 			project_dirs,
 			map_state: MapStateMachine::state_machine(MapStateMachine::default()),
 			backend,
+			no_cache,
 		};
 
 		app.layers.0.push_back(Layer("EsriWorldImagery".into(), true));

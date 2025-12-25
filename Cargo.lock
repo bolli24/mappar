@@ -2163,6 +2163,7 @@ dependencies = [
  "mappar-css",
  "mappar-macros",
  "open",
+ "pico-args",
  "puffin",
  "puffin_http",
  "quick-xml 0.38.4",

@@ -43,6 +43,7 @@ pub struct ImageryFetcher {
 	imageries: Arc<Mutex<Imageries>>,
 	pending: Arc<AtomicU32>,
 	persistent_cache: PersistentCache,
+	no_cache: bool,
 	request_tx: Sender<Tile>,
 	exit: Receiver<()>,
 }
@@ -110,10 +111,9 @@ impl ImageryFetcher {
 		imageries: Arc<Mutex<Imageries>>,
 		texture_manager: Arc<RwLock<TextureManager>>,
 		#[cfg(not(target_arch = "wasm32"))] cache_base_directory: PathBuf,
-		#[cfg(not(target_arch = "wasm32"))]
-		messages: Messages,
-		#[cfg(target_arch = "wasm32")]
-		_messages: Messages,
+		#[cfg(not(target_arch = "wasm32"))] messages: Messages,
+		#[cfg(target_arch = "wasm32")] _messages: Messages,
+		no_cache: bool,
 	) -> Self {
 		let memory_cache = Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(4192).unwrap())));
 
@@ -122,13 +122,14 @@ impl ImageryFetcher {
 
 		let fetcher = Self {
 			#[cfg(not(target_arch = "wasm32"))]
-			persistent_cache: local_cache::LocalCache::new(cache_base_directory, messages, imageries.clone()),
+			persistent_cache: local_cache::LocalCache::new(cache_base_directory, messages, imageries.clone(), no_cache),
 			#[cfg(target_arch = "wasm32")]
 			persistent_cache: web_cache::WebCache::new(),
 			imageries,
 			pending: Arc::new(AtomicU32::new(0)),
 			memory_cache,
 			texture_manager: texture_manager.clone(),
+			no_cache,
 			request_tx,
 			exit: exit_rx,
 		};
@@ -141,6 +142,7 @@ impl ImageryFetcher {
 			fetcher.persistent_cache.clone(),
 			texture_manager,
 			exit_tx,
+			no_cache,
 		));
 
 		fetcher
@@ -199,6 +201,7 @@ impl ImageryFetcher {
 		persistent_cache: PersistentCache,
 		texture_manager: Arc<RwLock<TextureManager>>,
 		exit: Sender<()>,
+		no_cache: bool,
 	) {
 		let mut join_set/*: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>> */ = FuturesUnordered::new();
 
@@ -267,10 +270,19 @@ impl ImageryFetcher {
 					persistent_cache.clone(),
 					&tile,
 					client.clone(),
+					no_cache,
 				)
 				.await;
 				#[cfg(target_arch = "wasm32")]
-				let result = Self::fetch_tile(worker_bridge, imageries, persistent_cache, tile, client.clone()).await;
+				let result = Self::fetch_tile(
+					worker_bridge,
+					imageries,
+					persistent_cache,
+					tile,
+					client.clone(),
+					no_cache,
+				)
+				.await;
 
 				match result {
 					#[allow(unused_variables)]
@@ -303,9 +315,12 @@ impl ImageryFetcher {
 		persistent_cache: local_cache::LocalCache,
 		tile: &Tile,
 		client: Client,
+		no_cache: bool,
 	) -> Result<TextureId, Error> {
-		if let Some(image_data) = persistent_cache.get_image(tile).await {
-			return Self::create_texture(texture_manager, tile_to_string(tile), &image_data);
+		if !no_cache {
+			if let Some(image_data) = persistent_cache.get_image(tile).await {
+				return Self::create_texture(texture_manager, tile_to_string(tile), &image_data);
+			}
 		}
 
 		let url = imageries
@@ -322,7 +337,9 @@ impl ImageryFetcher {
 			Ok(response) => {
 				let bytes = response.bytes().await?;
 				let image_format = image::guess_format(&bytes)?;
-				persistent_cache.save_image(tile, &bytes, image_format).await; // TODO: Maybe do this on a separate thread
+				if !no_cache {
+					persistent_cache.save_image(tile, &bytes, image_format).await; // TODO: Maybe do this on a separate thread
+				}
 				Self::create_texture(texture_manager, tile_to_string(tile), &bytes)
 			}
 		}
@@ -335,11 +352,15 @@ impl ImageryFetcher {
 		persistent_cache: web_cache::WebCache,
 		tile: Tile,
 		client: Client,
+		no_cache: bool,
 	) -> Result<(), Error> {
 		use crate::imagery::image_worker::Input;
 		//	let file_format = imagery.lock().unwrap().file_format();
-		if let Some(image_data) = persistent_cache.get_image(tile).await {
-			worker_bridge.lock().unwrap().send(Input(tile, image_data.to_vec()));
+		if !no_cache {
+			if let Some(image_data) = persistent_cache.get_image(tile).await {
+				worker_bridge.lock().unwrap().send(Input(tile, image_data.to_vec()));
+				return Ok(());
+			}
 		}
 
 		let url = imageries
