@@ -58,7 +58,13 @@ fn main() {
 	use wasm_bindgen::JsCast;
 	eframe::WebLogger::init(log::LevelFilter::Info).expect("Error initializing logger.");
 	info!("Logger initialized");
-	let web_options = eframe::WebOptions::default();
+	let web_options = eframe::WebOptions {
+		wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+			present_mode: eframe::wgpu::PresentMode::AutoVsync,
+			..Default::default()
+		},
+		..Default::default()
+	};
 
 	wasm_bindgen_futures::spawn_local(async {
 		let document = web_sys::window().expect("No window").document().expect("No document");

@@ -48,6 +48,7 @@ pub struct MyApp {
 	#[cfg(not(target_arch = "wasm32"))]
 	project_dirs: ProjectDirs,
 	map_state: StateMachine<MapStateMachine>,
+	backend: String,
 }
 
 impl MyApp {
@@ -95,6 +96,12 @@ impl MyApp {
 			)))
 		};
 
+		let backend = cc
+			.wgpu_render_state
+			.as_ref()
+			.map(|state| state.adapter.get_info().backend.to_string())
+			.unwrap_or_else(|| "Unknown".to_string());
+
 		let mut app = Self {
 			map_data: Arc::new(Mutex::new(MapData::new())),
 			styles: get_default_styles(cc.egui_ctx.tex_manager()),
@@ -114,6 +121,7 @@ impl MyApp {
 			#[cfg(not(target_arch = "wasm32"))]
 			project_dirs,
 			map_state: MapStateMachine::state_machine(MapStateMachine::default()),
+			backend,
 		};
 
 		app.layers.0.push_back(Layer("EsriWorldImagery".into(), true));
@@ -210,6 +218,8 @@ impl eframe::App for MyApp {
 			"Loaded imageries: {}",
 			self.imageries.lock().unwrap().entries.len()
 		);
+
+		dbgtxt!(self.debug_text, "Backend: {}", self.backend);
 
 		let mut update_edit_mode = None;
 
