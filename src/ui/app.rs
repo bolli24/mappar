@@ -14,7 +14,9 @@ use crate::ui::edit_bar::EditBar;
 use crate::ui::layer_list::{Layer, LayerList};
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
-use crate::{dbgtxt, message_error, unreachable_log};
+use crate::{dbgtxt, unreachable_log};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::message_error;
 use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
 use statig::prelude::{IntoStateMachineExt, StateMachine};
@@ -51,8 +53,6 @@ pub struct MyApp {
 impl MyApp {
 	pub const APP_NAME: &'static str = "mappar";
 	pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-		#[cfg(target_arch = "wasm32")]
-		tokio::runtime::Builder::new_current_thread().build().unwrap();
 		#[cfg(not(target_arch = "wasm32"))]
 		cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
 

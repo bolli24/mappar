@@ -75,16 +75,20 @@ fn main() {
 
 		let loading_text = document.get_element_by_id("loading_text");
 
-		if let Some(loading_text) = loading_text {
-			match result {
-				Ok(_) => {
+		match result {
+			Ok(_) => {
+				if let Some(loading_text) = loading_text {
 					loading_text.remove();
 				}
-				Err(e) => {
-					loading_text.set_inner_html("<p> The app has crashed. See the developer console for details. </p>");
-					error!("Failed to start eframe: {e:?}");
-					panic!()
+			}
+			Err(e) => {
+				let error_msg = format!("Failed to start eframe: {e:?}");
+				web_sys::console::error_1(&error_msg.clone().into());
+				error!("{error_msg}");
+				if let Some(loading_text) = loading_text {
+					loading_text.set_inner_html("<p> The app has crashed. See developer console for details. </p>");
 				}
+				panic!("{error_msg}");
 			}
 		}
 	});

@@ -127,6 +127,7 @@ doc = false
 doctest = false
 proc-macro = false
 harness = false
+required-features = []
 
 [profile.dev]
 # opt-level = 1     # this should not be 0 for the performance of the web worker to not suck

@@ -110,7 +110,10 @@ impl ImageryFetcher {
 		imageries: Arc<Mutex<Imageries>>,
 		texture_manager: Arc<RwLock<TextureManager>>,
 		#[cfg(not(target_arch = "wasm32"))] cache_base_directory: PathBuf,
+		#[cfg(not(target_arch = "wasm32"))]
 		messages: Messages,
+		#[cfg(target_arch = "wasm32")]
+		_messages: Messages,
 	) -> Self {
 		let memory_cache = Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(4192).unwrap())));
 
@@ -344,7 +347,8 @@ impl ImageryFetcher {
 			.unwrap()
 			.get(tile.imagery_ref)
 			.expect("Imagery reference should be valid.")
-			.tile_url(tile.coords.0, tile.coords.1, tile.coords.2);
+			.tile_url(tile.coords.0, tile.coords.1, tile.coords.2)
+			.expect("Tile url must be valid. Invalid imagery must not be layer.");
 
 		let response = client.get(url.clone()).send().await?;
 		match response.error_for_status() {
