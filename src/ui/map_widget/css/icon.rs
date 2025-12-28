@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use egui::{ColorImage, TextureId, mutex::RwLock};
 use epaint::TextureManager;
-use log::error;
 
 use crate::imagery::imagery_fetcher;
 
@@ -82,7 +81,7 @@ pub fn try_get_icon_texture(
 					icons.write().insert(file_name, Icon(texture_id));
 				}
 
-				Err(err) => error!("Unable to get icon file '{file_name}': {err:?}"),
+				Err(err) => log::error!("Unable to get icon file '{file_name}': {err:?}"),
 			}
 		});
 
