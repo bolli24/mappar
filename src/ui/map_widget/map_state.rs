@@ -379,7 +379,7 @@ impl MapStateMachine {
 		}
 
 		if let Some(pos) = view.pointer_world_pos
-			&& response.clicked_by(PointerButton::Primary)
+			&& (response.ctx.input(|i| i.pointer.button_pressed(PointerButton::Primary)))
 		{
 			let node_id = if let Some(hover_element) = hover_elements.single() {
 				match &hover_element {
