@@ -3,6 +3,7 @@ mod draw_list;
 pub mod map_memory;
 pub mod map_state;
 mod polygon;
+mod preview;
 pub mod render;
 mod style;
 mod view;
@@ -207,6 +208,10 @@ impl Widget for MapWidget<'_> {
 							if let Some(hightlighted) = element.maybe_highlighted(hovered, selected) {
 								draw_element(&hightlighted, &mut shapes, &view, fonts);
 							}
+							draw_element(element, &mut shapes, &view, fonts);
+						}
+
+						for element in &self.map_state.preview.render_elements(self.map_data) {
 							draw_element(element, &mut shapes, &view, fonts);
 						}
 					});

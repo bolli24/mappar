@@ -44,8 +44,12 @@ pub enum Action {
 	NewElement {
 		element: Element,
 	},
-	AddNodeToWayEnd {
+	NewNodeToWayEnd {
 		node: ElementId,
+	},
+	NewNodeToWaySegments {
+		node: Element,
+		ways: SmallVec<[(ElementId, usize); 1]>,
 	},
 }
 
@@ -99,12 +103,32 @@ impl undo::Edit for Edit {
 						},
 					);
 				}
-				Action::AddNodeToWayEnd { node } => {
+				Action::NewNodeToWayEnd { node } => {
 					let element = target.get_mut(element_id).expect("Element must exist");
 					let Element::Way { nodes } = &mut element.element else {
 						unreachable_log!("Element must be way");
 					};
 					nodes.push(*node);
+				}
+				Action::NewNodeToWaySegments { node, ways } => {
+					target.insert(
+						*element_id,
+						MapElement {
+							id: *element_id,
+							element: node.clone(),
+							tags: Default::default(),
+							info: Default::default(),
+							new_tag: None,
+						},
+					);
+
+					for (id, index) in ways {
+						let Element::Way { nodes } = &mut target.get_mut(id).expect("Way must exist.").element else {
+							unreachable_log!("Element must be way");
+						};
+
+						nodes.insert(*index, *element_id);
+					}
 				}
 			}
 		}
@@ -147,11 +171,22 @@ impl undo::Edit for Edit {
 				Action::NewElement { .. } => {
 					target.remove(element_id);
 				}
-				Action::AddNodeToWayEnd { .. } => {
+				Action::NewNodeToWayEnd { .. } => {
 					let Element::Way { nodes } = &mut element.element else {
 						unreachable_log!("Element must be way");
 					};
 					nodes.pop();
+				}
+				Action::NewNodeToWaySegments { ways, .. } => {
+					target.remove(element_id);
+
+					for (id, index) in ways {
+						let Element::Way { nodes } = &mut target.get_mut(id).expect("Way must exist.").element else {
+							unreachable_log!("Element must be way");
+						};
+
+						nodes.remove(*index);
+					}
 				}
 			}
 		}

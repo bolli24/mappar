@@ -5,6 +5,7 @@ use super::style::Style;
 use crate::map::map_data::{self, ElementId};
 use crate::map::map_data::{Element, MapData, MapElement};
 use crate::util::convert::ToPos2;
+use eframe::wgpu::Device;
 use egui::{Color32, Pos2, Rect, Vec2};
 use glam::DVec2;
 use itertools::Itertools;
@@ -229,4 +230,45 @@ fn distance_point_to_segment(a: &DVec2, b: &DVec2, p: &DVec2) -> f64 {
 
 	let closest_point = a + ab * t_clamped;
 	(p - closest_point).length()
+}
+
+// FIXME: make sure the added point is sufficiently far from the segment points
+//
+/// Return: the closest point that lies one of the segments of a polyline and that segment.
+pub fn closest_point_on_polyline(
+	points: &[DVec2],
+	nodes: &[ElementId],
+	p: DVec2,
+) -> Option<(DVec2, ElementId, ElementId)> {
+	debug_assert!(points.len() > 1, "Path must contain at least 2 points");
+
+	let mut min_dist_sq = f64::MAX;
+
+	let mut closest = (points[0], nodes[0], nodes[1]);
+
+	for (i, (a, b)) in points.iter().tuple_windows().enumerate() {
+		let current = closest_point_on_segment(*a, *b, p);
+		let dist_sq = current.distance_squared(p);
+
+		if dist_sq < min_dist_sq {
+			min_dist_sq = dist_sq;
+			closest = (current, nodes[i], nodes[i + 1]);
+		}
+	}
+
+	Some(closest)
+}
+
+fn closest_point_on_segment(a: DVec2, b: DVec2, p: DVec2) -> DVec2 {
+	let ab = b - a;
+	let len_sq = ab.length_squared();
+
+	if len_sq < f64::EPSILON {
+		return a;
+	}
+
+	let ap = p - a;
+	let t = (ap.dot(ab) / len_sq).clamp(0.0, 1.0);
+
+	a + ab * t
 }

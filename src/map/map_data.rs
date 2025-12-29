@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use glam::{DVec2, dvec2};
 use indexmap::IndexMap;
 use mappar_macros::Id;
-use smallvec::smallvec;
+use smallvec::{SmallVec, smallvec};
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
@@ -200,10 +200,23 @@ impl MapData {
 		)
 	}
 
-	pub fn add_node_to_way_end(&self, way: ElementId, node: ElementId) -> Edit {
+	pub fn new_node_to_way_end(&self, way: ElementId, node: ElementId) -> Edit {
 		debug_assert_eq!(ElementType::Way, way.1);
 		debug_assert_eq!(ElementType::Node, node.1);
-		Edit(smallvec![way], Action::AddNodeToWayEnd { node })
+		Edit(smallvec![way], Action::NewNodeToWayEnd { node })
+	}
+
+	pub fn new_node_on_way_segments(&mut self, pos: DVec2, ways: SmallVec<[(ElementId, usize); 1]>) -> Edit {
+		let node_id = self.new_element_id(ElementType::Node);
+		Edit(
+			smallvec![node_id], // Should this inclusde the id of the edited ways???
+			Action::NewNodeToWaySegments {
+				node: Element::Node {
+					pos: Cell::new(LatLon::from_web_mercator(pos)),
+				},
+				ways,
+			},
+		)
 	}
 
 	const fn new_element_id(&mut self, e_type: ElementType) -> ElementId {
@@ -279,12 +292,6 @@ impl LatLon {
 			x: RADIUS_EARTH * self.lon.to_radians(),
 			y: f64::ln(f64::tan(self.lat.to_radians().mul_add(0.5, FRAC_PI_4))) * RADIUS_EARTH,
 		}
-	}
-
-	#[inline]
-	pub fn to_web_mercator_render(self) -> DVec2 {
-		let pos = self.to_web_mercator();
-		dvec2(pos.x, -pos.y)
 	}
 
 	#[inline]

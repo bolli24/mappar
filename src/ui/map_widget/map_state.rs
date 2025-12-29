@@ -1,5 +1,6 @@
 use egui::{Modifiers, PointerButton};
 use glam::DVec2;
+use itertools::Itertools;
 use statig::prelude::*;
 
 use crate::{
@@ -8,7 +9,10 @@ use crate::{
 	message_error,
 	ui::{
 		debug_text::DebugText,
-		map_widget::render::{RenderElement, point_in_polygon},
+		map_widget::{
+			preview::Preview,
+			render::{RenderElement, closest_point_on_polyline, point_in_polygon},
+		},
 		messages::Messages,
 	},
 	util::{
@@ -28,6 +32,7 @@ pub enum EditMode {
 
 #[derive(Debug, Clone, Default)]
 pub struct MapStateMachine {
+	pub preview: Preview,
 	pub selection_box: Option<(DVec2, DVec2)>,
 	edit_mode: EditMode,
 	pointer_down_delta: DVec2,
@@ -304,14 +309,15 @@ impl MapStateMachine {
 		self.selection_box = None;
 	}
 
-	#[state(superstate = "default")]
-	fn draw(&self, context: &mut Context<'_>, first_node_or_way: &mut Option<ElementId>) -> Outcome<State> {
+	#[state(superstate = "default", exit_action = "exit_draw")]
+	fn draw(&mut self, context: &mut Context<'_>, first_node_or_way: &mut Option<ElementId>) -> Outcome<State> {
 		let Context {
 			response,
 			view,
 			mem,
 			map_data,
 			hover_elements,
+			render_data,
 			..
 		} = context;
 
@@ -319,6 +325,57 @@ impl MapStateMachine {
 			return Transition(State::Draw {
 				first_node_or_way: None,
 			});
+		}
+
+		let mut way_hover_segment = None;
+
+		if let Some(mut pos) = view.pointer_world_pos {
+			if let Some(hover_element) = hover_elements.single() {
+				// Snap to hovered element
+				pos = match &hover_element {
+					id if id.1 == ElementType::Node => map_data
+						.get_node_pos(**id)
+						.expect("Hovered node must exist.")
+						.to_web_mercator(),
+					id if id.1 == ElementType::Way => {
+						let way = map_data.get(id).expect("New element must exist");
+						let Element::Way { nodes } = &way.element else {
+							unreachable!("New element must be way")
+						};
+						let closed = is_closed(nodes);
+
+						let points: Vec<DVec2> = nodes
+							.iter()
+							.map(|n| map_data.get_node_pos(*n).expect("Node must exist").to_web_mercator())
+							.collect();
+
+						way_hover_segment = closest_point_on_polyline(&points, nodes, pos);
+						if let Some((new_pos, _, _)) = way_hover_segment {
+							new_pos
+						} else {
+							pos
+						}
+					}
+					_ => unreachable!("Must never hover over relation."),
+				}
+			}
+
+			match *first_node_or_way {
+				Some(id) if id.1 == ElementType::Node => self.preview = Preview::NewNodeToPath(id, pos),
+				Some(id) if id.1 == ElementType::Way => {
+					let way = map_data.get(&id).expect("New element must exist");
+					let Element::Way { nodes } = &way.element else {
+						unreachable!("New element must be way")
+					};
+					self.preview = Preview::NewNodeToPath(*nodes.last().expect("Way must have a last element."), pos);
+				}
+				None => {
+					self.preview = Preview::Node(pos);
+				}
+				_ => unreachable!("Invalid element for first_node_or_way"),
+			}
+		} else {
+			self.preview = Preview::None;
 		}
 
 		if let Some(pos) = view.pointer_world_pos
@@ -335,7 +392,44 @@ impl MapStateMachine {
 
 						*hover_element
 					}
-					ElementId(_, ElementType::Way) => todo!(),
+					id if id.1 == ElementType::Way => {
+						// We could actually be hovering over multiple ways. So we find all that
+						// contain the same two nodes of the hoverd segment.
+						let way = map_data.get(id).expect("New element must exist");
+						let Element::Way { nodes } = &way.element else {
+							unreachable!("New element must be way")
+						};
+
+						let way_hover_segment = way_hover_segment.expect("Hovered segment must be defined.");
+
+						let ways = render_data
+							.iter()
+							.filter(|e| e.id.1 == ElementType::Way)
+							.filter_map(|e| {
+								let Element::Way { nodes } = &map_data.elements[&e.id].element else {
+									unreachable!("Element must be way.");
+								};
+								nodes
+									.iter()
+									.tuple_windows()
+									.position(|(a, b)| {
+										(*a == way_hover_segment.1 && *b == way_hover_segment.2)
+											|| (*b == way_hover_segment.1 && *a == way_hover_segment.2)
+									})
+									.map(|i| (e.id, i + 1))
+							})
+							.collect();
+
+						let edit = map_data.new_node_on_way_segments(pos, ways);
+						map_data
+							.edit(edit)
+							.expect("Adding node to way segments must not error.");
+
+						// TODO: transition to moving node
+						return Transition(State::Draw {
+							first_node_or_way: None,
+						});
+					}
 					_ => unreachable!("Must never hover over relation."),
 				}
 			} else {
@@ -356,7 +450,7 @@ impl MapStateMachine {
 					mem.selection.elements.insert(new_way_id);
 				}
 				Some(ElementId(id, ElementType::Way)) => {
-					let edit = map_data.add_node_to_way_end(first_node_or_way.unwrap(), node_id);
+					let edit = map_data.new_node_to_way_end(first_node_or_way.unwrap(), node_id);
 					let way_id = edit.0[0];
 					debug_assert_eq!(id, way_id.0);
 					*first_node_or_way = Some(way_id);
@@ -386,5 +480,10 @@ impl MapStateMachine {
 		}
 
 		Super
+	}
+
+	#[action]
+	fn exit_draw(&mut self) {
+		self.preview = Preview::None;
 	}
 }
