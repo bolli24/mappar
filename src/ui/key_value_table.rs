@@ -1,10 +1,13 @@
 use super::{debug_text::DebugText, map_widget::map_memory::Selection, messages::Messages};
-use crate::map::map_data::{MapData, MapElement};
+use crate::map::map_data::{Element, ElementId, ElementInfo, ElementType, LatLon, MapData, MapElement};
 use derive_new::new;
 use egui::{Frame, Key, Margin, RichText, TextBuffer, TextEdit, Ui, Widget, text_edit::TextEditOutput};
 use egui_extras::{Column, TableBuilder};
+use either::Either;
+use indexmap::IndexMap;
 use log::info;
 use std::sync::{Arc, Mutex};
+use fxhash::FxHashMap;
 
 #[derive(new)]
 pub struct KeyValueTable<'a> {
@@ -117,6 +120,231 @@ impl Widget for KeyValueTable<'_> {
 	}
 }
 
+/// Aggregates tags from multiple elements, returning Left for common values or Right with counts for differing values.
+pub fn get_tags(elements: &[MapElement]) -> IndexMap<String, Either<String, FxHashMap<Option<String>, usize>>> {
+	match elements.len() {
+		0 => return IndexMap::new(),
+		1 => {
+			let mut result = IndexMap::with_capacity(elements[0].tags.len());
+			for (key, value) in &elements[0].tags {
+				result.insert(key.clone(), Either::Left(value.clone()));
+			}
+			return result;
+		}
+		_ => {}
+	}
+
+	let mut value_counts: FxHashMap<String, FxHashMap<Option<String>, usize>> = FxHashMap::default();
+	let estimated_keys = elements.iter().map(|e| e.tags.len()).sum::<usize>() / 2;
+	value_counts.reserve(estimated_keys);
+
+	for element in elements {
+		for (key, value) in &element.tags {
+			let count_map = value_counts.entry(key.clone()).or_default();
+			*count_map.entry(Some(value.clone())).or_insert(0) += 1;
+		}
+	}
+
+	let total_elements = elements.len();
+	for (_key, count_map) in &mut value_counts {
+		let total_count: usize = count_map.values().sum();
+		let missing = total_elements - total_count;
+		if missing > 0 {
+			count_map.entry(None).or_insert(missing);
+		}
+	}
+
+	let mut result = IndexMap::with_capacity(value_counts.len());
+	for (key, counts) in value_counts {
+		if counts.len() == 1 {
+			if let Some((Some(value), _count)) = counts.into_iter().next() {
+				result.insert(key, Either::Left(value));
+			}
+		} else {
+			result.insert(key, Either::Right(counts));
+		}
+	}
+
+	result
+}
+
 fn table_field(value: &mut dyn TextBuffer, ui: &mut Ui) -> TextEditOutput {
 	TextEdit::singleline(value).margin(Margin::same(1)).show(ui)
+}
+
+#[cfg(test)]
+ mod tests {
+ 	use super::*;
+ 	use either::Either::{Left, Right};
+ 	use indexmap::indexmap;
+ 	use std::cell::Cell;
+ 	use std::time::Instant;
+
+	fn create_element(id: i64, tags: IndexMap<String, String>) -> MapElement {
+		MapElement {
+			id: ElementId(id, ElementType::Node),
+			info: ElementInfo::default(),
+			element: Element::Node {
+				pos: Cell::new(LatLon { lat: 0.0, lon: 0.0 }),
+			},
+			tags,
+			new_tag: None,
+		}
+	}
+
+	#[test]
+	fn test_get_tags_empty() {
+		let elements: &[MapElement] = &[];
+		let result = get_tags(elements);
+		assert!(result.is_empty());
+	}
+
+	#[test]
+	fn test_get_tags_single_element() {
+		let tags =
+			indexmap! { "name".to_string() => "test".to_string(), "highway".to_string() => "primary".to_string() };
+		let elements = vec![create_element(1, tags)];
+		let result = get_tags(&elements);
+		assert_eq!(result.len(), 2);
+		assert_eq!(result.get("name"), Some(&Left("test".to_string())));
+		assert_eq!(result.get("highway"), Some(&Left("primary".to_string())));
+	}
+
+	#[test]
+	fn test_get_tags_multiple_same_tags() {
+		let tags1 = indexmap! { "name".to_string() => "test".to_string() };
+		let tags2 = indexmap! { "name".to_string() => "test".to_string() };
+		let elements = vec![create_element(1, tags1), create_element(2, tags2)];
+		let result = get_tags(&elements);
+		assert_eq!(result.len(), 1);
+		assert_eq!(result.get("name"), Some(&Left("test".to_string())));
+	}
+
+	#[test]
+	fn test_get_tags_multiple_different_tags() {
+		let tags1 = indexmap! { "name".to_string() => "test1".to_string() };
+		let tags2 = indexmap! { "name".to_string() => "test2".to_string() };
+		let elements = vec![create_element(1, tags1), create_element(2, tags2)];
+		let result = get_tags(&elements);
+		assert_eq!(result.len(), 1);
+		match result.get("name") {
+			Some(Right(map)) => {
+				assert_eq!(map.len(), 2);
+				assert_eq!(map.get(&Some("test1".to_string())), Some(&1));
+				assert_eq!(map.get(&Some("test2".to_string())), Some(&1));
+			}
+			_ => panic!("Expected Right with HashMap"),
+		}
+	}
+
+	#[test]
+	fn test_get_tags_mixed_same_and_different() {
+		let tags1 =
+			indexmap! { "name".to_string() => "common".to_string(), "highway".to_string() => "primary".to_string() };
+		let tags2 =
+			indexmap! { "name".to_string() => "common".to_string(), "highway".to_string() => "secondary".to_string() };
+		let elements = vec![create_element(1, tags1), create_element(2, tags2)];
+		let result = get_tags(&elements);
+		assert_eq!(result.len(), 2);
+		assert_eq!(result.get("name"), Some(&Left("common".to_string())));
+		match result.get("highway") {
+			Some(Right(map)) => {
+				assert_eq!(map.len(), 2);
+				assert_eq!(map.get(&Some("primary".to_string())), Some(&1));
+				assert_eq!(map.get(&Some("secondary".to_string())), Some(&1));
+			}
+			_ => panic!("Expected Right with HashMap"),
+		}
+	}
+
+	#[test]
+	fn test_get_tags_counts_occurrences() {
+		let tags1 = indexmap! { "highway".to_string() => "primary".to_string() };
+		let tags2 = indexmap! { "highway".to_string() => "primary".to_string() };
+		let tags3 = indexmap! { "highway".to_string() => "secondary".to_string() };
+		let elements = vec![
+			create_element(1, tags1),
+			create_element(2, tags2),
+			create_element(3, tags3),
+		];
+		let result = get_tags(&elements);
+		assert_eq!(result.len(), 1);
+		match result.get("highway") {
+			Some(Right(map)) => {
+				assert_eq!(map.len(), 2);
+				assert_eq!(map.get(&Some("primary".to_string())), Some(&2));
+				assert_eq!(map.get(&Some("secondary".to_string())), Some(&1));
+			}
+			_ => panic!("Expected Right with HashMap"),
+		}
+	}
+
+	#[test]
+	fn test_get_tags_missing_tags() {
+		let tags1 = indexmap! { "name".to_string() => "test".to_string() };
+		let tags2 = indexmap! {};
+		let tags3 = indexmap! { "name".to_string() => "test".to_string() };
+		let elements = vec![
+			create_element(1, tags1),
+			create_element(2, tags2),
+			create_element(3, tags3),
+		];
+		let result = get_tags(&elements);
+		assert_eq!(result.len(), 1);
+		match result.get("name") {
+			Some(Right(map)) => {
+				assert_eq!(map.len(), 2);
+				assert_eq!(map.get(&Some("test".to_string())), Some(&2));
+				assert_eq!(map.get(&None), Some(&1));
+			}
+			_ => panic!("Expected Right with HashMap"),
+		}
+	}
+
+	#[test]
+	fn test_get_tags_mixed_present_and_missing() {
+		let tags1 =
+			indexmap! { "name".to_string() => "test".to_string(), "highway".to_string() => "primary".to_string() };
+		let tags2 = indexmap! { "name".to_string() => "test".to_string() };
+		let elements = vec![create_element(1, tags1), create_element(2, tags2)];
+		let result = get_tags(&elements);
+		assert_eq!(result.len(), 2);
+		assert_eq!(result.get("name"), Some(&Left("test".to_string())));
+		match result.get("highway") {
+			Some(Right(map)) => {
+				assert_eq!(map.len(), 2);
+				assert_eq!(map.get(&Some("primary".to_string())), Some(&1));
+				assert_eq!(map.get(&None), Some(&1));
+			}
+			_ => panic!("Expected Right with HashMap"),
+		}
+	}
+
+	#[test]
+	fn benchmark_get_tags() {
+		let mut elements = Vec::new();
+		let all_keys: Vec<String> = (0..100).map(|i| format!("key_{}", i)).collect();
+		let all_values: Vec<String> = (0..200).map(|i| format!("value_{}", i)).collect();
+		let mut seed = 42u64;
+
+		for i in 0..1000 {
+			let mut tags = IndexMap::new();
+			for _ in 0..20 {
+				seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
+				let key_idx = seed as usize % all_keys.len();
+				seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
+				let value_idx = seed as usize % all_values.len();
+				tags.insert(all_keys[key_idx].clone(), all_values[value_idx].clone());
+			}
+			elements.push(create_element(i as i64, tags));
+		}
+
+		let start = Instant::now();
+		for _ in 0..100 {
+			let _ = get_tags(&elements);
+		}
+		let duration = start.elapsed();
+		println!("get_tags benchmark: 100 iterations in {:?}", duration);
+		println!("Average: {:?}", duration / 100);
+	}
 }

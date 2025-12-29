@@ -3,9 +3,12 @@
 pub use ui::app::MyApp;
 
 pub mod imagery;
-mod map;
-mod ui;
+pub mod map;
+pub mod ui;
 pub mod util;
+
+pub use map::map_data::{Element, ElementId, ElementInfo, ElementType, LatLon, MapElement};
+pub use ui::key_value_table::get_tags;
 
 #[cfg(test)]
 static INIT: std::sync::Once = std::sync::Once::new();

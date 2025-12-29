@@ -3,8 +3,9 @@ mod debug_text;
 mod display_window;
 mod edit_bar;
 mod imagery_widget;
-mod key_value_table;
+pub mod key_value_table;
 mod layer_list;
 pub mod map_widget;
 pub mod memory;
 pub mod messages;
+
