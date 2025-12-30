@@ -84,7 +84,7 @@ impl MapData {
 	}
 
 	pub fn redo(&mut self) -> Option<<Edit as undo::Edit>::Output> {
-		self.history.undo(&mut self.elements)
+		self.history.redo(&mut self.elements)
 	}
 
 	pub fn add_tag(&self, id: ElementId, key: String, value: String) -> Edit {
