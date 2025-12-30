@@ -254,8 +254,7 @@ impl MapWidget<'_> {
 				.lock()
 				.unwrap()
 				.imageries()
-				.lock()
-				.unwrap()
+				.write()
 				.get(reference)
 				.map(|imagery| imagery.name().to_string())
 		})
@@ -476,8 +475,7 @@ fn draw_tiles(
 	let corners = get_world_corners(view.viewport, view.camera_pos, view.scale);
 	let imagery = imagery_fetcher
 		.imageries()
-		.lock()
-		.unwrap()
+		.write()
 		.get(imagery_ref)
 		.expect("Imagery reference should be valid.")
 		.clone();

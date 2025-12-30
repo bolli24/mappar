@@ -40,7 +40,7 @@ type PersistentCache = web_cache::WebCache;
 pub struct ImageryFetcher {
 	memory_cache: MemoryCache,
 	texture_manager: Arc<RwLock<TextureManager>>,
-	imageries: Arc<Mutex<Imageries>>,
+	imageries: Arc<RwLock<Imageries>>,
 	pending: Arc<AtomicU32>,
 	persistent_cache: PersistentCache,
 	no_cache: bool,
@@ -108,7 +108,7 @@ const MAX_CONCURRENT: usize = 6;
 
 impl ImageryFetcher {
 	pub fn new(
-		imageries: Arc<Mutex<Imageries>>,
+		imageries: Arc<RwLock<Imageries>>,
 		texture_manager: Arc<RwLock<TextureManager>>,
 		#[cfg(not(target_arch = "wasm32"))] cache_base_directory: PathBuf,
 		#[cfg(not(target_arch = "wasm32"))] messages: Messages,
@@ -189,14 +189,14 @@ impl ImageryFetcher {
 	}
 
 	#[must_use]
-	pub fn imageries(&self) -> Arc<Mutex<Imageries>> {
+	pub fn imageries(&self) -> Arc<RwLock<Imageries>> {
 		self.imageries.clone()
 	}
 
 	async fn fetching_loop(
 		mut request_rx: Receiver<Tile>,
 		memory_cache: MemoryCache,
-		imageries: Arc<Mutex<Imageries>>,
+		imageries: Arc<RwLock<Imageries>>,
 		pending: Arc<AtomicU32>,
 		persistent_cache: PersistentCache,
 		texture_manager: Arc<RwLock<TextureManager>>,
@@ -311,7 +311,7 @@ impl ImageryFetcher {
 	#[cfg(not(target_arch = "wasm32"))]
 	async fn fetch_tile(
 		texture_manager: &Arc<RwLock<TextureManager>>,
-		imageries: Arc<Mutex<Imageries>>,
+		imageries: Arc<RwLock<Imageries>>,
 		persistent_cache: local_cache::LocalCache,
 		tile: &Tile,
 		client: Client,
@@ -324,8 +324,7 @@ impl ImageryFetcher {
 		}
 
 		let url = imageries
-			.lock()
-			.unwrap()
+			.read()
 			.get(tile.imagery_ref)
 			.expect("Imagery reference should be valid.")
 			.tile_url(tile.coords.0, tile.coords.1, tile.coords.2)
@@ -348,7 +347,7 @@ impl ImageryFetcher {
 	#[cfg(target_arch = "wasm32")]
 	async fn fetch_tile(
 		worker_bridge: Arc<Mutex<WorkerBridge<ImageWorker>>>,
-		imageries: Arc<Mutex<Imageries>>,
+		imageries: Arc<RwLock<Imageries>>,
 		persistent_cache: web_cache::WebCache,
 		tile: Tile,
 		client: Client,
@@ -364,8 +363,7 @@ impl ImageryFetcher {
 		}
 
 		let url = imageries
-			.lock()
-			.unwrap()
+			.read()
 			.get(tile.imagery_ref)
 			.expect("Imagery reference should be valid.")
 			.tile_url(tile.coords.0, tile.coords.1, tile.coords.2)

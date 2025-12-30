@@ -16,22 +16,18 @@ use crate::message_info;
 use crate::ui::messages::Messages;
 
 use super::Imageries;
+use epaint::mutex::RwLock;
 
 #[derive(Clone)]
 pub struct LocalCache {
 	file_path: PathBuf,
 	cached_images: Arc<tokio::sync::Mutex<HashMap<Tile, ImageFormat>>>,
 	last_count: usize,
-	imageries: Arc<std::sync::Mutex<Imageries>>,
+	imageries: Arc<RwLock<Imageries>>,
 }
 
 impl LocalCache {
-	pub fn new(
-		file_path: PathBuf,
-		mut messages: Messages,
-		imageries: Arc<std::sync::Mutex<Imageries>>,
-		no_cache: bool,
-	) -> Self {
+	pub fn new(file_path: PathBuf, mut messages: Messages, imageries: Arc<RwLock<Imageries>>, no_cache: bool) -> Self {
 		message_info!(messages, "Using cache directory: {}", file_path.to_str().unwrap());
 
 		if no_cache {
@@ -79,7 +75,7 @@ impl LocalCache {
 				};
 
 				let imagery_id = ImageryId(dir_path.file_name().unwrap().to_string_lossy().to_string());
-				let imagery_ref = imageries.lock().unwrap().get_ref_unchecked(&imagery_id);
+				let imagery_ref = imageries.write().get_ref_unchecked(&imagery_id);
 
 				let mut cached_images = cached_images.lock().await;
 
@@ -105,8 +101,7 @@ impl LocalCache {
 	fn file_path(&self, tile: &Tile, image_format: ImageFormat) -> PathBuf {
 		let imagery_id = self
 			.imageries
-			.lock()
-			.unwrap()
+			.read()
 			.get(tile.imagery_ref)
 			.expect("Iamgery reference should be valid.")
 			.id

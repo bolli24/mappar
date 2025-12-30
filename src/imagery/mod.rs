@@ -12,8 +12,10 @@ use serde::{Deserialize, Serialize};
 use serde_inline_default::serde_inline_default;
 use std::fmt::Display;
 use std::num::NonZeroUsize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use web_time::Instant;
+
+use epaint::mutex::RwLock;
 
 #[cfg(target_arch = "wasm32")]
 pub mod image_worker;
@@ -40,7 +42,7 @@ pub struct ImageryRef(Spur);
 pub fn get_imagery(
 	#[cfg(not(target_arch = "wasm32"))] josm_xml_path: std::path::PathBuf,
 	mut messages: Messages,
-	imageries: Arc<Mutex<Imageries>>,
+	imageries: Arc<epaint::mutex::RwLock<Imageries>>,
 ) {
 	crate::spawn_task!(async move {
 		if let Ok(xml) = get_local_xml(
@@ -89,7 +91,7 @@ async fn fetch_josm_xml() -> Result<String, crate::map::api::Error> {
 pub fn update_josm_imagery(
 	#[cfg(not(target_arch = "wasm32"))] josm_xml_path: std::path::PathBuf,
 	mut messages: Messages,
-	imageries: Arc<Mutex<Imageries>>,
+	imageries: Arc<epaint::mutex::RwLock<Imageries>>,
 ) {
 	crate::spawn_task!(async move {
 		let xml = match fetch_josm_xml().await {
@@ -113,7 +115,11 @@ pub fn update_josm_imagery(
 	});
 }
 
-fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mutex<Imageries>>) -> Result<(), ()> {
+fn imageries_from_str(
+	xml: &str,
+	mut messages: Messages,
+	imageries: Arc<epaint::mutex::RwLock<Imageries>>,
+) -> Result<(), ()> {
 	let start = Instant::now();
 
 	let mut deserializer = Deserializer::from_str(xml);
@@ -147,7 +153,7 @@ fn imageries_from_str(xml: &str, mut messages: Messages, imageries: Arc<Mutex<Im
 		parsed.entries.len(),
 		start.elapsed()
 	);
-	*imageries.lock().unwrap() = parsed;
+	*imageries.write() = parsed;
 	Ok(())
 }
 

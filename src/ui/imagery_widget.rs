@@ -9,7 +9,7 @@ use egui::{Button, CentralPanel, Label, MenuBar, Response, Sense, SidePanel, Top
 use egui_extras::{Column, TableBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use super::messages::Messages;
 
@@ -32,7 +32,7 @@ impl Default for ImageriesMemory {
 
 #[derive(new)]
 pub struct ImageriesWidget<'a> {
-	imageries: Arc<Mutex<Imageries>>,
+	imageries: Arc<epaint::mutex::RwLock<Imageries>>,
 	messages: &'a Messages,
 	#[cfg(not(target_arch = "wasm32"))]
 	project_dirs: &'a ProjectDirs,
@@ -42,7 +42,7 @@ pub struct ImageriesWidget<'a> {
 impl Widget for ImageriesWidget<'_> {
 	fn ui(self, ui: &mut Ui) -> Response {
 		let mut mem = ImageriesMemory::load_or_default(ui.ctx(), Id::from("imagery_settings"));
-		let imageries = self.imageries.lock().unwrap();
+		let imageries = self.imageries.read();
 
 		TopBottomPanel::top("top_panel").show_inside(ui, |ui| {
 			MenuBar::new().ui(ui, |ui| {
@@ -74,11 +74,17 @@ impl Widget for ImageriesWidget<'_> {
 							.entries
 							.get_index(row.index())
 							.expect("Index should be valid.");
+						let id: &ImageryId = id;
 
 						row.set_selected(Some(row.index()) == selected_index);
 
 						row.col(|ui| {
-							ui.label(imagery.country.and_then(|c| c.flag()).unwrap_or(String::new()));
+							ui.label(
+								imagery
+									.country
+									.and_then(|c: celes::Country| c.flag())
+									.unwrap_or(String::new()),
+							);
 						});
 						row.col(|ui| {
 							Label::new(imagery.name()).selectable(false).ui(ui);

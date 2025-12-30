@@ -26,6 +26,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use web_time::Instant;
 
+use epaint::mutex::RwLock;
+
 const MAX_RECENT_FRAME_COUNT: usize = 1000;
 
 pub struct MyApp {
@@ -34,7 +36,7 @@ pub struct MyApp {
 	styles: Option<Styles>,
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
-	imageries: Arc<Mutex<Imageries>>,
+	imageries: Arc<RwLock<Imageries>>,
 	layers: Layers,
 	debug_text: DebugText,
 	startup_time: Instant,
@@ -85,7 +87,7 @@ impl MyApp {
 		#[cfg(not(target_arch = "wasm32"))]
 		let project_dirs = Self::project_dirs();
 
-		let imageries = Arc::new(Mutex::new(Imageries::new()));
+		let imageries = Arc::new(RwLock::new(Imageries::new()));
 
 		let imagery_fetcher = {
 			Arc::new(Mutex::new(ImageryFetcher::new(
@@ -223,7 +225,7 @@ impl eframe::App for MyApp {
 		dbgtxt!(
 			self.debug_text,
 			"Loaded imageries: {}",
-			self.imageries.lock().unwrap().entries.len()
+			self.imageries.read().entries.len()
 		);
 
 		dbgtxt!(self.debug_text, "Backend: {}", self.backend);
@@ -325,20 +327,7 @@ impl eframe::App for MyApp {
 			.width_range(80.0..=800.0)
 			.default_width(200.0)
 			.show(ctx, |ui| {
-				LayerList::new(
-					&mut self.layers,
-					&self.imageries.lock().unwrap(),
-					&mut self.imagery_settings,
-				)
-				.ui(ui);
-				ui.separator();
-				KeyValueTable::new(
-					&mut self.map_data,
-					&mut self.map_memory.selection,
-					&mut self.messages,
-					&mut self.debug_text,
-				)
-				.ui(ui);
+				LayerList::new(&mut self.layers, &self.imageries.read(), &mut self.imagery_settings).ui(ui);
 			});
 
 		if self.debug_panel {
@@ -358,7 +347,7 @@ impl eframe::App for MyApp {
 			let active_imagery_ref = self
 				.layers
 				.get_active_imagery()
-				.and_then(|id| self.imageries.lock().unwrap().get_ref(id));
+				.and_then(|id| self.imageries.write().get_ref(id));
 
 			let mut rect = ui
 				.add(MapWidget::new(
