@@ -1,5 +1,4 @@
 use super::imagery_widget::ImageriesWidget;
-use super::key_value_table::KeyValueTable;
 use super::layer_list::Layers;
 use super::map_widget::MapWidget;
 use super::map_widget::css::Styles;

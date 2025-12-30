@@ -5,7 +5,6 @@ use super::style::Style;
 use crate::map::map_data::{self, ElementId};
 use crate::map::map_data::{Element, MapData, MapElement};
 use crate::util::convert::ToPos2;
-use eframe::wgpu::Device;
 use egui::{Color32, Pos2, Rect, Vec2};
 use glam::DVec2;
 use itertools::Itertools;

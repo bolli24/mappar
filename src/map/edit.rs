@@ -44,10 +44,10 @@ pub enum Action {
 	NewElement {
 		element: Element,
 	},
-	NewNodeToWayEnd {
+	AddNodeToWayEnd {
 		node: ElementId,
 	},
-	NewNodeToWaySegments {
+	AddNodeToWaySegments {
 		node: Element,
 		ways: SmallVec<[(ElementId, usize); 1]>,
 	},
@@ -103,14 +103,14 @@ impl undo::Edit for Edit {
 						},
 					);
 				}
-				Action::NewNodeToWayEnd { node } => {
+				Action::AddNodeToWayEnd { node } => {
 					let element = target.get_mut(element_id).expect("Element must exist");
 					let Element::Way { nodes } = &mut element.element else {
 						unreachable_log!("Element must be way");
 					};
 					nodes.push(*node);
 				}
-				Action::NewNodeToWaySegments { node, ways } => {
+				Action::AddNodeToWaySegments { node, ways } => {
 					target.insert(
 						*element_id,
 						MapElement {
@@ -171,13 +171,13 @@ impl undo::Edit for Edit {
 				Action::NewElement { .. } => {
 					target.remove(element_id);
 				}
-				Action::NewNodeToWayEnd { .. } => {
+				Action::AddNodeToWayEnd { .. } => {
 					let Element::Way { nodes } = &mut element.element else {
 						unreachable_log!("Element must be way");
 					};
 					nodes.pop();
 				}
-				Action::NewNodeToWaySegments { ways, .. } => {
+				Action::AddNodeToWaySegments { ways, .. } => {
 					target.remove(element_id);
 
 					for (id, index) in ways {

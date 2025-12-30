@@ -342,7 +342,7 @@ impl MapStateMachine {
 						let Element::Way { nodes } = &way.element else {
 							unreachable!("New element must be way")
 						};
-						let closed = is_closed(nodes);
+						let _closed = is_closed(nodes);
 
 						let points: Vec<DVec2> = nodes
 							.iter()
@@ -396,7 +396,7 @@ impl MapStateMachine {
 						// We could actually be hovering over multiple ways. So we find all that
 						// contain the same two nodes of the hoverd segment.
 						let way = map_data.get(id).expect("New element must exist");
-						let Element::Way { nodes } = &way.element else {
+						let Element::Way { nodes: _ } = &way.element else {
 							unreachable!("New element must be way")
 						};
 
@@ -420,7 +420,7 @@ impl MapStateMachine {
 							})
 							.collect();
 
-						let edit = map_data.new_node_on_way_segments(pos, ways);
+						let edit = map_data.add_node_on_way_segments(pos, ways);
 						map_data
 							.edit(edit)
 							.expect("Adding node to way segments must not error.");
@@ -450,7 +450,7 @@ impl MapStateMachine {
 					mem.selection.elements.insert(new_way_id);
 				}
 				Some(ElementId(id, ElementType::Way)) => {
-					let edit = map_data.new_node_to_way_end(first_node_or_way.unwrap(), node_id);
+					let edit = map_data.add_node_to_way_end(first_node_or_way.unwrap(), node_id);
 					let way_id = edit.0[0];
 					debug_assert_eq!(id, way_id.0);
 					*first_node_or_way = Some(way_id);

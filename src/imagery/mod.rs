@@ -15,8 +15,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use web_time::Instant;
 
-use epaint::mutex::RwLock;
-
 #[cfg(target_arch = "wasm32")]
 pub mod image_worker;
 pub mod imagery_fetcher;

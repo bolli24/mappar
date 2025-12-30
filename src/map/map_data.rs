@@ -1,6 +1,6 @@
 use super::edit::{Action, Edit};
 use chrono::{DateTime, Utc};
-use glam::{DVec2, dvec2};
+use glam::DVec2;
 use indexmap::IndexMap;
 use mappar_macros::Id;
 use smallvec::{SmallVec, smallvec};
@@ -84,7 +84,7 @@ impl MapData {
 	}
 
 	pub fn redo(&mut self) -> Option<<Edit as undo::Edit>::Output> {
-		self.history.redo(&mut self.elements)
+		self.history.undo(&mut self.elements)
 	}
 
 	pub fn add_tag(&self, id: ElementId, key: String, value: String) -> Edit {
@@ -200,17 +200,17 @@ impl MapData {
 		)
 	}
 
-	pub fn new_node_to_way_end(&self, way: ElementId, node: ElementId) -> Edit {
+	pub fn add_node_to_way_end(&self, way: ElementId, node: ElementId) -> Edit {
 		debug_assert_eq!(ElementType::Way, way.1);
 		debug_assert_eq!(ElementType::Node, node.1);
-		Edit(smallvec![way], Action::NewNodeToWayEnd { node })
+		Edit(smallvec![way], Action::AddNodeToWayEnd { node })
 	}
 
-	pub fn new_node_on_way_segments(&mut self, pos: DVec2, ways: SmallVec<[(ElementId, usize); 1]>) -> Edit {
+	pub fn add_node_on_way_segments(&mut self, pos: DVec2, ways: SmallVec<[(ElementId, usize); 1]>) -> Edit {
 		let node_id = self.new_element_id(ElementType::Node);
 		Edit(
 			smallvec![node_id], // Should this inclusde the id of the edited ways???
-			Action::NewNodeToWaySegments {
+			Action::AddNodeToWaySegments {
 				node: Element::Node {
 					pos: Cell::new(LatLon::from_web_mercator(pos)),
 				},
