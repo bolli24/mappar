@@ -46,6 +46,7 @@ pub struct ImageryFetcher {
 	no_cache: bool,
 	request_tx: Sender<Tile>,
 	exit: Receiver<()>,
+	client: Client,
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone, new, serde::Serialize, serde::Deserialize)]
@@ -120,6 +121,11 @@ impl ImageryFetcher {
 		let (request_tx, request_rx) = channel(MAX_CONCURRENT);
 		let (exit_tx, exit_rx) = channel(0);
 
+		let client_builder = ClientBuilder::new();
+		#[cfg(not(target_arch = "wasm32"))]
+		let client_builder = client_builder.user_agent(crate::map::api::USER_AGENT);
+		let client = client_builder.build().unwrap();
+
 		let fetcher = Self {
 			#[cfg(not(target_arch = "wasm32"))]
 			persistent_cache: local_cache::LocalCache::new(cache_base_directory, messages, imageries.clone(), no_cache),
@@ -132,6 +138,7 @@ impl ImageryFetcher {
 			no_cache,
 			request_tx,
 			exit: exit_rx,
+			client,
 		};
 
 		crate::spawn_task!(Self::fetching_loop(
@@ -143,6 +150,7 @@ impl ImageryFetcher {
 			texture_manager,
 			exit_tx,
 			no_cache,
+			fetcher.client.clone(),
 		));
 
 		fetcher
@@ -202,6 +210,7 @@ impl ImageryFetcher {
 		texture_manager: Arc<RwLock<TextureManager>>,
 		exit: Sender<()>,
 		no_cache: bool,
+		client: Client,
 	) {
 		let mut join_set/*: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>> */ = FuturesUnordered::new();
 
@@ -255,12 +264,7 @@ impl ImageryFetcher {
 			let persistent_cache = persistent_cache.clone();
 			#[cfg(target_arch = "wasm32")]
 			let worker_bridge = worker_bridge.clone();
-			let client_builder = ClientBuilder::new();
-			#[cfg(not(target_arch = "wasm32"))]
-			let client_builder = client_builder.user_agent(crate::map::api::USER_AGENT);
-			// Don't add user-agent on browser because of cors preflight shenanigans:
-			// https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#examples_of_access_control_scenarios
-			let client = client_builder.build().unwrap();
+			let client = client.clone();
 
 			let closure = async move {
 				#[cfg(not(target_arch = "wasm32"))]
