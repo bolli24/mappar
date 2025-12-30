@@ -1,17 +1,16 @@
 use super::{debug_text::DebugText, map_widget::map_memory::Selection, messages::Messages};
-use crate::map::map_data::{Element, ElementId, ElementInfo, ElementType, LatLon, MapData, MapElement};
+use crate::map::map_data::{MapData, MapElement};
 use derive_new::new;
 use egui::{Frame, Key, Margin, RichText, TextBuffer, TextEdit, Ui, Widget, text_edit::TextEditOutput};
 use egui_extras::{Column, TableBuilder};
 use either::Either;
+use fxhash::FxHashMap;
 use indexmap::IndexMap;
 use log::info;
-use std::sync::{Arc, Mutex};
-use fxhash::FxHashMap;
 
 #[derive(new)]
 pub struct KeyValueTable<'a> {
-	map_data: Arc<Mutex<MapData>>,
+	map_data: &'a mut MapData,
 	selection: &'a mut Selection,
 	messages: &'a mut Messages,
 	debug_text: &'a mut DebugText,
@@ -23,7 +22,7 @@ impl Widget for KeyValueTable<'_> {
 		const ACTION_COLUMN: f32 = 36.0;
 		let panel = ui.response().rect;
 		let column_width = ((panel.width() - ACTION_COLUMN) * 0.5).clamp(40.0, 400.0);
-		let mut map_data = self.map_data.lock().unwrap();
+		let map_data = &mut *self.map_data;
 
 		let id = self.selection.elements.iter().next();
 
@@ -173,12 +172,13 @@ fn table_field(value: &mut dyn TextBuffer, ui: &mut Ui) -> TextEditOutput {
 }
 
 #[cfg(test)]
- mod tests {
- 	use super::*;
- 	use either::Either::{Left, Right};
- 	use indexmap::indexmap;
- 	use std::cell::Cell;
- 	use std::time::Instant;
+mod tests {
+	use super::*;
+	use crate::map::map_data::{Element, ElementId, ElementInfo, ElementType, LatLon};
+	use either::Either::{Left, Right};
+	use indexmap::indexmap;
+	use std::cell::Cell;
+	use std::time::Instant;
 
 	fn create_element(id: i64, tags: IndexMap<String, String>) -> MapElement {
 		MapElement {

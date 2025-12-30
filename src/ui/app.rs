@@ -17,6 +17,8 @@ use crate::ui::layer_list::{Layer, LayerList};
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
 use crate::{dbgtxt, unreachable_log};
+#[cfg(not(target_arch = "wasm32"))]
+use directories::ProjectDirs;
 use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
 use statig::prelude::{IntoStateMachineExt, StateMachine};
@@ -24,13 +26,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use web_time::Instant;
 
-#[cfg(not(target_arch = "wasm32"))]
-use directories::ProjectDirs;
-
 const MAX_RECENT_FRAME_COUNT: usize = 1000;
 
 pub struct MyApp {
-	map_data: Arc<Mutex<MapData>>,
+	map_data: MapData,
+	pending_map_data: Arc<Mutex<Option<MapData>>>,
 	styles: Option<Styles>,
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
@@ -46,7 +46,7 @@ pub struct MyApp {
 	messages: Messages,
 	imagery_settings: bool,
 	#[cfg(not(target_arch = "wasm32"))]
-	project_dirs: ProjectDirs,
+	project_dirs: directories::ProjectDirs,
 	map_state: StateMachine<MapStateMachine>,
 	backend: String,
 	no_cache: bool,
@@ -104,8 +104,28 @@ impl MyApp {
 			.map(|state| state.adapter.get_info().backend.to_string())
 			.unwrap_or_else(|| "Unknown".to_string());
 
+		let pending_map_data = Arc::new(Mutex::new(None));
+
+		crate::spawn_task!({
+			let pending_map_data = pending_map_data.clone();
+			async move {
+				let new_map_data = get_data(bounds).await;
+				match new_map_data {
+					Ok(new_map_data) => {
+						let mut pending = pending_map_data.lock().unwrap();
+						*pending = Some(new_map_data);
+					}
+					Err(err) => {
+						error!("Error fetching data:");
+						error!("{err:?}");
+					}
+				}
+			}
+		});
+
 		let mut app = Self {
-			map_data: Arc::new(Mutex::new(MapData::new())),
+			map_data: MapData::new(),
+			pending_map_data,
 			styles: get_default_styles(cc.egui_ctx.tex_manager()),
 			imagery_fetcher,
 			imageries,
@@ -150,22 +170,6 @@ impl MyApp {
 			app.imageries.clone(),
 		);
 
-		let map_data = app.map_data.clone();
-
-		crate::spawn_task!(async move {
-			let new_map_data = get_data(bounds).await;
-			match new_map_data {
-				Ok(new_map_data) => {
-					let mut data = map_data.lock().unwrap();
-					*data = new_map_data;
-				}
-				Err(err) => {
-					error!("Error fetching data:");
-					error!("{err:?}");
-				}
-			}
-		});
-
 		app
 	}
 
@@ -182,6 +186,10 @@ impl MyApp {
 
 impl eframe::App for MyApp {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+		if let Some(new_map_data) = self.pending_map_data.lock().unwrap().take() {
+			self.map_data = new_map_data;
+		}
+
 		#[cfg(not(target_arch = "wasm32"))]
 		let mut reload_styles = false; // This is needed because we can't reload in the input closure
 		#[cfg(not(target_arch = "wasm32"))]
@@ -210,11 +218,7 @@ impl eframe::App for MyApp {
 			}
 		});
 
-		dbgtxt!(
-			self.debug_text,
-			"History count: {}",
-			self.map_data.lock().unwrap().history_len()
-		);
+		dbgtxt!(self.debug_text, "History count: {}", self.map_data.history_len());
 
 		dbgtxt!(
 			self.debug_text,
@@ -285,7 +289,7 @@ impl eframe::App for MyApp {
 				self.map_state.edit_mode(),
 				&mut update_edit_mode,
 				&mut self.map_memory,
-				&mut self.map_data.lock().unwrap(),
+				&mut self.map_data,
 			));
 		});
 
@@ -329,7 +333,7 @@ impl eframe::App for MyApp {
 				.ui(ui);
 				ui.separator();
 				KeyValueTable::new(
-					self.map_data.clone(),
+					&mut self.map_data,
 					&mut self.map_memory.selection,
 					&mut self.messages,
 					&mut self.debug_text,
@@ -358,7 +362,7 @@ impl eframe::App for MyApp {
 
 			let mut rect = ui
 				.add(MapWidget::new(
-					&mut self.map_data.lock().unwrap(),
+					&mut self.map_data,
 					&mut self.styles,
 					self.imagery_fetcher.clone(),
 					self.map_widget_id,
@@ -402,12 +406,12 @@ impl eframe::App for MyApp {
 		ctx.input(|i| {
 			if i.modifiers == Modifiers::CTRL | Modifiers::COMMAND {
 				let change_result = if i.key_pressed(egui::Key::Z) {
-					self.map_data.lock().unwrap().undo().or_else(|| {
+					self.map_data.undo().or_else(|| {
 						self.messages.add("Nothing to undo.");
 						None
 					})
 				} else if i.key_pressed(egui::Key::Y) {
-					self.map_data.lock().unwrap().redo().or_else(|| {
+					self.map_data.redo().or_else(|| {
 						self.messages.add("Nothing to redo.");
 						None
 					})
