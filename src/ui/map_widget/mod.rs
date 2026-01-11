@@ -24,6 +24,7 @@ use egui::{
 	Color32, Frame, Galley, Id, Mesh, Painter, Pos2, Rect, Response, ScrollArea, Sense, StrokeKind, TextureId,
 	TopBottomPanel, Vec2, Widget, pos2, vec2,
 };
+use epaint::mutex::Mutex;
 use epaint::{CornerRadius, FontsView, PathShape, PathStroke, Shape, TextShape};
 use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
@@ -39,7 +40,7 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::f64::consts::PI;
 use std::ops::RangeInclusive;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use style::TextPosition;
 use view::View;
 
@@ -252,7 +253,6 @@ impl MapWidget<'_> {
 		self.active_imagery_ref.and_then(|reference| {
 			self.imagery_fetcher
 				.lock()
-				.unwrap()
 				.imageries()
 				.write()
 				.get(reference)
@@ -460,7 +460,7 @@ fn draw_tiles(
 	const ZOOM_ADJUST: f64 = -0.5;
 
 	puffin::profile_function!();
-	let mut imagery_fetcher = imagery_fetcher.lock().unwrap();
+	let mut imagery_fetcher = imagery_fetcher.lock();
 	dbgtxt!(
 		debug_text,
 		"Local cached tiles: {}",

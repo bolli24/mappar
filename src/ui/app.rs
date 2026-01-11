@@ -21,11 +21,11 @@ use directories::ProjectDirs;
 use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
 use statig::prelude::{IntoStateMachineExt, StateMachine};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use web_time::Instant;
 
-use epaint::mutex::RwLock;
+use epaint::mutex::{Mutex, RwLock};
 
 const MAX_RECENT_FRAME_COUNT: usize = 1000;
 
@@ -113,7 +113,7 @@ impl MyApp {
 				let new_map_data = get_data(bounds).await;
 				match new_map_data {
 					Ok(new_map_data) => {
-						let mut pending = pending_map_data.lock().unwrap();
+						let mut pending = pending_map_data.lock();
 						*pending = Some(new_map_data);
 					}
 					Err(err) => {
@@ -188,7 +188,7 @@ impl MyApp {
 
 impl eframe::App for MyApp {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-		let maybe_new_map_data = self.pending_map_data.lock().unwrap().take();
+		let maybe_new_map_data = self.pending_map_data.lock().take();
 		if let Some(new_map_data) = maybe_new_map_data {
 			self.map_data = new_map_data;
 		}

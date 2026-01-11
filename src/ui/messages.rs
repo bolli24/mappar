@@ -1,6 +1,7 @@
 use crate::util::history::History;
 use egui::{Frame, Style, Widget};
-use std::sync::{Arc, Mutex};
+use epaint::mutex::Mutex;
+use std::sync::Arc;
 use web_time::Instant;
 
 #[derive(Clone)]
@@ -22,7 +23,7 @@ impl Messages {
 	}
 
 	pub fn add(&mut self, message: &(impl ToString + ?Sized)) {
-		self.messages.lock().unwrap().add(self.now(), message.to_string());
+		self.messages.lock().add(self.now(), message.to_string());
 	}
 	#[must_use]
 	pub fn now(&self) -> f64 {
@@ -32,7 +33,7 @@ impl Messages {
 
 impl Widget for Messages {
 	fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-		let mut messages = self.messages.lock().unwrap();
+		let mut messages = self.messages.lock();
 		messages.flush(self.now());
 		let mut style: Style = ui.style().as_ref().clone();
 		style.visuals.window_fill = style.visuals.window_fill.gamma_multiply(0.80);

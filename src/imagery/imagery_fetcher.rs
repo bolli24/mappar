@@ -7,12 +7,12 @@ use std::io::Cursor;
 use std::num::NonZeroUsize;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use derive_new::new;
-use epaint::mutex::RwLock;
+use epaint::mutex::{Mutex, RwLock};
 use epaint::textures::TextureOptions;
 use epaint::{ColorImage, ImageData, TextureId, TextureManager};
 #[cfg(target_arch = "wasm32")]
@@ -186,7 +186,7 @@ impl ImageryFetcher {
 
 				let image = rgba_image_to_color_image(&image);
 
-				let texture = Self::create_texture_from_decoded(&texture_manager, tile_to_string(&output.0), image);
+				let texture = Self::create_texture_from_decoded(&texture_manager, output.0.to_string(), image);
 				Self::store_texture(&texture_manager, &memory_cache, tile, texture);
 			})
 			.spawn("./dummy_worker.js")
@@ -198,7 +198,7 @@ impl ImageryFetcher {
 		tile: Tile,
 		texture: TextureId,
 	) {
-		let value = memory_cache.lock().unwrap().push(tile, Some(texture));
+		let value = memory_cache.lock().push(tile, Some(texture));
 		if let Some((tile_b, Some(texture_id))) = value {
 			debug_assert_ne!(tile, tile_b, "Mustn't store the same tile twice.");
 			texture_manager.write().free(texture_id);
@@ -249,7 +249,7 @@ impl ImageryFetcher {
 				}
 			};
 
-			let mut cache = memory_cache.lock().unwrap();
+			let mut cache = memory_cache.lock();
 			if cache.get(&tile).is_some() {
 				continue;
 			}
@@ -368,7 +368,7 @@ impl ImageryFetcher {
 		//	let file_format = imagery.lock().unwrap().file_format();
 		if !no_cache {
 			if let Some(image_data) = persistent_cache.get_image(tile).await {
-				worker_bridge.lock().unwrap().send(Input(tile, image_data.to_vec()));
+				worker_bridge.lock().send(Input(tile, image_data.to_vec()));
 				return Ok(());
 			}
 		}
@@ -390,7 +390,7 @@ impl ImageryFetcher {
 				// 	.save_image(tile, &bytes, file_format)
 				// 	.await;
 				//
-				worker_bridge.lock().unwrap().send(Input(tile, bytes.to_vec()));
+				worker_bridge.lock().send(Input(tile, bytes.to_vec()));
 				Ok(())
 			}
 		}
@@ -430,7 +430,7 @@ impl ImageryFetcher {
 	// TODO: allow fetching of local tiles.
 	pub fn get_tile(&mut self, tile: Tile, fetch: bool) -> Option<TextureId> {
 		puffin::profile_function!("get_tile");
-		if let Some(texture) = self.memory_cache.lock().unwrap().get(&tile) {
+		if let Some(texture) = self.memory_cache.lock().get(&tile) {
 			return *texture;
 		}
 		if fetch {
@@ -446,7 +446,7 @@ impl ImageryFetcher {
 
 	#[must_use]
 	pub fn tile_loaded(&self, tile: &Tile) -> bool {
-		self.memory_cache.lock().unwrap().contains(tile)
+		self.memory_cache.lock().contains(tile)
 	}
 
 	#[must_use]
@@ -456,7 +456,7 @@ impl ImageryFetcher {
 
 	#[must_use]
 	pub fn memory_cached_count(&self) -> usize {
-		self.memory_cache.lock().unwrap().len()
+		self.memory_cache.lock().len()
 	}
 
 	/// Estimated VRAM usages of tiles in MiB
