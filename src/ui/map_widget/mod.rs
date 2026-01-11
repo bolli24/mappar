@@ -8,10 +8,13 @@ pub mod render;
 mod style;
 mod view;
 
+use super::messages::Messages;
 use crate::dbgtxt;
 use crate::imagery::imagery_fetcher::{ImageryFetcher, Tile};
 use crate::imagery::{Imagery, ImageryRef};
-use crate::map::map_data::{CIRCUMFERENCE_EARTH, Element, LatLon, MapData, latlon};
+use crate::map::element::Element;
+use crate::map::latlon::{CIRCUMFERENCE_EARTH, LatLon, latlon};
+use crate::map::map_data::MapData;
 use crate::ui::debug_text::DebugText;
 use crate::util::convert::{ToDVec2, ToLyonPoint, ToPos2};
 use crate::util::quick_set::QuickSet;
@@ -43,8 +46,6 @@ use std::ops::RangeInclusive;
 use std::sync::Arc;
 use style::TextPosition;
 use view::View;
-
-use super::messages::Messages;
 
 const ZOOM_SPEED: f64 = 5.0;
 
@@ -126,9 +127,9 @@ impl Widget for MapWidget<'_> {
 						view.pointer_world_pos.map(|p| p.round().as_ivec2())
 					);
 
-					let active_imagery_name = self.active_imagery_name();
+					let active_imagery_name = self.active_imagery_name().unwrap_or_else(|| "None".to_owned());
 
-					dbgtxt!(self.debug_text, "Active imagery: {active_imagery_name:?}");
+					dbgtxt!(self.debug_text, "Active imagery: {active_imagery_name}");
 
 					if let Some(active_imagery_ref) = self.active_imagery_ref {
 						draw_tiles(

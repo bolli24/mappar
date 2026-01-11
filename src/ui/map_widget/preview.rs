@@ -2,8 +2,9 @@ use egui::Rect;
 use glam::DVec2;
 use smallvec::{SmallVec, smallvec};
 
+use crate::map::element::{ElementId, ElementType};
 use crate::{
-	map::map_data::{ElementId, ElementType, MapData},
+	map::map_data::MapData,
 	ui::map_widget::{
 		render::{DetailedElement, RenderElement},
 		style::Style,

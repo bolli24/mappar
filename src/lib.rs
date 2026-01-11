@@ -1,5 +1,11 @@
 #![allow(dead_code)]
 
+pub use map::element::Element;
+pub use map::element::ElementId;
+pub use map::element::ElementInfo;
+pub use map::element::ElementType;
+pub use map::element::MapElement;
+pub use map::latlon::LatLon;
 pub use ui::app::MyApp;
 
 pub mod imagery;
@@ -7,7 +13,6 @@ pub mod map;
 pub mod ui;
 pub mod util;
 
-pub use map::map_data::{Element, ElementId, ElementInfo, ElementType, LatLon, MapElement};
 pub use ui::key_value_table::get_tags;
 
 #[cfg(test)]

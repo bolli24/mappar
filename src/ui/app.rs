@@ -7,7 +7,7 @@ use super::messages::Messages;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::imagery::{Imageries, get_imagery};
 use crate::map::api::get_data;
-use crate::map::map_data::{Bounds, LatLon, MapData, latlon};
+use crate::map::map_data::MapData;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::message_error;
 use crate::ui::debug_text::DebugText;
@@ -25,6 +25,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use web_time::Instant;
 
+use crate::map::bounds::Bounds;
+use crate::map::latlon::{LatLon, latlon};
 use epaint::mutex::{Mutex, RwLock};
 
 const MAX_RECENT_FRAME_COUNT: usize = 1000;

@@ -1,4 +1,4 @@
-use crate::map::map_data::LatLon;
+use crate::map::latlon::LatLon;
 use crate::ui::messages::Messages;
 use crate::{message_error, message_info};
 use celes::Country;

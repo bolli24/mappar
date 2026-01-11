@@ -3,9 +3,11 @@ use glam::DVec2;
 use itertools::Itertools;
 use statig::prelude::*;
 
+use super::{map_memory::MapMemory, render::DetailedElement, view::View};
+use crate::map::element::{Element, ElementId, ElementType, is_closed};
 use crate::{
 	dbgtxt,
-	map::map_data::{Element, ElementId, ElementType, MapData, is_closed},
+	map::map_data::MapData,
 	message_error,
 	ui::{
 		debug_text::DebugText,
@@ -20,8 +22,6 @@ use crate::{
 		quick_set::QuickSet,
 	},
 };
-
-use super::{map_memory::MapMemory, render::DetailedElement, view::View};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum EditMode {

@@ -2,8 +2,9 @@ use super::View;
 use super::css::Styles;
 use super::css::context::StyleContext;
 use super::style::Style;
-use crate::map::map_data::{self, ElementId};
-use crate::map::map_data::{Element, MapData, MapElement};
+use crate::map::element;
+use crate::map::element::{Element, ElementId, MapElement};
+use crate::map::map_data::MapData;
 use crate::util::convert::ToPos2;
 use egui::{Color32, Pos2, Rect, Vec2};
 use glam::DVec2;
@@ -111,7 +112,7 @@ impl DetailedElement {
 					.collect();
 
 				// TODO: Area rendering
-				let is_closed = map_data::is_closed(node_indices.as_slice());
+				let is_closed = element::is_closed(node_indices.as_slice());
 				if style.fill_color != Color32::TRANSPARENT && is_closed {
 					RenderElement::Area(nodes)
 				} else {

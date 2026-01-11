@@ -1,5 +1,6 @@
 use super::{debug_text::DebugText, map_widget::map_memory::Selection, messages::Messages};
-use crate::map::map_data::{MapData, MapElement};
+use crate::map::element::MapElement;
+use crate::map::map_data::MapData;
 use derive_new::new;
 use egui::{Frame, Key, Margin, RichText, TextBuffer, TextEdit, Ui, Widget, text_edit::TextEditOutput};
 use egui_extras::{Column, TableBuilder};
@@ -174,7 +175,8 @@ fn table_field(value: &mut dyn TextBuffer, ui: &mut Ui) -> TextEditOutput {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::map::map_data::{Element, ElementId, ElementInfo, ElementType, LatLon};
+	use crate::map::element::{Element, ElementId, ElementInfo, ElementType};
+	use crate::map::latlon::LatLon;
 	use either::Either::{Left, Right};
 	use indexmap::indexmap;
 	use std::cell::Cell;

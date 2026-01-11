@@ -1,5 +1,6 @@
-use super::map_data::{Element, ElementId, MapData, MapElement};
-use crate::{ElementInfo, unreachable_log};
+use super::map_data::MapData;
+use crate::map::element::{Element, ElementId, ElementInfo, MapElement};
+use crate::unreachable_log;
 use glam::DVec2;
 use indexmap::IndexMap;
 use indexmap::map::Entry;

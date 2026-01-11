@@ -1,4 +1,3 @@
-use crate::map::map_data::{Element, ElementId, MapElement};
 use crate::ui::map_widget::style::Style as MapStyle;
 use context::StyleContext;
 use error::{Error, Reporting};
@@ -12,6 +11,7 @@ use mappar_css::color::get_named_color;
 use mappar_css::eval::ValueType;
 use mappar_css::*;
 
+use crate::map::element::{Element, ElementId, MapElement};
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;

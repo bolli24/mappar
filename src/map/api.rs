@@ -1,5 +1,7 @@
-use super::map_data::{ElementId, latlon};
-use crate::map::map_data::{Bounds, Element, ElementInfo, ElementType, LatLon, MapData, MapElement, Member};
+use crate::map::bounds::Bounds;
+use crate::map::element::{Element, ElementId, ElementInfo, ElementType, MapElement, Member};
+use crate::map::latlon::{LatLon, latlon};
+use crate::map::map_data::MapData;
 use indexmap::IndexMap;
 use log::{error, info, warn};
 use quick_xml::Reader;
@@ -253,7 +255,7 @@ fn parse_attributes(attributes: Attributes) -> Option<(i64, Option<LatLon>, Elem
 
 #[cfg(test)]
 mod tests {
-	use crate::map::map_data::latlon;
+	use crate::map::latlon::latlon;
 
 	use super::*;
 

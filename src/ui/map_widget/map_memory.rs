@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
-use crate::map::map_data::{ElementId, ElementType, MapData};
+use crate::map::element::{ElementId, ElementType};
+use crate::map::map_data::MapData;
 use glam::DVec2;
 
 #[derive(Debug, Clone)]
