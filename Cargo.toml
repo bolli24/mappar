@@ -41,9 +41,9 @@ derive-new = "0.7.0"
 
 futures = "0.3"
 
-reqwest = "0.12"
+reqwest = "0.13"
 url = "2.5"
-quick-xml = { version = "0.38", features = [
+quick-xml = { version = "0.39", features = [
     "serialize",
     "overlapped-lists",
 ], default-features = false }
@@ -103,7 +103,7 @@ eframe = { version = "0.33", default-features = false, features = [
     "wgpu",
     "persistence",
 ] }
-wgpu = { version = "27", features = ["webgl", "webgpu"] }
+wgpu = { version = "28", features = ["webgl", "webgpu"] }
 tokio = { version = "1.47", default-features = false, features = [
     "macros",
     "sync",
@@ -123,10 +123,6 @@ gloo-worker = "0.5.0"
 
 [build-dependencies]
 vergen-gitcl = "1"
-
-[dev-dependencies]
-ahash = "0.8"
-fxhash = "0.2"
 
 [[bin]] # This is used for gloo-worker
 name = "dummy_worker"
