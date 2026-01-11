@@ -6,6 +6,7 @@ use chumsky::Parser;
 use indexmap::IndexMap;
 use lasso::{Rodeo, Spur};
 use log::error;
+use nonzero_ext::nonzero;
 use quick_xml::de::Deserializer;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -50,7 +51,7 @@ pub fn get_imagery(
 		.await
 		{
 			message_info!(messages, "Found local imagery info.");
-			let _ = imageries_from_str(&xml, messages, imageries);
+			let _ = imageries_from_str(&xml, messages, &imageries);
 		} else {
 			message_info!(messages, "Could not find local imagery info. Fetching...");
 			update_josm_imagery(
@@ -102,26 +103,28 @@ pub fn update_josm_imagery(
 
 		// TODO: Wasm32: Cache iamgery locally
 		#[cfg(not(target_arch = "wasm32"))]
-		if imageries_from_str(&xml, messages.clone(), imageries).is_ok() {
+		if imageries_from_str(&xml, messages.clone(), &imageries).is_ok() {
 			if let Err(err) = std::fs::write(josm_xml_path, &xml) {
 				message_error!(messages, "Unable to write JOSM imagery data to file: {err}");
 			}
 		}
 
 		#[cfg(target_arch = "wasm32")]
-		let _ = imageries_from_str(&xml, messages, imageries);
+		let _ = imageries_from_str(&xml, messages, &imageries);
 	});
 }
+
+const XML_EVENT_BUFFER_SIZE: NonZeroUsize = nonzero!(10000_usize);
 
 fn imageries_from_str(
 	xml: &str,
 	mut messages: Messages,
-	imageries: Arc<epaint::mutex::RwLock<Imageries>>,
+	imageries: &Arc<epaint::mutex::RwLock<Imageries>>,
 ) -> Result<(), ()> {
 	let start = Instant::now();
 
 	let mut deserializer = Deserializer::from_str(xml);
-	deserializer.event_buffer_size(Some(NonZeroUsize::new(10000).unwrap()));
+	deserializer.event_buffer_size(Some(XML_EVENT_BUFFER_SIZE));
 	let result = serde_path_to_error::deserialize(&mut deserializer);
 
 	let mut parsed: Imageries = match result {
@@ -251,6 +254,7 @@ impl Imageries {
 		self.entries.contains_key(id).then(|| self.get_ref_unchecked(id))
 	}
 
+	#[must_use]
 	pub fn get(&self, reference: ImageryRef) -> Option<&Imagery> {
 		self.entries.get(&ImageryId(
 			self.ids
@@ -328,18 +332,22 @@ impl Display for Description {
 }
 
 impl Imagery {
-	pub fn tile_size(&self) -> Option<u32> {
+	#[must_use]
+	pub const fn tile_size(&self) -> Option<u32> {
 		self.tile_size
 	}
 
-	pub fn max_zoom(&self) -> u32 {
+	#[must_use]
+	pub const fn max_zoom(&self) -> u32 {
 		self.max_zoom
 	}
 
-	pub fn min_zoom(&self) -> u32 {
+	#[must_use]
+	pub const fn min_zoom(&self) -> u32 {
 		self.min_zoom
 	}
 
+	#[must_use]
 	pub fn tile_url(&self, x: u32, y: u32, zoom: u32) -> Option<String> {
 		let mut url = String::new();
 		for segment in &self.url.0 {
@@ -352,7 +360,9 @@ impl Imagery {
 				UrlSegment::Placeholder(placeholder) => match placeholder {
 					Placeholder::X => url.push_str(&x.to_string()),
 					Placeholder::Y => url.push_str(&y.to_string()),
-					Placeholder::MinusY => url.push_str(&(2i32.pow(zoom) - 1 - (y as i32)).to_string()),
+					Placeholder::MinusY => url.push_str(&(2i32.pow(zoom) - 1 - y.cast_signed()).to_string()),
+					// This is safe since zoom will always be smaller than 256
+					#[allow(clippy::cast_possible_truncation)]
 					Placeholder::Zoom(offset) => url.push_str(&(zoom as i8 + offset).to_string()),
 					_ => return None, // TODO: Support all url placeholders
 				},
@@ -361,6 +371,7 @@ impl Imagery {
 		Some(url)
 	}
 
+	#[must_use]
 	pub fn name(&self) -> &str {
 		&self.name[0].text
 	}
@@ -415,7 +426,7 @@ fn imagery_url_parser<'a>() -> impl Parser<'a, &'a str, ImageryUrl, chumsky::ext
 	let number = text::digits(10)
 		.at_most(2)
 		.collect::<String>()
-		.map(|n| n.parse::<i8>().unwrap());
+		.map(|n| n.parse::<i8>().expect("String is number."));
 
 	let zoom_offset = (just('+').or(just('-')).then(number)).or(empty().map(|()| ('+', 0)));
 	let zoom = just("zoom").ignore_then(zoom_offset).map(|(sign, mut number)| {
@@ -484,7 +495,7 @@ impl<'de> Deserialize<'de> for ImageryUrl {
 			Ok(url) => Ok(url),
 			Err(err) => {
 				error!("Failed to parse imagery URL '{url_str}': \n{err:?}");
-				Ok(Self(vec![UrlSegment::String(url_str.to_string())]))
+				Ok(Self(vec![UrlSegment::String(url_str)]))
 			}
 		}
 	}

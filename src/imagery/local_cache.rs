@@ -28,7 +28,7 @@ pub struct LocalCache {
 
 impl LocalCache {
 	pub fn new(file_path: PathBuf, mut messages: Messages, imageries: Arc<RwLock<Imageries>>, no_cache: bool) -> Self {
-		message_info!(messages, "Using cache directory: {}", file_path.to_str().unwrap());
+		message_info!(messages, "Using cache directory: {}", file_path.display());
 
 		if no_cache {
 			message_info!(messages, "Cache disabled via --no-cache flag");
@@ -74,7 +74,13 @@ impl LocalCache {
 					}
 				};
 
-				let imagery_id = ImageryId(dir_path.file_name().unwrap().to_string_lossy().to_string());
+				let imagery_id = ImageryId(
+					dir_path
+						.file_name()
+						.expect("Path must point to file.")
+						.to_string_lossy()
+						.to_string(),
+				);
 				let imagery_ref = imageries.write().get_ref_unchecked(&imagery_id);
 
 				let mut cached_images = cached_images.lock().await;
@@ -167,10 +173,6 @@ fn try_get_file(
 	}
 	let image_format = ImageFormat::from_extension(file_path.extension()?)?;
 	let tile = file_path.file_stem()?.to_str()?.split('_').collect::<Vec<&str>>();
-	let tile = (
-		tile[1].parse().unwrap(),
-		tile[2].parse().unwrap(),
-		tile[0].parse().unwrap(),
-	);
+	let tile = (tile[1].parse().ok()?, tile[2].parse().ok()?, tile[0].parse().ok()?);
 	Some((tile, image_format))
 }

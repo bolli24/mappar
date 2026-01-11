@@ -100,7 +100,13 @@ impl Widget for ImageriesWidget<'_> {
 		let response = CentralPanel::default()
 			.show_inside(ui, |ui| match &mem.selected {
 				Some(selected) => {
-					ui.heading(imageries.entries.get(selected).unwrap().name());
+					ui.heading(
+						imageries
+							.entries
+							.get(selected)
+							.expect("Selected imagery must be valid.")
+							.name(),
+					);
 					if ui
 						.add_enabled(
 							!self.layers.0.iter().any(|l| l.0 == *selected),

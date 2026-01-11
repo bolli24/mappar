@@ -38,8 +38,8 @@ struct PartitionVertex<'a> {
 	is_ear: Cell<bool>,
 	p: DVec2,
 	angle: Cell<f64>,
-	previous: RefCell<Option<&'a PartitionVertex<'a>>>,
-	next: RefCell<Option<&'a PartitionVertex<'a>>>,
+	previous: RefCell<Option<&'a Self>>,
+	next: RefCell<Option<&'a Self>>,
 }
 
 impl Debug for PartitionVertex<'_> {

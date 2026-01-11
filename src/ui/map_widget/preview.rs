@@ -21,8 +21,8 @@ pub enum Preview {
 impl Preview {
 	pub fn render_elements(&self, map_data: &MapData) -> SmallVec<[DetailedElement; 2]> {
 		match self {
-			Preview::None => SmallVec::new(),
-			Preview::NewNodeToPath(existing_node, pos_b) => {
+			Self::None => SmallVec::new(),
+			Self::NewNodeToPath(existing_node, pos_b) => {
 				let pos_a = map_data
 					.get_node_pos(*existing_node)
 					.expect("Node must exist.")
@@ -33,7 +33,7 @@ impl Preview {
 					Self::node(*pos_b).hovered_and_selected()
 				]
 			}
-			Preview::Node(pos) => {
+			Self::Node(pos) => {
 				smallvec![Self::node(*pos).hovered_and_selected()]
 			}
 		}

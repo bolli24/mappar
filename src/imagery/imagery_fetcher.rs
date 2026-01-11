@@ -2,6 +2,7 @@ use futures::StreamExt;
 use futures::channel::mpsc::{Receiver, Sender, channel};
 use futures::future::{Either, select};
 use futures::stream::FuturesUnordered;
+use std::fmt::{Display, Formatter};
 use std::io::Cursor;
 use std::num::NonZeroUsize;
 #[cfg(not(target_arch = "wasm32"))]
@@ -19,6 +20,7 @@ use gloo_worker::{Spawnable, WorkerBridge};
 use image::{EncodableLayout, ImageFormat};
 use log::error;
 use lru::LruCache;
+use nonzero_ext::nonzero;
 use reqwest::Client;
 use reqwest::ClientBuilder;
 
@@ -57,18 +59,20 @@ pub struct Tile {
 }
 
 impl Tile {
-	pub fn get_larger(&self, min_zoom: u32) -> Option<Tile> {
+	#[must_use]
+	pub fn get_larger(&self, min_zoom: u32) -> Option<Self> {
 		if self.coords.2 <= min_zoom {
 			None
 		} else {
-			Some(Tile::new(
+			Some(Self::new(
 				self.imagery_ref,
 				(self.coords.0 / 2, self.coords.1 / 2, self.coords.2 - 1),
 			))
 		}
 	}
 
-	pub fn get_smaller(&self, max_zoom: u32) -> Option<[Tile; 4]> {
+	#[must_use]
+	pub fn get_smaller(&self, max_zoom: u32) -> Option<[Self; 4]> {
 		if self.coords.2 >= max_zoom {
 			None
 		} else {
@@ -83,11 +87,14 @@ impl Tile {
 	}
 }
 
-fn tile_to_string(tile: &Tile) -> String {
-	format!(
-		"tile_{:?}_{}_{}_{}",
-		tile.imagery_ref.0, tile.coords.0, tile.coords.1, tile.coords.2
-	)
+impl Display for Tile {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(
+			f,
+			"tile_{:?}_{}_{}_{}",
+			self.imagery_ref.0, self.coords.0, self.coords.1, self.coords.2
+		)
+	}
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -107,6 +114,8 @@ const MAX_CONCURRENT: usize = 16;
 #[cfg(target_arch = "wasm32")]
 const MAX_CONCURRENT: usize = 6;
 
+const MAX_MEMORY_CACHE_CAPACITY: NonZeroUsize = nonzero!(4192_usize);
+
 impl ImageryFetcher {
 	pub fn new(
 		imageries: Arc<RwLock<Imageries>>,
@@ -116,7 +125,7 @@ impl ImageryFetcher {
 		#[cfg(target_arch = "wasm32")] _messages: Messages,
 		no_cache: bool,
 	) -> Self {
-		let memory_cache = Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(4192).unwrap())));
+		let memory_cache = Arc::new(Mutex::new(LruCache::new(MAX_MEMORY_CACHE_CAPACITY)));
 
 		let (request_tx, request_rx) = channel(MAX_CONCURRENT);
 		let (exit_tx, exit_rx) = channel(0);
@@ -124,7 +133,7 @@ impl ImageryFetcher {
 		let client_builder = ClientBuilder::new();
 		#[cfg(not(target_arch = "wasm32"))]
 		let client_builder = client_builder.user_agent(crate::map::api::USER_AGENT);
-		let client = client_builder.build().unwrap();
+		let client = client_builder.build().expect("Client must be valid");
 
 		let fetcher = Self {
 			#[cfg(not(target_arch = "wasm32"))]
@@ -247,10 +256,10 @@ impl ImageryFetcher {
 
 			pending.fetch_add(1, Ordering::Relaxed);
 
-			if let Some((evicted_tile, Some(texture_id))) = cache.push(tile, None) {
-				if tile != evicted_tile {
-					texture_manager.write().free(texture_id);
-				}
+			if let Some((evicted_tile, Some(texture_id))) = cache.push(tile, None)
+				&& tile != evicted_tile
+			{
+				texture_manager.write().free(texture_id);
 			}
 
 			drop(cache);
@@ -321,10 +330,8 @@ impl ImageryFetcher {
 		client: Client,
 		no_cache: bool,
 	) -> Result<TextureId, Error> {
-		if !no_cache {
-			if let Some(image_data) = persistent_cache.get_image(tile).await {
-				return Self::create_texture(texture_manager, tile_to_string(tile), &image_data);
-			}
+		if !no_cache && let Some(image_data) = persistent_cache.get_image(tile).await {
+			return Self::create_texture(texture_manager, tile.to_string(), &image_data);
 		}
 
 		let url = imageries
@@ -343,7 +350,7 @@ impl ImageryFetcher {
 				if !no_cache {
 					persistent_cache.save_image(tile, &bytes, image_format).await; // TODO: Maybe do this on a separate thread
 				}
-				Self::create_texture(texture_manager, tile_to_string(tile), &bytes)
+				Self::create_texture(texture_manager, tile.to_string(), &bytes)
 			}
 		}
 	}
@@ -437,14 +444,17 @@ impl ImageryFetcher {
 		None
 	}
 
+	#[must_use]
 	pub fn tile_loaded(&self, tile: &Tile) -> bool {
 		self.memory_cache.lock().unwrap().contains(tile)
 	}
 
+	#[must_use]
 	pub fn pending_count(&self) -> u32 {
 		self.pending.load(Ordering::Relaxed)
 	}
 
+	#[must_use]
 	pub fn memory_cached_count(&self) -> usize {
 		self.memory_cache.lock().unwrap().len()
 	}

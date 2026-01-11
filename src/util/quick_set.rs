@@ -8,7 +8,8 @@ pub enum QuickSet<T> {
 }
 
 impl<T: Eq + core::hash::Hash> QuickSet<T> {
-	pub fn new() -> Self {
+	#[must_use]
+	pub const fn new() -> Self {
 		Self::Empty
 	}
 
@@ -94,8 +95,8 @@ impl<T: Eq + core::hash::Hash> QuickSet<T> {
 impl<T: Eq + core::hash::Hash> From<QuickSet<T>> for HashSet<T> {
 	fn from(val: QuickSet<T>) -> Self {
 		match val {
-			QuickSet::Empty => HashSet::new(),
-			QuickSet::Single(element) => HashSet::from([element]),
+			QuickSet::Empty => Self::new(),
+			QuickSet::Single(element) => Self::from([element]),
 			QuickSet::Set(set) => set,
 		}
 	}

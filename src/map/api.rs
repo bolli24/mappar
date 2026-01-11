@@ -33,7 +33,7 @@ pub enum Error {
 pub async fn get_data(bounds: Bounds) -> Result<MapData, Error> {
 	info!("Getting data from the API");
 	let start = Instant::now();
-	let url = format!("{}{}{}", API_URL, API_BOUNDING_BOX, bounds.as_string());
+	let url = format!("{API_URL}{API_BOUNDING_BOX}{bounds}");
 	let client = Client::new();
 	info!("User-Agent: {USER_AGENT}");
 	let request = client.get(url).header("User-Agent", USER_AGENT).build()?;

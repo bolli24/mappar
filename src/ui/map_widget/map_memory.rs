@@ -29,25 +29,28 @@ pub struct Selection {
 impl Selection {
 	pub fn clear(&mut self, map_data: &mut MapData) {
 		for element in self.elements.drain() {
-			map_data.get_mut(&element).unwrap().new_tag = None;
+			map_data
+				.get_mut(&element)
+				.expect("Elements in selection must exist.")
+				.new_tag = None;
 		}
 		self.tags.clear();
 	}
-
+	#[must_use]
 	pub fn node_count(&self) -> usize {
 		self.elements
 			.iter()
 			.filter(|element_id| element_id.1 == ElementType::Node)
 			.count()
 	}
-
+	#[must_use]
 	pub fn way_count(&self) -> usize {
 		self.elements
 			.iter()
 			.filter(|element_id| element_id.1 == ElementType::Way)
 			.count()
 	}
-
+	#[must_use]
 	pub fn relation_count(&self) -> usize {
 		self.elements
 			.iter()

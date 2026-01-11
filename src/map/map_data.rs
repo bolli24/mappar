@@ -34,7 +34,14 @@ pub struct MapData {
 	last_new_ids: (i64, i64, i64),
 }
 
+impl Default for MapData {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl MapData {
+	#[must_use]
 	pub fn new() -> Self {
 		Self {
 			elements: HashMap::new(),
@@ -46,7 +53,7 @@ impl MapData {
 	pub fn add(&mut self, element: MapElement) {
 		self.elements.insert(element.id, element);
 	}
-
+	#[must_use]
 	pub fn get(&self, id: &ElementId) -> Option<&MapElement> {
 		self.elements.get(id)
 	}
@@ -54,7 +61,7 @@ impl MapData {
 	pub fn get_mut(&mut self, id: &ElementId) -> Option<&mut MapElement> {
 		self.elements.get_mut(id)
 	}
-
+	#[must_use]
 	pub fn get_node_pos(&self, id: ElementId) -> Option<LatLon> {
 		let e = self.get(&id)?;
 		if let Element::Node { pos } = &e.element {
@@ -66,11 +73,17 @@ impl MapData {
 	pub fn iter(&self) -> impl Iterator<Item = &MapElement> {
 		self.elements.values()
 	}
-
+	#[must_use]
 	pub fn len(&self) -> usize {
 		self.elements.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
+	#[must_use]
 	pub fn history_len(&self) -> usize {
 		self.history.len()
 	}
@@ -87,15 +100,21 @@ impl MapData {
 		self.history.undo(&mut self.elements)
 	}
 
+	#[must_use]
 	pub fn add_tag(&self, id: ElementId, key: String, value: String) -> Edit {
 		Edit(smallvec![id], Action::AddTag { key, value })
 	}
-
+	#[must_use]
 	pub fn add_new_tag(&self, id: ElementId) -> Edit {
-		let (key, value) = self.get(&id).unwrap().new_tag.clone().unwrap();
+		let (key, value) = self
+			.get(&id)
+			.expect("Element must exist")
+			.new_tag
+			.clone()
+			.expect("New tag must have value.");
 		Edit(smallvec![id], Action::AddNewTag { key, value })
 	}
-
+	#[must_use]
 	pub fn override_tag(&self, id: ElementId, key: String, value: String) -> Edit {
 		Edit(
 			smallvec![id],
@@ -106,7 +125,7 @@ impl MapData {
 			},
 		)
 	}
-
+	#[must_use]
 	pub fn update_value(&self, id: ElementId, key: String, value: String) -> Edit {
 		Edit(
 			smallvec![id],
@@ -117,6 +136,7 @@ impl MapData {
 			},
 		)
 	}
+	#[must_use]
 	pub fn remove_tag(&self, id: ElementId, key: String) -> Edit {
 		let Some(element) = self.get(&id) else {
 			unreachable!("Element {id} must exist.");
@@ -124,10 +144,15 @@ impl MapData {
 		let Some(index) = element.tags.get_index_of(&key) else {
 			unreachable!("Element {id} must have key '{key}' to be overwritten.");
 		};
-		let value = element.tags.get_index(index).unwrap().1.clone();
+		let value = element
+			.tags
+			.get_index(index)
+			.expect("Must have tag at index.")
+			.1
+			.clone();
 		Edit(smallvec![id], Action::RemoveTag { key, value, index })
 	}
-
+	#[must_use]
 	pub fn update_new_tag(&self, id: ElementId, key: String, value: String) -> Edit {
 		let Some(element) = self.get(&id) else {
 			unreachable!("Element {id} must exist.");
@@ -148,7 +173,7 @@ impl MapData {
 			Self::move_element(elements, &mut moved, element_id, &delta);
 		}
 	}
-
+	#[must_use]
 	pub fn move_by<'a>(&self, ids: impl IntoIterator<Item = &'a ElementId>, delta: DVec2, already_moved: bool) -> Edit {
 		Edit(ids.into_iter().copied().collect(), Action::Move(delta, already_moved))
 	}
@@ -157,7 +182,7 @@ impl MapData {
 		if !moved.insert(*element_id) {
 			return;
 		}
-		let element = elements.get(element_id).unwrap();
+		let element = elements.get(element_id).expect("Element must exist");
 		match &element.element {
 			Element::Node { pos } => {
 				pos.set(pos.get() + *delta);
@@ -177,7 +202,7 @@ impl MapData {
 			}
 		}
 	}
-
+	#[must_use]
 	pub fn new_node(&mut self, pos: DVec2) -> Edit {
 		let id = self.new_element_id(ElementType::Node);
 		Edit(
@@ -189,7 +214,7 @@ impl MapData {
 			},
 		)
 	}
-
+	#[must_use]
 	pub fn new_way(&mut self, nodes: Vec<ElementId>) -> Edit {
 		let id = self.new_element_id(ElementType::Way);
 		Edit(
@@ -199,17 +224,17 @@ impl MapData {
 			},
 		)
 	}
-
+	#[must_use]
 	pub fn add_node_to_way_end(&self, way: ElementId, node: ElementId) -> Edit {
 		debug_assert_eq!(ElementType::Way, way.1);
 		debug_assert_eq!(ElementType::Node, node.1);
 		Edit(smallvec![way], Action::AddNodeToWayEnd { node })
 	}
-
+	#[must_use]
 	pub fn add_node_on_way_segments(&mut self, pos: DVec2, ways: SmallVec<[(ElementId, usize); 1]>) -> Edit {
 		let node_id = self.new_element_id(ElementType::Node);
 		Edit(
-			smallvec![node_id], // Should this inclusde the id of the edited ways???
+			smallvec![node_id], // Should this include the id of the edited ways???
 			Action::AddNodeToWaySegments {
 				node: Element::Node {
 					pos: Cell::new(LatLon::from_web_mercator(pos)),
@@ -218,7 +243,7 @@ impl MapData {
 			},
 		)
 	}
-
+	#[must_use]
 	const fn new_element_id(&mut self, e_type: ElementType) -> ElementId {
 		let id = match e_type {
 			ElementType::Node => {
@@ -287,6 +312,7 @@ pub const WEB_MERCATOR_CUTOFF: f64 = 85.051_129; // 2.0 * f64::atan(E.powf(PI)) 
 
 impl LatLon {
 	#[inline]
+	#[must_use]
 	pub fn to_web_mercator(self) -> DVec2 {
 		DVec2 {
 			x: RADIUS_EARTH * self.lon.to_radians(),
@@ -295,6 +321,7 @@ impl LatLon {
 	}
 
 	#[inline]
+	#[must_use]
 	pub fn from_web_mercator(pos: DVec2) -> Self {
 		Self {
 			lat: f64::atan(f64::exp(pos.y / RADIUS_EARTH))
@@ -319,48 +346,53 @@ pub struct Bounds {
 	pub max: LatLon,
 }
 
+#[must_use]
 pub const fn latlon(lat: f64, lon: f64) -> LatLon {
 	LatLon { lat, lon }
 }
 
 impl Bounds {
+	#[must_use]
 	pub const fn center(&self) -> LatLon {
 		latlon(self.top().midpoint(self.bottom()), self.left().midpoint(self.right()))
 	}
+	#[must_use]
 	pub const fn left(&self) -> f64 {
 		f64::min(self.min.lon, self.max.lon)
 	}
-
+	#[must_use]
 	pub const fn right(&self) -> f64 {
 		f64::max(self.min.lon, self.max.lon)
 	}
-
+	#[must_use]
 	pub const fn top(&self) -> f64 {
 		f64::max(self.min.lat, self.max.lat)
 	}
-
+	#[must_use]
 	pub const fn bottom(&self) -> f64 {
 		f64::min(self.min.lat, self.max.lat)
 	}
-
+	#[must_use]
 	pub const fn top_left(&self) -> LatLon {
 		latlon(self.top(), self.left())
 	}
-
+	#[must_use]
 	pub const fn top_right(&self) -> LatLon {
 		latlon(self.top(), self.right())
 	}
-
+	#[must_use]
 	pub const fn bottom_left(&self) -> LatLon {
 		latlon(self.bottom(), self.left())
 	}
-
+	#[must_use]
 	pub const fn bottom_right(&self) -> LatLon {
 		latlon(self.bottom(), self.right())
 	}
+}
 
-	pub fn as_string(&self) -> String {
-		format!("{},{},{},{}", self.left(), self.bottom(), self.right(), self.top())
+impl Display for Bounds {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{},{},{},{}", self.left(), self.bottom(), self.right(), self.top())
 	}
 }
 
@@ -408,6 +440,7 @@ impl MapElement {
 		}
 	}
 }
+#[must_use]
 pub fn is_closed(nodes: &[ElementId]) -> bool {
 	debug_assert!(nodes.len() >= 2);
 	nodes[0] == nodes[nodes.len() - 1]
@@ -458,7 +491,7 @@ impl MapElement {
 			if let Some(value) = self.get_tag_with_new(tag)
 				&& !value.is_empty()
 			{
-				return value.to_string();
+				return value.clone();
 			}
 		}
 		String::new()

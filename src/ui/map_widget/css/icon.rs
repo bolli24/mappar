@@ -24,6 +24,8 @@ pub enum IconError {
 	InvalidFileExtension(String),
 	#[error("File type {0} not supported. Must be JPEG/JPG, PNG or SVG.")]
 	UnsupportedFileType(String),
+	#[error("Invalid icon dimensions: {0} x {0}, Icon dimension must be greater than zero.")]
+	IconDimensionMismatch(f32, f32),
 }
 
 // TODO: Maybe use async io
@@ -132,14 +134,17 @@ fn render_svg(bytes: &[u8]) -> Result<ColorImage, IconError> {
 	let tree = Tree::from_data(bytes, &Options::default())?;
 
 	let size = tree.size();
-	let scaled_size = size.scale_to(Size::from_wh(SVG_MIN_SIZE, SVG_MIN_SIZE).unwrap());
-	let scale_factor = Size::from_wh(scaled_size.width() / size.width(), scaled_size.height() / size.height()).unwrap();
+	let scaled_size = size.scale_to(Size::from_wh(SVG_MIN_SIZE, SVG_MIN_SIZE).expect("SVG_MIN_SIZE must be positive."));
+	let width_scale = scaled_size.width() / size.width();
+	let height_scale = scaled_size.height() / size.height();
 
+	#[allow(clippy::cast_possible_truncation)]
+	#[allow(clippy::cast_sign_loss)]
 	let mut pixmap =
 		Pixmap::new(scaled_size.width() as u32, scaled_size.height() as u32).ok_or(IconError::PixmapAllocation)?;
 	resvg::render(
 		&tree,
-		Transform::from_scale(scale_factor.width(), scale_factor.height()),
+		Transform::from_scale(width_scale, height_scale),
 		&mut pixmap.as_mut(),
 	);
 

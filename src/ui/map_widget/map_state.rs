@@ -63,13 +63,13 @@ impl MapStateMachine {
 	}
 
 	#[state]
-	fn initial() -> Outcome<State> {
+	const fn initial() -> Outcome<State> {
 		Transition(State::Select {
 			last_clicked_element: None,
 		})
 	}
-
-	pub fn edit_mode(&self) -> EditMode {
+	#[must_use]
+	pub const fn edit_mode(&self) -> EditMode {
 		self.edit_mode
 	}
 
@@ -197,7 +197,7 @@ impl MapStateMachine {
 			elements.sort_by(|a, b| f32::total_cmp(&a.1, &b.1));
 
 			if let Some((first, _)) = elements.iter_mut().next() {
-				add_element(first.id)
+				add_element(first.id);
 			}
 
 			return Super;
@@ -267,7 +267,7 @@ impl MapStateMachine {
 		let selection_box = if let Some(pointer) = context.view.pointer_world_pos {
 			let selection_box = self
 				.selection_box
-				.get_or_insert((pointer_down_pos.unwrap_or(pointer), pointer));
+				.get_or_insert_with(|| (pointer_down_pos.unwrap_or(pointer), pointer));
 			selection_box.1 = pointer;
 			Some(selection_box.to_rect())
 		} else {
@@ -305,7 +305,7 @@ impl MapStateMachine {
 	}
 
 	#[action]
-	fn exit_box_select(&mut self) {
+	const fn exit_box_select(&mut self) {
 		self.selection_box = None;
 	}
 
@@ -441,25 +441,25 @@ impl MapStateMachine {
 			};
 
 			match *first_node_or_way {
-				Some(ElementId(_, ElementType::Node)) => {
-					let edit = map_data.new_way(vec![first_node_or_way.unwrap(), node_id]);
+				Some(first_id) if first_id.1 == ElementType::Node => {
+					let edit = map_data.new_way(vec![first_id, node_id]);
 					let new_way_id = edit.0[0];
 					*first_node_or_way = Some(new_way_id);
 					map_data.edit(edit).expect("Creating way must not error.");
 					mem.selection.elements.clear();
 					mem.selection.elements.insert(new_way_id);
 				}
-				Some(ElementId(id, ElementType::Way)) => {
-					let edit = map_data.add_node_to_way_end(first_node_or_way.unwrap(), node_id);
+				Some(first_id) if first_id.1 == ElementType::Way => {
+					let edit = map_data.add_node_to_way_end(first_id, node_id);
 					let way_id = edit.0[0];
-					debug_assert_eq!(id, way_id.0);
+					debug_assert_eq!(first_id.0, way_id.0);
 					*first_node_or_way = Some(way_id);
 
 					let mut child_node = false;
 					if let Element::Way { nodes } = &map_data.get(&way_id).expect("Last new element must exist").element
 						&& nodes.contains(&node_id)
 					{
-						child_node = true
+						child_node = true;
 					}
 
 					map_data.edit(edit).expect("Adding node to way end must not error.");
@@ -483,7 +483,7 @@ impl MapStateMachine {
 	}
 
 	#[action]
-	fn exit_draw(&mut self) {
+	const fn exit_draw(&mut self) {
 		self.preview = Preview::None;
 	}
 }

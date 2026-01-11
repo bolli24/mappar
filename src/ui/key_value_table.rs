@@ -145,7 +145,7 @@ pub fn get_tags(elements: &[MapElement]) -> IndexMap<String, Either<String, FxHa
 	}
 
 	let total_elements = elements.len();
-	for (_key, count_map) in &mut value_counts {
+	for count_map in value_counts.values_mut() {
 		let total_count: usize = count_map.values().sum();
 		let missing = total_elements - total_count;
 		if missing > 0 {

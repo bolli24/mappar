@@ -55,6 +55,7 @@ pub struct MyApp {
 
 impl MyApp {
 	pub const APP_NAME: &'static str = "mappar";
+	#[must_use]
 	pub fn new(cc: &eframe::CreationContext<'_>, no_cache: bool) -> Self {
 		#[cfg(not(target_arch = "wasm32"))]
 		cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
@@ -99,11 +100,10 @@ impl MyApp {
 			)))
 		};
 
-		let backend = cc
-			.wgpu_render_state
-			.as_ref()
-			.map(|state| state.adapter.get_info().backend.to_string())
-			.unwrap_or_else(|| "Unknown".to_string());
+		let backend = cc.wgpu_render_state.as_ref().map_or_else(
+			|| "Unknown".to_string(),
+			|state| state.adapter.get_info().backend.to_string(),
+		);
 
 		let pending_map_data = Arc::new(Mutex::new(None));
 
@@ -175,6 +175,7 @@ impl MyApp {
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
+	#[must_use]
 	pub fn project_dirs() -> ProjectDirs {
 		let Some(project_dirs) = ProjectDirs::from("", "", Self::APP_NAME) else {
 			error!("Unable to get project directories.");
@@ -187,7 +188,8 @@ impl MyApp {
 
 impl eframe::App for MyApp {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-		if let Some(new_map_data) = self.pending_map_data.lock().unwrap().take() {
+		let maybe_new_map_data = self.pending_map_data.lock().unwrap().take();
+		if let Some(new_map_data) = maybe_new_map_data {
 			self.map_data = new_map_data;
 		}
 
@@ -423,33 +425,36 @@ impl eframe::App for MyApp {
 			}
 		});
 
-		self.recent_frame_times.flush(self.startup_time.elapsed().as_secs_f64());
-		let last_frame = self.last_update.elapsed();
-		let last_frame_ms = last_frame.as_micros() as f32 / 1000.0;
-		self.recent_frame_times
-			.add(self.startup_time.elapsed().as_secs_f64(), last_frame);
-		let average_ms = self
-			.recent_frame_times
-			.values()
-			.fold(Duration::ZERO, |a, b| a + b)
-			.as_micros() as f64
-			/ self.recent_frame_times.len() as f64
-			/ 1000.0;
-		let worst_ms = self
-			.recent_frame_times
-			.values()
-			.max()
-			.unwrap_or(Duration::ZERO)
-			.as_micros() as f32
-			/ 1000.0;
-		dbgtxt!(
-			self.debug_text,
-			"Frame Time: {:.1}ms\nAverage: {:.1}ms ({:.1} FPS)\nWorst: {:.1}ms",
-			last_frame_ms,
-			average_ms,
-			1000.0 / average_ms,
-			worst_ms
-		);
+		#[allow(clippy::cast_precision_loss)]
+		{
+			self.recent_frame_times.flush(self.startup_time.elapsed().as_secs_f64());
+			let last_frame = self.last_update.elapsed();
+			let last_frame_ms = last_frame.as_micros() as f32 / 1000.0;
+			self.recent_frame_times
+				.add(self.startup_time.elapsed().as_secs_f64(), last_frame);
+			let average_ms = self
+				.recent_frame_times
+				.values()
+				.fold(Duration::ZERO, |a, b| a + b)
+				.as_micros() as f64
+				/ self.recent_frame_times.len() as f64
+				/ 1000.0;
+			let worst_ms = self
+				.recent_frame_times
+				.values()
+				.max()
+				.unwrap_or(Duration::ZERO)
+				.as_micros() as f32
+				/ 1000.0;
+			dbgtxt!(
+				self.debug_text,
+				"Frame Time: {:.1}ms\nAverage: {:.1}ms ({:.1} FPS)\nWorst: {:.1}ms",
+				last_frame_ms,
+				average_ms,
+				1000.0 / average_ms,
+				worst_ms
+			);
+		}
 		puffin::GlobalProfiler::lock().new_frame();
 		self.last_update = Instant::now();
 	}

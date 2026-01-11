@@ -42,7 +42,7 @@ impl RenderElement {
 			Self::Collection(elements) => elements.iter().map(|p| p.bounding_box).fold(Rect::NOTHING, Rect::union),
 		}
 	}
-
+	#[must_use]
 	pub fn distance(&self, pointer_pos: Option<DVec2>) -> Option<f64> {
 		pointer_pos.map(|pointer_pos| match &self {
 			Self::Node(pos) => (pointer_pos - *pos).length(),
@@ -137,19 +137,19 @@ impl DetailedElement {
 			style,
 		});
 	}
-
+	#[must_use]
 	pub fn hovered(&self) -> Self {
 		self.highlight(Color32::YELLOW)
 	}
-
+	#[must_use]
 	pub fn selected(&self) -> Self {
 		self.highlight(Color32::RED)
 	}
-
+	#[must_use]
 	pub fn hovered_and_selected(&self) -> Self {
 		self.highlight(Color32::ORANGE)
 	}
-
+	#[must_use]
 	pub fn maybe_highlighted(&self, hovered: bool, selected: bool) -> Option<Self> {
 		Some(match (hovered, selected) {
 			(true, false) => self.hovered(),
@@ -182,17 +182,7 @@ impl DetailedElement {
 }
 
 /// **Adapted from**: <https://wrfranklin.org/Research/Short_Notes/pnpoly.html>
-///
-// int pnpoly(int nvert, float *vertx, float *verty, float testx, float testy)
-// {
-//   int i, j, c = 0;
-//   for (i = 0, j = nvert-1; i < nvert; j = i++) {
-//     if ( ((verty[i]>testy) != (verty[j]>testy)) &&
-// 	 (testx < (vertx[j]-vertx[i]) * (testy-verty[i]) / (verty[j]-verty[i]) + vertx[i]) )
-//        c = !c;
-//   }
-//   return c;
-// }
+#[must_use]
 pub fn point_in_polygon(test: DVec2, verts: &[DVec2]) -> bool {
 	let mut result = false;
 	let mut j = verts.len() - 1;

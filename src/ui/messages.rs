@@ -13,6 +13,7 @@ const MAX_MESSAGE_COUNT: usize = 100;
 const MAX_MESSAGE_AGE: f32 = 5.0;
 
 impl Messages {
+	#[must_use]
 	pub fn new() -> Self {
 		Self {
 			messages: Arc::new(Mutex::new(History::new(0..MAX_MESSAGE_COUNT, MAX_MESSAGE_AGE))),
@@ -23,7 +24,7 @@ impl Messages {
 	pub fn add(&mut self, message: &(impl ToString + ?Sized)) {
 		self.messages.lock().unwrap().add(self.now(), message.to_string());
 	}
-
+	#[must_use]
 	pub fn now(&self) -> f64 {
 		self.startup.elapsed().as_secs_f64()
 	}

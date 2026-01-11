@@ -1,6 +1,7 @@
 use super::map_data::{Element, ElementId, MapData, MapElement};
-use crate::unreachable_log;
+use crate::{ElementInfo, unreachable_log};
 use glam::DVec2;
+use indexmap::IndexMap;
 use indexmap::map::Entry;
 use smallvec::SmallVec;
 use std::collections::HashMap;
@@ -97,8 +98,8 @@ impl undo::Edit for Edit {
 						MapElement {
 							id: *element_id,
 							element: element.clone(),
-							tags: Default::default(),
-							info: Default::default(),
+							tags: IndexMap::default(),
+							info: ElementInfo::default(),
 							new_tag: None,
 						},
 					);
@@ -116,8 +117,8 @@ impl undo::Edit for Edit {
 						MapElement {
 							id: *element_id,
 							element: node.clone(),
-							tags: Default::default(),
-							info: Default::default(),
+							tags: IndexMap::default(),
+							info: ElementInfo::default(),
 							new_tag: None,
 						},
 					);

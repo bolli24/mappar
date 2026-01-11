@@ -66,6 +66,7 @@ pub struct History<T> {
 }
 
 impl<T> History<T> {
+	#[must_use]
 	pub fn new(length_range: std::ops::Range<usize>, max_age: f32) -> Self {
 		Self {
 			min_len: length_range.start,
@@ -76,23 +77,23 @@ impl<T> History<T> {
 		}
 	}
 
-	#[inline]
+	#[must_use]
 	pub fn max_len(&self) -> usize {
 		self.max_len
 	}
 
-	#[inline]
+	#[must_use]
 	pub fn max_age(&self) -> f32 {
 		self.max_age
 	}
 
-	#[inline]
+	#[must_use]
 	pub fn is_empty(&self) -> bool {
 		self.values.is_empty()
 	}
 
 	/// Current number of values kept in history
-	#[inline]
+	#[must_use]
 	pub fn len(&self) -> usize {
 		self.values.len()
 	}

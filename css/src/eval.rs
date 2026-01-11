@@ -11,8 +11,8 @@ pub enum Expression {
 	String(String),
 	Bool(bool),
 	Function(Function),
-	Binary(Box<Spanned<Expression>>, BinaryOp, Box<Spanned<Expression>>),
-	Unary(Box<Spanned<Expression>>, UnaryOp),
+	Binary(Box<Spanned<Self>>, BinaryOp, Box<Spanned<Self>>),
+	Unary(Box<Spanned<Self>>, UnaryOp),
 }
 
 /// Return value of expressions
@@ -33,7 +33,8 @@ pub enum ValueType {
 }
 
 impl Value {
-	pub fn get_type(&self) -> ValueType {
+	#[must_use]
+	pub const fn get_type(&self) -> ValueType {
 		match self {
 			Self::Number(_) => ValueType::Number,
 			Self::Identifier(_) => ValueType::Identifier,
@@ -41,33 +42,36 @@ impl Value {
 			Self::Bool(_) => ValueType::Bool,
 		}
 	}
-
+	#[must_use]
 	pub fn unrwap_number(self) -> f64 {
-		if let Value::Number(number) = self {
+		if let Self::Number(number) = self {
 			number
 		} else {
 			panic!("Expected value to be number: {self:?}");
 		}
 	}
 
+	#[must_use]
 	pub fn unwrap_identifier(self) -> String {
-		if let Value::Identifier(identifier) = self {
+		if let Self::Identifier(identifier) = self {
 			identifier
 		} else {
 			panic!("Expected value to be identifier: {self:?}");
 		}
 	}
 
+	#[must_use]
 	pub fn unwrap_string(self) -> String {
-		if let Value::String(string) = self {
+		if let Self::String(string) = self {
 			string
 		} else {
 			panic!("Expected value to be string: {self:?}");
 		}
 	}
 
+	#[must_use]
 	pub fn unwrap_bool(self) -> bool {
-		if let Value::Bool(boolean) = self {
+		if let Self::Bool(boolean) = self {
 			boolean
 		} else {
 			panic!("Expected value to be bool: {self:?}");
@@ -89,18 +93,18 @@ pub enum Type {
 impl Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let type_str = match self {
-			Type::Named => "named",
-			Type::Sizes => "sizes",
-			Type::Color => "color",
-			Type::Url => "URL",
-			Type::Expression(expression_type) | Type::Function(expression_type) => match expression_type {
+			Self::Named => "named",
+			Self::Sizes => "sizes",
+			Self::Color => "color",
+			Self::Url => "URL",
+			Self::Expression(expression_type) | Self::Function(expression_type) => match expression_type {
 				ExpressionType::Number => "number",
 				ExpressionType::String => "string",
 				ExpressionType::Bool => "boolean",
 				ExpressionType::Regex => "regular expression",
 				ExpressionType::Unknown => "unknown",
 			},
-			Type::Rotation => "rotation",
+			Self::Rotation => "rotation",
 		};
 
 		write!(f, "{type_str}")
@@ -125,15 +129,16 @@ pub enum Reason {}
 impl Expression {
 	pub fn eval(&self) -> Result<Value, Error> {
 		let value = match self {
-			Expression::Number(number) => Value::Number(*number),
-			Expression::String(string) => Value::String(string.clone()),
-			Expression::Bool(bool) => Value::Bool(*bool),
-			Expression::Identifier(identifier) => Value::Identifier(identifier.clone()),
+			Self::Number(number) => Value::Number(*number),
+			Self::String(string) => Value::String(string.clone()),
+			Self::Bool(bool) => Value::Bool(*bool),
+			Self::Identifier(identifier) => Value::Identifier(identifier.clone()),
 			_ => todo!(),
 		};
 		Ok(value)
 	}
 
+	#[must_use]
 	pub fn get_type(&self) -> ExpressionType {
 		match self {
 			Self::Number(_) => ExpressionType::Number,

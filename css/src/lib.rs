@@ -23,6 +23,7 @@ pub use eval::{Expression, ExpressionType, Type, Value, ValueType};
 
 pub struct CSS(pub Vec<Styleset>);
 
+#[must_use]
 pub fn parse_str(src: &str, file_name: &str) -> Option<CSS> {
 	let token_iter = Token::lexer(src).spanned().filter_map(|(tok, span)| match tok {
 		Ok(tok) => Some((tok, span.into())),
@@ -72,7 +73,7 @@ where
 
 	let identifier = select! {Token::Identifier(s) => s.to_string()}.labelled("identifier");
 
-	let quoted = select! { Token::Quoted(s) => s.to_string()};
+	let quoted = select! { Token::Quoted(s) => s};
 
 	let colon_tag = identifier
 		.separated_by(just(Token::Colon))
@@ -114,7 +115,7 @@ where
 				.padded_by(opt_spaces.clone())
 				.delimited_by(just(Token::ParenOpen), just(Token::ParenClose)),
 		)
-		.map(|(name, args)| Function(name.to_string(), args));
+		.map(|(name, args)| Function(name, args));
 
 	/*
 	let unary = op('-')
@@ -258,7 +259,7 @@ where
 		.ignore_then(req_space.clone())
 		.ignore_then(just(Token::Dot).ignored().or(empty().ignored()))
 		.ignore_then(identifier)
-		.map(|name| Rule::ClassAssign(name.to_string()));
+		.map(|name| Rule::ClassAssign(name));
 
 	let style = choice((key_specifier, class_assign));
 
@@ -270,7 +271,7 @@ where
 		.collect::<Vec<Rule>>();
 
 	let declaration = styleset
-		.or(empty().map(|_| Vec::new())) // TODO: do we need this?
+		.or(empty().map(|()| Vec::new())) // TODO: do we need this?
 		.padded_by(opt_spaces.clone())
 		.delimited_by(just(Token::BraceOpen), just(Token::BraceClose))
 		.padded_by(opt_spaces.clone())
@@ -395,7 +396,7 @@ where
 	let maybe_pseudo_class = pseudo_class.clone().or_not();
 
 	let zoom = select!(Token::Zoom(string) => Zoom::try_from(string))
-		.try_map(|zoom, span| zoom.map_err(|_| Rich::custom(span, "Invalid zoom specifier: {s}")))
+		.try_map(|zoom, span| zoom.map_err(|()| Rich::custom(span, "Invalid zoom specifier: {s}")))
 		.or_not();
 
 	let setting = just(Token::Identifier("setting"))
@@ -480,7 +481,7 @@ where
 		.at_least(1)
 		.allow_trailing()
 		.collect::<Vec<_>>()
-		.recover_with(via_parser(none_of(Token::BraceOpen).repeated().map(|_| Vec::new())))
+		.recover_with(via_parser(none_of(Token::BraceOpen).repeated().map(|()| Vec::new())))
 		.map(Union);
 
 	let selectors = union_selector.labelled("selectors");
@@ -530,18 +531,18 @@ const EXPRESSION_UNARY_OPS: [UnaryOp; 1] = [UnaryOp::Neg];
 impl Display for BinaryOp {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			BinaryOp::Eq => write!(f, "="),
-			BinaryOp::NotEq => write!(f, "!="),
-			BinaryOp::ListMembership => write!(f, "~="),
-			BinaryOp::RegexMatch => write!(f, "=~"),
-			BinaryOp::Le => write!(f, "<="),
-			BinaryOp::Ge => write!(f, ">="),
-			BinaryOp::Lt => write!(f, "<"),
-			BinaryOp::Gt => write!(f, ">"),
-			BinaryOp::Mul => write!(f, "*"),
-			BinaryOp::Add => write!(f, "+"),
-			BinaryOp::Sub => write!(f, "-"),
-			BinaryOp::Div => write!(f, "/"),
+			Self::Eq => write!(f, "="),
+			Self::NotEq => write!(f, "!="),
+			Self::ListMembership => write!(f, "~="),
+			Self::RegexMatch => write!(f, "=~"),
+			Self::Le => write!(f, "<="),
+			Self::Ge => write!(f, ">="),
+			Self::Lt => write!(f, "<"),
+			Self::Gt => write!(f, ">"),
+			Self::Mul => write!(f, "*"),
+			Self::Add => write!(f, "+"),
+			Self::Sub => write!(f, "-"),
+			Self::Div => write!(f, "/"),
 		}
 	}
 }
@@ -555,8 +556,8 @@ pub enum UnaryOp {
 impl Display for UnaryOp {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			UnaryOp::Not => write!(f, "!"),
-			UnaryOp::Neg => write!(f, "-"),
+			Self::Not => write!(f, "!"),
+			Self::Neg => write!(f, "-"),
 		}
 	}
 }
@@ -579,23 +580,23 @@ impl TryFrom<&str> for Zoom {
 	type Error = ();
 
 	fn try_from(value: &str) -> Result<Self, Self::Error> {
-		match value.split("-").collect::<Vec<_>>().as_slice() {
+		match value.split('-').collect::<Vec<_>>().as_slice() {
 			[z] => {
 				let z = z.parse::<u8>().map_err(|_| ())?;
-				Ok(Zoom(z, z))
+				Ok(Self(z, z))
 			}
 			[z1, ""] => {
 				let z1 = z1.parse::<u8>().map_err(|_| ())?;
-				Ok(Zoom(z1, u8::MAX))
+				Ok(Self(z1, u8::MAX))
 			}
 			["", z2] => {
 				let z2 = z2.parse::<u8>().map_err(|_| ())?;
-				Ok(Zoom(0, z2))
+				Ok(Self(0, z2))
 			}
 			[z1, z2] => {
 				let z1 = z1.parse::<u8>().map_err(|_| ())?;
 				let z2 = z2.parse::<u8>().map_err(|_| ())?;
-				Ok(Zoom(z1, z2))
+				Ok(Self(z1, z2))
 			}
 			_ => Err(()),
 		}
@@ -630,9 +631,9 @@ impl PartialEq for Union {
 impl Eq for Union {}
 
 /// Applies to all instances with all the subselectors
-/// .class1.class2 or .class1 .class2
+/// `.class1.class2` or `.class1 .class2`
 /// With and optional layer
-/// .class1.class2::layer
+/// `.class1.class2::layer`
 #[derive(Debug, Clone)]
 pub struct Intersection(pub Vec<Selector>, pub Option<Layer>);
 
@@ -672,10 +673,11 @@ pub enum SubSelector {
 }
 
 impl SubSelector {
+	#[must_use]
 	pub fn pseudo_class(&self) -> Option<&str> {
 		match &self {
 			Self::Object(_, _, _, pseudo_class) => pseudo_class.as_ref().map(|s| s.as_str()),
-			Self::PseudoClass(pseudo_class) => Some(&pseudo_class),
+			Self::PseudoClass(pseudo_class) => Some(pseudo_class),
 			_ => None,
 		}
 	}
@@ -709,6 +711,7 @@ pub enum Specifier {
 }
 
 impl Specifier {
+	#[must_use]
 	pub fn get_type(&self) -> Type {
 		match self {
 			Self::Named(_) => Type::Named,
@@ -740,10 +743,10 @@ impl TryFrom<&str> for Unit {
 
 	fn try_from(s: &str) -> Result<Self, Self::Error> {
 		match s {
-			"px" => Ok(Unit::Px),
-			"pt" => Ok(Unit::Pt),
-			"%" => Ok(Unit::Percent),
-			_ => Err(format!("Unknown unit: {}", s)),
+			"px" => Ok(Self::Px),
+			"pt" => Ok(Self::Pt),
+			"%" => Ok(Self::Percent),
+			_ => Err(format!("Unknown unit: {s}")),
 		}
 	}
 }
@@ -777,7 +780,7 @@ impl TryFrom<&str> for RotationUnit {
 			"deg" | "°" => Ok(Self::Deg),
 			"grad" => Ok(Self::Grad),
 			"turn" => Ok(Self::Turn),
-			_ => Err(format!("Unknown rotation unit: {}", s)),
+			_ => Err(format!("Unknown rotation unit: {s}")),
 		}
 	}
 }
@@ -788,7 +791,7 @@ impl Mul<f64> for RotationUnit {
 	fn mul(self, rhs: f64) -> Self::Output {
 		match self {
 			Self::Rad => rhs,
-			Self::Deg => rhs * PI / 180.0,
+			Self::Deg => rhs.to_radians(),
 			Self::Grad => rhs * PI / 200.0,
 			Self::Turn => rhs * PI,
 		}
@@ -798,7 +801,7 @@ impl Mul<f64> for RotationUnit {
 #[derive(Debug, Clone)]
 pub enum Condition {
 	Binary(String, BinaryOp, Expression),
-	Not(Box<Condition>),
+	Not(Box<Self>),
 	Truthy(String),
 	Falsy(String),
 	Tag(String),
@@ -810,7 +813,8 @@ pub enum Condition {
 pub struct Function(pub String, pub Vec<Spanned<Expression>>);
 
 impl Function {
-	pub fn get_return_type(&self) -> ExpressionType {
+	#[must_use]
+	pub const fn get_return_type(&self) -> ExpressionType {
 		ExpressionType::Unknown
 	}
 }

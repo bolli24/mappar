@@ -271,6 +271,8 @@ fn icon_shape(texture_id: TextureId, rect: Rect, angle: f32) -> Shape {
 	Shape::mesh(mesh)
 }
 
+const MINIMUM_TRIANGLE_SIZE: f32 = 10.0; // Don't render very small triangles
+
 #[inline]
 fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, fonts: &mut FontsView) {
 	let color = element.style.color;
@@ -348,7 +350,6 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 					.map(|i| buffers.vertices[*i as usize])
 					.collect::<Vec<_>>();
 
-				const MINIMUM_TRIANGLE_SIZE: f32 = 10.0; // Don't render very small triangles
 				if triangle_area(&points) < MINIMUM_TRIANGLE_SIZE {
 					continue;
 				}
@@ -383,11 +384,11 @@ fn triangle_area(triangle: &[Pos2]) -> f32 {
 	let b = triangle[1];
 	let c = triangle[2];
 
-	0.5 * ((a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y)).abs())
+	0.5 * (c.x.mul_add(a.y - b.y, a.x.mul_add(b.y - c.y, b.x * (c.y - a.y))).abs())
 }
 
 fn draw_text_in_area(shapes: &mut DrawList, fonts: &mut FontsView, text: &style::Text, vertices: &[Pos2]) {
-	let galley = fonts.layout_no_wrap(text.text.to_string(), text.font_id(), text.color);
+	let galley = fonts.layout_no_wrap(text.text.clone(), text.font_id(), text.color);
 	let bounds = Rect::from_points(vertices);
 	let pos = find_label_pos(bounds, &galley, vertices);
 
@@ -395,7 +396,7 @@ fn draw_text_in_area(shapes: &mut DrawList, fonts: &mut FontsView, text: &style:
 		let pos = pos - galley.size() * 0.5;
 		shapes.text.push(Shape::Text(TextShape {
 			pos,
-			galley: galley.clone(),
+			galley,
 			underline: egui::Stroke::NONE,
 			fallback_color: text.color,
 			override_text_color: None,
@@ -406,10 +407,11 @@ fn draw_text_in_area(shapes: &mut DrawList, fonts: &mut FontsView, text: &style:
 }
 
 fn draw_text_on_line(shapes: &mut DrawList, view: &View, fonts: &mut FontsView, text: &style::Text, vertices: &[Pos2]) {
-	let galley = fonts.layout_no_wrap(text.text.to_string(), text.font_id(), text.color);
+	use std::f32::consts::{FRAC_PI_2, PI};
+
+	let galley = fonts.layout_no_wrap(text.text.clone(), text.font_id(), text.color);
 	let len_sq = galley.size().x.powi(2);
 
-	use std::f32::consts::{FRAC_PI_2, PI};
 	for (a, b) in vertices.iter().tuple_windows() {
 		if a.distance_sq(*b) > len_sq {
 			let vec = b.to_vec2() - a.to_vec2();
@@ -481,12 +483,12 @@ fn draw_tiles(
 		.clone();
 
 	let tile_zoom_level = u32::min(
-		(view.zoom_level + (view.ui_scale as f64 - 1.0) + ZOOM_ADJUST).round() as u32,
+		(view.zoom_level + (f64::from(view.ui_scale) - 1.0) + ZOOM_ADJUST).round() as u32,
 		imagery.max_zoom(),
 	);
 
-	let tile_size =
-		((CIRCUMFERENCE_EARTH) / f64::exp2(tile_zoom_level as f64) / 256.0) * imagery.tile_size().unwrap_or(256) as f64;
+	let tile_size = ((CIRCUMFERENCE_EARTH) / f64::exp2(f64::from(tile_zoom_level)) / 256.0)
+		* f64::from(imagery.tile_size().unwrap_or(256));
 	let (x_tiles, y_tiles) = tiles_in_rect(corners, tile_zoom_level);
 
 	dbgtxt!(
@@ -679,9 +681,9 @@ fn tiles_in_rect(corners: (DVec2, DVec2), zoom_level: u32) -> (RangeInclusive<u3
 }
 
 fn get_tile_pos(tile: Tile) -> DVec2 {
-	let n = 2.0f64.powi(tile.coords.2 as i32);
-	let lon_deg = (tile.coords.0 as f64 / n).mul_add(360.0, -180.0);
-	let lat_rad = (PI - 2.0 * PI * tile.coords.1 as f64 / n).sinh().atan();
+	let n = 2.0f64.powi(tile.coords.2.cast_signed());
+	let lon_deg = (f64::from(tile.coords.0) / n).mul_add(360.0, -180.0);
+	let lat_rad = (PI - 2.0 * PI * f64::from(tile.coords.1) / n).sinh().atan();
 
 	latlon(-lat_rad.to_degrees(), lon_deg).to_web_mercator()
 }
@@ -693,7 +695,7 @@ fn get_world_corners(viewport: Rect, camera_pos: DVec2, scale: f64) -> (DVec2, D
 
 fn view_to_world_pos(pos: Pos2, view: Rect, camera_pos: DVec2, scale: f64) -> DVec2 {
 	let pos = pos - view.size() * 0.5;
-	(dvec2(pos.x as f64, -pos.y as f64)) * scale + dvec2(camera_pos.x, camera_pos.y)
+	(dvec2(f64::from(pos.x), f64::from(-pos.y))) * scale + dvec2(camera_pos.x, camera_pos.y)
 }
 
 fn pointer_world_pos(camera_pos: DVec2, response: &Response, viewport: Rect, scale: f64) -> Option<DVec2> {
@@ -708,26 +710,30 @@ fn pointer_world_pos(camera_pos: DVec2, response: &Response, viewport: Rect, sca
 
 fn get_tile_bound(view: Rect, camera_pos: DVec2, scale: f64) -> (DVec2, DVec2) {
 	const EXPAND: f64 = 1.2; // Load some extra tiles
-	let half = (dvec2(view.width() as f64 * 0.5, view.height() as f64 * 0.5) + view.min.to_dvec2()) * scale * EXPAND;
+	let half =
+		(dvec2(f64::from(view.width()) * 0.5, f64::from(view.height()) * 0.5) + view.min.to_dvec2()) * scale * EXPAND;
 	(camera_pos - half, camera_pos + half)
 }
 
 /// tile width in meters at specified latitude and zoom level
+#[must_use]
 pub fn tile_width(zoom_level: u32, lat: f64) -> f64 {
-	(CIRCUMFERENCE_EARTH * f64::cos(lat.to_radians())) / f64::exp2(zoom_level as f64)
+	(CIRCUMFERENCE_EARTH * f64::cos(lat.to_radians())) / f64::from(zoom_level).exp2()
 }
 
 /// aka Resolution in meters per pixel
+#[must_use]
 pub fn scale(zoom_level: f64) -> f64 {
 	(CIRCUMFERENCE_EARTH * f64::cos(0.0f64.to_radians())) / f64::exp2(zoom_level) / 256.0
 }
-
+#[must_use]
 pub fn world_size(zoom_level: u32) -> f64 {
 	2f64.powi(zoom_level as i32)
 }
 
 /// Compute if a point is inside a polygon
 /// Only works with closed polygon i.e. points[0] = points[points.len() - 1]
+#[must_use]
 pub fn point_inside_polygon(p: Pos2, points: &[Pos2]) -> bool {
 	debug_assert_eq!(points[0], points[points.len() - 1]);
 	let mut wn = 0;
@@ -746,14 +752,16 @@ pub fn point_inside_polygon(p: Pos2, points: &[Pos2]) -> bool {
 
 /// Compute if a point is inside a polygon
 // TODO: Maybe check the other corners as well
+#[must_use]
 pub fn rect_inside_polygon(rect: Rect, points: &[Pos2]) -> bool {
 	point_inside_polygon(rect.min, points) && point_inside_polygon(rect.max, points)
 }
 
 #[inline]
 fn is_left(p0: Pos2, p1: Pos2, p2: Pos2) -> bool {
-	debug_assert_ne!((p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y), 0.0);
-	(p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y) > 0.0
+	let result = (p1.x - p0.x).mul_add(p2.y - p0.y, -((p2.x - p0.x) * (p1.y - p0.y)));
+	debug_assert_ne!(result, 0.0);
+	return result > 0.0;
 }
 
 struct Ctor;

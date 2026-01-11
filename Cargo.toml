@@ -61,6 +61,7 @@ regex = "1.11"
 lasso = { version = "0.7", features = ["serialize"] }
 smallvec = "1.15"
 either = "1.15"
+nonzero_ext = "0.3"
 
 statig = "0.4"
 

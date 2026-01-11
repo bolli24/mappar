@@ -4,7 +4,7 @@ use logos::{FilterResult, Lexer, Logos, Skip};
 use std::fmt::Display;
 use std::num::ParseFloatError;
 
-#[derive(Logos, Debug, Clone, PartialEq)]
+#[derive(Logos, Debug, Clone, PartialEq, Eq)]
 #[logos(skip r"[\f]+")]
 #[logos(error = LexingError)]
 #[logos(extras = (usize, bool))]
@@ -83,10 +83,11 @@ pub enum Token<'a> {
 }
 
 impl Token<'_> {
-	pub fn is_whitespace(&self) -> bool {
+	#[must_use]
+	pub const fn is_whitespace(&self) -> bool {
 		matches!(self, Token::Space | Token::Newline)
 	}
-
+	#[must_use]
 	pub fn try_into_object(&self) -> Option<Object> {
 		match self {
 			Token::Identifier("node") => Some(Object::Node),
@@ -149,14 +150,14 @@ impl Display for Token<'_> {
 			Token::Question => write!(f, "?"),
 			Token::Dollar => write!(f, "$"),
 			Token::Space => write!(f, " "),
-			Token::Zoom(zoom) => write!(f, "|z{}", zoom),
-			Token::Op(op) => write!(f, "{}", op),
-			Token::Color(color) => write!(f, "{:?}", color),
-			Token::Unit(unit) => write!(f, "{}", unit),
-			Token::RotationUnit(unit) => write!(f, "{}", unit),
-			Token::Identifier(ident) => write!(f, "{}", ident),
-			Token::Number(num) => write!(f, "{}", num),
-			Token::Quoted(string) => write!(f, "\"{}\"", string),
+			Token::Zoom(zoom) => write!(f, "|z{zoom}"),
+			Token::Op(op) => write!(f, "{op}"),
+			Token::Color(color) => write!(f, "{color:?}"),
+			Token::Unit(unit) => write!(f, "{unit}"),
+			Token::RotationUnit(unit) => write!(f, "{unit}"),
+			Token::Identifier(ident) => write!(f, "{ident}"),
+			Token::Number(num) => write!(f, "{num}"),
+			Token::Quoted(string) => write!(f, "\"{string}\""),
 			Token::Comment => write!(f, "/*"),
 			Token::Newline => writeln!(f),
 		}
@@ -165,11 +166,11 @@ impl Display for Token<'_> {
 
 impl From<ParseFloatError> for LexingError {
 	fn from(err: ParseFloatError) -> Self {
-		LexingError::InvalidNumber(format!("{err}"))
+		Self::InvalidNumber(format!("{err}"))
 	}
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub enum LexingError {
 	#[default]
 	UnexpectedCharacter,
@@ -204,27 +205,27 @@ fn multiline_comment<'a>(lex: &mut Lexer<'a, Token<'a>>) -> FilterResult<(), Lex
 	FilterResult::Error(LexingError::IncompleteComment)
 }
 
-fn newline<'a>(lex: &mut Lexer<'a, Token<'a>>) -> Skip {
+const fn newline<'a>(lex: &mut Lexer<'a, Token<'a>>) -> Skip {
 	lex.extras.0 += 1;
 	Skip
 }
 
-fn string<'a>(lex: &mut Lexer<'a, Token<'a>>) -> Result<String, LexingError> {
+fn string<'a>(lex: &mut Lexer<'a, Token<'a>>) -> String {
 	let quote = lex.slice().chars().next().unwrap();
 	let mut iter = lex.remainder().chars();
 	let mut string = String::new();
 	while let Some(next_char) = iter.next() {
 		if next_char == quote {
 			lex.bump(lex.remainder().len() - iter.as_str().len());
-			return Ok(string);
+			return string;
 		}
-		string.push(next_char)
+		string.push(next_char);
 	}
 	lex.bump(lex.remainder().len());
-	Ok(string)
+	string
 }
 
-fn color<'a>(lex: &mut Lexer<'a, Token<'a>>) -> Result<Color32, LexingError> {
+fn color<'a>(lex: &Lexer<'a, Token<'a>>) -> Result<Color32, LexingError> {
 	Color32::from_hex(lex.slice()).map_err(LexingError::ParseHexColorError)
 }
 

@@ -16,13 +16,13 @@ pub trait ToLyonPoint {
 
 impl ToDVec2 for Pos2 {
 	fn to_dvec2(self) -> DVec2 {
-		dvec2(self.x as f64, self.y as f64)
+		dvec2(f64::from(self.x), f64::from(self.y))
 	}
 }
 
 impl ToDVec2 for egui::Vec2 {
 	fn to_dvec2(self) -> DVec2 {
-		dvec2(self.x as f64, self.y as f64)
+		dvec2(f64::from(self.x), f64::from(self.y))
 	}
 }
 
@@ -44,7 +44,7 @@ pub trait CountryFlag {
 
 impl CountryFlag for Country {
 	fn flag(&self) -> Option<String> {
-		const DIFF: u32 = 127397;
+		const DIFF: u32 = 127_397;
 		let mut code = self.alpha2.chars();
 		let one = char::from_u32((code.next()? as u32) + DIFF)?;
 		let two = char::from_u32((code.next()? as u32) + DIFF)?;

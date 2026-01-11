@@ -11,6 +11,7 @@ macro_rules! hex_color {
 }
 
 #[inline]
+#[must_use]
 pub fn get_named_color(name: &str) -> Option<Color32> {
 	COLORS.get(name).copied()
 }
