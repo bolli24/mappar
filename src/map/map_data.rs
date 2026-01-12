@@ -239,6 +239,10 @@ impl MapData {
 			})
 			.collect();
 
+		for ref_set in references.values_mut() {
+			ref_set.sort_by(|a, b| a.1.get_index().cmp(&b.1.get_index()));
+		}
+
 		for e in &elements {
 			dbg!(e.id);
 		}
