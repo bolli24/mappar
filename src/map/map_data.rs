@@ -226,12 +226,11 @@ impl MapData {
 		)
 	}
 
-	// FIXME: Delete 1-ways
 	#[must_use]
-	pub fn delete<'a>(&mut self, ids: impl IntoIterator<Item = &'a ElementId>) -> Edit {
-		let ids: Multiple = ids.into_iter().copied().collect();
+	pub fn delete(&mut self, delete_ids: &HashSet<ElementId>) -> Edit {
+		let mut ids: Multiple = delete_ids.iter().copied().collect();
 		let mut references = HashMap::new();
-		let elements: SmallVec<[MapElement; 1]> = ids
+		let mut elements: SmallVec<[MapElement; 1]> = ids
 			.iter()
 			.map(|id| {
 				self.get_references(&mut references, *id);
@@ -239,8 +238,32 @@ impl MapData {
 			})
 			.collect();
 
+		// We also want to delete all the ways that become length 0 or 1 after deleting some of its nodes
+		let invalid_ways: Vec<_> = references
+			.iter()
+			.filter_map(|(&parent_id, ref_set)| {
+				let element = self.get(&parent_id).expect("Element must exist");
+				match &element.element {
+					Element::Way { nodes } if nodes.len() <= ref_set.len() + 1 => Some(parent_id),
+					_ => None,
+				}
+			})
+			.collect();
+
+		for id in &invalid_ways {
+			// Remove the reference set for this way since it's being deleted
+			references.remove(id);
+			if !delete_ids.contains(id) {
+				ids.push(*id);
+				self.get_references(&mut references, *id);
+				elements.push(self.elements[id].clone());
+			}
+		}
+
+		dbg!(invalid_ways);
+
 		for ref_set in references.values_mut() {
-			ref_set.sort_by(|a, b| a.1.get_index().cmp(&b.1.get_index()));
+			ref_set.sort_by_key(|r| r.1.get_index());
 		}
 
 		for e in &elements {
