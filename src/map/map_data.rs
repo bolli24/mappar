@@ -225,7 +225,7 @@ impl MapData {
 			},
 		)
 	}
-	// FIXME: Turn make 2-ways not closed
+
 	// FIXME: Delete 1-ways
 	#[must_use]
 	pub fn delete<'a>(&mut self, ids: impl IntoIterator<Item = &'a ElementId>) -> Edit {

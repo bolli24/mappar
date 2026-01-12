@@ -1,5 +1,5 @@
 use super::map_data::MapData;
-use crate::map::element::{Element, ElementId, ElementInfo, MapElement, Member};
+use crate::map::element::{Element, ElementId, ElementInfo, MapElement, Member, is_closed};
 use crate::unreachable_log;
 use glam::DVec2;
 use indexmap::IndexMap;
@@ -178,7 +178,6 @@ impl undo::Edit for Edit {
 							};
 							nodes.remove(*index);
 							if *index == 0 && *closed {
-								// TODO: handles closed ways separatly in MapData::delete
 								let len = nodes.len();
 								nodes[len - 1] = nodes[0];
 							}
@@ -192,6 +191,14 @@ impl undo::Edit for Edit {
 							members.remove(*index);
 						}
 					}
+				}
+
+				// Make 2-ways not closed
+				if let Element::Way { nodes } = &mut target.get_mut(parent).expect("Element must exist.").element
+					&& nodes.len() == 3
+					&& is_closed(nodes)
+				{
+					nodes.remove(2);
 				}
 			}
 		}
@@ -211,6 +218,16 @@ impl undo::Edit for Edit {
 				}
 
 				for (parent, parent_refs) in references {
+					// Make 2-ways that were closed before, closed again before adding the third node
+					if let Element::Way { nodes } = &mut target.get_mut(parent).expect("Element must exist.").element
+						&& nodes.len() == 2
+						&& parent_refs
+							.iter()
+							.any(|(_, reference)| matches!(reference, Reference::Path(_, true)))
+					{
+						nodes.push(nodes[0]);
+					}
+
 					for (id, reference) in parent_refs {
 						match reference {
 							Reference::Path(index, closed) => {
