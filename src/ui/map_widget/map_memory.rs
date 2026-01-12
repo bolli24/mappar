@@ -30,10 +30,9 @@ pub struct Selection {
 impl Selection {
 	pub fn clear(&mut self, map_data: &mut MapData) {
 		for element in self.elements.drain() {
-			map_data
-				.get_mut(&element)
-				.expect("Elements in selection must exist.")
-				.new_tag = None;
+			if let Some(element) = map_data.get_mut(&element) {
+				element.new_tag = None;
+			}
 		}
 		self.tags.clear();
 	}

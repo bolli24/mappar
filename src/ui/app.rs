@@ -27,6 +27,7 @@ use web_time::Instant;
 
 use crate::map::bounds::Bounds;
 use crate::map::latlon::{LatLon, latlon};
+use crate::ui::key_value_table::KeyValueTable;
 use epaint::mutex::{Mutex, RwLock};
 
 const MAX_RECENT_FRAME_COUNT: usize = 1000;
@@ -331,6 +332,14 @@ impl eframe::App for MyApp {
 			.default_width(200.0)
 			.show(ctx, |ui| {
 				LayerList::new(&mut self.layers, &self.imageries.read(), &mut self.imagery_settings).ui(ui);
+				ui.separator();
+				KeyValueTable::new(
+					&mut self.map_data,
+					&mut self.map_memory.selection,
+					&mut self.messages,
+					&mut self.debug_text,
+				)
+				.ui(ui);
 			});
 
 		if self.debug_panel {
@@ -420,7 +429,7 @@ impl eframe::App for MyApp {
 							}
 						}
 						Err(_) => {
-							unreachable_log!("Undo should not error.");
+							unreachable_log!("Undo/Redo should not error.");
 						}
 					}
 				}

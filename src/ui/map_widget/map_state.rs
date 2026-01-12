@@ -1,4 +1,4 @@
-use egui::{Modifiers, PointerButton};
+use egui::{Key, Modifiers, PointerButton};
 use glam::DVec2;
 use itertools::Itertools;
 use statig::prelude::*;
@@ -211,6 +211,12 @@ impl MapStateMachine {
 		}
 		if response.clicked_by(PointerButton::Primary) && hover_elements.is_empty() {
 			mem.selection.elements.clear();
+		}
+
+		if !mem.selection.elements.is_empty() && response.ctx.input(|i| i.key_pressed(Key::X)) {
+			let edit = map_data.delete(&mem.selection.elements);
+			map_data.edit(edit).expect("Deleting must not error.");
+			mem.selection.clear(map_data);
 		}
 
 		Super

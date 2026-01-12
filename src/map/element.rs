@@ -20,7 +20,7 @@ pub struct Version(pub u64);
 #[derive(Id, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct UserId(pub u32);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ElementInfo {
 	pub version: Version,
 	pub timestamp: DateTime<Utc>,
@@ -121,7 +121,7 @@ pub const AREA_TAGS: [(&str, Option<&str>); 5] = [
 	("leisure", Some("park")),
 ];
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MapElement {
 	pub id: ElementId,
 	pub info: ElementInfo,

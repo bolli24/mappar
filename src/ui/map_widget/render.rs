@@ -99,8 +99,6 @@ impl DetailedElement {
 		let element = match &map_element.element {
 			Element::Node { pos } => RenderElement::Node(pos.get().to_web_mercator()),
 			Element::Way { nodes: node_indices } => {
-				// TODO: order nodes clockwise for filled rendering
-				// but keep order counterclockwise for convex partitioning
 				let nodes: Vec<DVec2> = node_indices
 					.iter()
 					.map(|n| {
@@ -111,7 +109,6 @@ impl DetailedElement {
 					})
 					.collect();
 
-				// TODO: Area rendering
 				let is_closed = element::is_closed(node_indices.as_slice());
 				if style.fill_color != Color32::TRANSPARENT && is_closed {
 					RenderElement::Area(nodes)

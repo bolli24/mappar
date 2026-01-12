@@ -5,6 +5,7 @@ use derive_new::new;
 use egui::{Frame, Key, Margin, RichText, TextBuffer, TextEdit, Ui, Widget, text_edit::TextEditOutput};
 use egui_extras::{Column, TableBuilder};
 use either::Either;
+use epaint::FontId;
 use fxhash::FxHashMap;
 use indexmap::IndexMap;
 use log::info;
@@ -19,6 +20,7 @@ pub struct KeyValueTable<'a> {
 
 impl Widget for KeyValueTable<'_> {
 	fn ui(self, ui: &mut Ui) -> egui::Response {
+		ui.label(RichText::new("Tags").font(FontId::proportional(20.0)));
 		// const COLUMN_MARGIN: f32 = 20.0; // FIXME: Make it so we don't need this for the side panel to be able to shrink
 		const ACTION_COLUMN: f32 = 36.0;
 		let panel = ui.response().rect;

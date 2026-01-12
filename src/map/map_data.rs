@@ -1,6 +1,6 @@
-use super::edit::{Action, Edit};
+use super::edit::{Action, Edit, Multiple, Reference, References};
 use crate::map::element;
-use crate::map::element::{Element, ElementId, ElementType, MapElement};
+use crate::map::element::{Element, ElementId, ElementType, MapElement, Member};
 use crate::map::latlon::LatLon;
 use glam::DVec2;
 use smallvec::{SmallVec, smallvec};
@@ -79,7 +79,7 @@ impl MapData {
 	}
 
 	pub fn redo(&mut self) -> Option<<Edit as undo::Edit>::Output> {
-		self.history.undo(&mut self.elements)
+		self.history.redo(&mut self.elements)
 	}
 
 	#[must_use]
@@ -225,6 +225,56 @@ impl MapData {
 			},
 		)
 	}
+	// FIXME: Deleting of node index 0 for closed ways
+	#[must_use]
+	pub fn delete<'a>(&mut self, ids: impl IntoIterator<Item = &'a ElementId>) -> Edit {
+		let ids: Multiple = ids.into_iter().copied().collect();
+		let mut references = HashMap::new();
+		let elements = ids
+			.iter()
+			.map(|id| {
+				self.get_references(&mut references, *id);
+				self.elements[id].clone()
+			})
+			.collect();
+
+		for ref_set in references.values_mut() {
+			ref_set.sort_by(|a, b| a.1.get_index().cmp(&b.1.get_index()));
+		}
+
+		Edit(ids, Action::Delete { elements, references })
+	}
+
+	fn get_references(&self, references: &mut References, id: ElementId) {
+		puffin::profile_function!();
+
+		for other in self.elements.values() {
+			match &other.element {
+				Element::Way { nodes } => {
+					for (index, node) in nodes.iter().enumerate() {
+						if *node == id {
+							references
+								.entry(other.id)
+								.or_default()
+								.push((id, Reference::Path(index)));
+						}
+					}
+				}
+				Element::Relation { members } => {
+					for (index, Member { ref_id, role }) in members.iter().enumerate() {
+						if *ref_id == id {
+							references
+								.entry(other.id)
+								.or_default()
+								.push((id, Reference::Member(index, role.clone())));
+						}
+					}
+				}
+				_ => {}
+			}
+		}
+	}
+
 	#[must_use]
 	const fn new_element_id(&mut self, e_type: ElementType) -> ElementId {
 		let id = match e_type {
