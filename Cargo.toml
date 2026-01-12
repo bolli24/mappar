@@ -75,7 +75,6 @@ puffin_http = "0.16"
 celes = "2.6"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-egui-wgpu = "*"
 eframe = { version = "0.33", default-features = false, features = [
     # "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts",
@@ -84,6 +83,7 @@ eframe = { version = "0.33", default-features = false, features = [
     "wayland",
     "persistence",
 ] }
+wgpu = { version = "*", features = ["vulkan", "dx12", "metal", "gles"] }
 tokio = { version = "1.47", features = [
     "macros",
     "sync",
@@ -103,7 +103,7 @@ eframe = { version = "0.33", default-features = false, features = [
     "wgpu",
     "persistence",
 ] }
-wgpu = { version = "28", features = ["webgl", "webgpu"] }
+wgpu = { version = "*", features = ["webgpu", "webgl"] }
 tokio = { version = "1.47", default-features = false, features = [
     "macros",
     "sync",
