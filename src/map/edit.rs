@@ -63,14 +63,14 @@ pub type References = HashMap<ElementId, Vec<(ElementId, Reference)>>;
 
 #[derive(Debug)]
 pub enum Reference {
-	Path(usize),
+	Path(usize, bool),
 	Member(usize, String),
 }
 
 impl Reference {
 	pub const fn get_index(&self) -> usize {
 		match self {
-			Reference::Path(index) | Reference::Member(index, _) => *index,
+			Reference::Path(index, _) | Reference::Member(index, _) => *index,
 		}
 	}
 }
@@ -170,13 +170,18 @@ impl undo::Edit for Edit {
 				// because removing elements moves everything after forward
 				for (_, reference) in parent_refs.iter().rev() {
 					match reference {
-						Reference::Path(index) => {
+						Reference::Path(index, closed) => {
 							let Element::Way { nodes } =
 								&mut target.get_mut(parent).expect("Element must exist.").element
 							else {
 								unreachable!("Element must be way.");
 							};
 							nodes.remove(*index);
+							if *index == 0 && *closed {
+								// TODO: handles closed ways separatly in MapData::delete
+								let len = nodes.len();
+								nodes[len - 1] = nodes[0];
+							}
 						}
 						Reference::Member(index, _) => {
 							let Element::Relation { members } =
@@ -208,13 +213,17 @@ impl undo::Edit for Edit {
 				for (parent, parent_refs) in references {
 					for (id, reference) in parent_refs {
 						match reference {
-							Reference::Path(index) => {
+							Reference::Path(index, closed) => {
 								let Element::Way { nodes } =
 									&mut target.get_mut(parent).expect("Element must exist.").element
 								else {
 									unreachable!("Element must be way.");
 								};
 								nodes.insert(*index, *id);
+								if *index == 0 && *closed {
+									let len = nodes.len();
+									nodes[len - 1] = *id;
+								}
 							}
 							Reference::Member(index, role) => {
 								let Element::Relation { members } =

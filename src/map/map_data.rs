@@ -1,5 +1,5 @@
 use super::edit::{Action, Edit, Multiple, Reference, References};
-use crate::map::element;
+use crate::map::element::{self, is_closed};
 use crate::map::element::{Element, ElementId, ElementType, MapElement, Member};
 use crate::map::latlon::LatLon;
 use glam::DVec2;
@@ -225,12 +225,13 @@ impl MapData {
 			},
 		)
 	}
-	// FIXME: Deleting of node index 0 for closed ways
+	// FIXME: Turn make 2-ways not closed
+	// FIXME: Delete 1-ways
 	#[must_use]
 	pub fn delete<'a>(&mut self, ids: impl IntoIterator<Item = &'a ElementId>) -> Edit {
 		let ids: Multiple = ids.into_iter().copied().collect();
 		let mut references = HashMap::new();
-		let elements = ids
+		let elements: SmallVec<[MapElement; 1]> = ids
 			.iter()
 			.map(|id| {
 				self.get_references(&mut references, *id);
@@ -238,9 +239,10 @@ impl MapData {
 			})
 			.collect();
 
-		for ref_set in references.values_mut() {
-			ref_set.sort_by(|a, b| a.1.get_index().cmp(&b.1.get_index()));
+		for e in &elements {
+			dbg!(e.id);
 		}
+		dbg!(&references);
 
 		Edit(ids, Action::Delete { elements, references })
 	}
@@ -250,13 +252,19 @@ impl MapData {
 
 		for other in self.elements.values() {
 			match &other.element {
-				Element::Way { nodes } => {
-					for (index, node) in nodes.iter().enumerate() {
+				Element::Way { nodes } if id.1 == ElementType::Node => {
+					let closed = is_closed(nodes);
+					for (index, node) in
+						nodes
+							.iter()
+							.enumerate()
+							.take(if closed { nodes.len() - 1 } else { nodes.len() })
+					{
 						if *node == id {
 							references
 								.entry(other.id)
 								.or_default()
-								.push((id, Reference::Path(index)));
+								.push((id, Reference::Path(index, closed)));
 						}
 					}
 				}
