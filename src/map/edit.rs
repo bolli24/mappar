@@ -83,7 +83,7 @@ pub enum EditError {
 
 // TODO: Merging
 impl undo::Edit for Edit {
-	type Target = HashMap<ElementId, MapElement>;
+	type Target = MapData;
 	type Output = Result<Multiple, EditError>;
 
 	fn edit(&mut self, target: &mut Self::Target) -> Self::Output {
@@ -114,16 +114,13 @@ impl undo::Edit for Edit {
 				}
 				Action::Move(_, _) => {}
 				Action::NewElement { element } => {
-					target.insert(
-						*element_id,
-						MapElement {
-							id: *element_id,
-							element: element.clone(),
-							tags: IndexMap::default(),
-							info: ElementInfo::default(),
-							new_tag: None,
-						},
-					);
+					target.add(MapElement {
+						id: *element_id,
+						element: element.clone(),
+						tags: IndexMap::default(),
+						info: ElementInfo::default(),
+						new_tag: None,
+					});
 				}
 				Action::AddNodeToWayEnd { node } => {
 					let element = target.get_mut(element_id).expect("Element must exist");
@@ -133,16 +130,13 @@ impl undo::Edit for Edit {
 					nodes.push(*node);
 				}
 				Action::AddNodeToWaySegments { node, ways } => {
-					target.insert(
-						*element_id,
-						MapElement {
-							id: *element_id,
-							element: node.clone(),
-							tags: IndexMap::default(),
-							info: ElementInfo::default(),
-							new_tag: None,
-						},
-					);
+					target.add(MapElement {
+						id: *element_id,
+						element: node.clone(),
+						tags: IndexMap::default(),
+						info: ElementInfo::default(),
+						new_tag: None,
+					});
 
 					for (id, index) in ways {
 						let Element::Way { nodes } = &mut target.get_mut(id).expect("Way must exist.").element else {
@@ -214,7 +208,7 @@ impl undo::Edit for Edit {
 			}
 			Action::Delete { elements, references } => {
 				for element in elements {
-					target.insert(element.id, (*element).clone());
+					target.add(element.clone());
 				}
 
 				for (parent, parent_refs) in references {

@@ -7,7 +7,7 @@ use super::messages::Messages;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::imagery::{Imageries, get_imagery};
 use crate::map::api::get_data;
-use crate::map::map_data::MapData;
+use crate::map::map_data::{EditHistory, MapData};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::message_error;
 use crate::ui::debug_text::DebugText;
@@ -34,6 +34,7 @@ const MAX_RECENT_FRAME_COUNT: usize = 1000;
 
 pub struct MyApp {
 	map_data: MapData,
+	history: EditHistory,
 	pending_map_data: Arc<Mutex<Option<MapData>>>,
 	styles: Option<Styles>,
 	map_widget_id: Id,
@@ -129,6 +130,7 @@ impl MyApp {
 
 		let mut app = Self {
 			map_data: MapData::new(),
+			history: EditHistory::new(),
 			pending_map_data,
 			styles: get_default_styles(cc.egui_ctx.tex_manager()),
 			imagery_fetcher,
@@ -224,7 +226,7 @@ impl eframe::App for MyApp {
 			}
 		});
 
-		dbgtxt!(self.debug_text, "History count: {}", self.map_data.history_len());
+		dbgtxt!(self.debug_text, "History count: {}", self.history.len());
 
 		dbgtxt!(
 			self.debug_text,
@@ -335,6 +337,7 @@ impl eframe::App for MyApp {
 				ui.separator();
 				KeyValueTable::new(
 					&mut self.map_data,
+					&mut self.history,
 					&mut self.map_memory.selection,
 					&mut self.messages,
 					&mut self.debug_text,
@@ -364,6 +367,7 @@ impl eframe::App for MyApp {
 			let mut rect = ui
 				.add(MapWidget::new(
 					&mut self.map_data,
+					&mut self.history,
 					&mut self.styles,
 					self.imagery_fetcher.clone(),
 					self.map_widget_id,
@@ -407,12 +411,12 @@ impl eframe::App for MyApp {
 		ctx.input(|i| {
 			if i.modifiers == Modifiers::CTRL | Modifiers::COMMAND {
 				let change_result = if i.key_pressed(egui::Key::Z) {
-					self.map_data.undo().or_else(|| {
+					self.history.undo(&mut self.map_data).or_else(|| {
 						self.messages.add("Nothing to undo.");
 						None
 					})
 				} else if i.key_pressed(egui::Key::Y) {
-					self.map_data.redo().or_else(|| {
+					self.history.redo(&mut self.map_data).or_else(|| {
 						self.messages.add("Nothing to redo.");
 						None
 					})

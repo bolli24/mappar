@@ -10,9 +10,10 @@ use undo::Record;
 
 pub type Elements = HashMap<ElementId, MapElement>;
 
+pub type EditHistory = Record<Edit>;
+
 pub struct MapData {
 	pub elements: Elements,
-	history: Record<Edit>,
 	last_new_ids: (i64, i64, i64),
 }
 
@@ -27,7 +28,6 @@ impl MapData {
 	pub fn new() -> Self {
 		Self {
 			elements: HashMap::new(),
-			history: Record::new(),
 			last_new_ids: (0, 0, 0),
 		}
 	}
@@ -35,6 +35,11 @@ impl MapData {
 	pub fn add(&mut self, element: MapElement) {
 		self.elements.insert(element.id, element);
 	}
+
+	pub fn remove(&mut self, id: &ElementId) -> Option<MapElement> {
+		self.elements.remove(id)
+	}
+
 	#[must_use]
 	pub fn get(&self, id: &ElementId) -> Option<&MapElement> {
 		self.elements.get(id)
@@ -63,23 +68,6 @@ impl MapData {
 	#[must_use]
 	pub fn is_empty(&self) -> bool {
 		self.len() == 0
-	}
-
-	#[must_use]
-	pub fn history_len(&self) -> usize {
-		self.history.len()
-	}
-
-	pub fn edit(&mut self, edit: Edit) -> <Edit as undo::Edit>::Output {
-		self.history.edit(&mut self.elements, edit)
-	}
-
-	pub fn undo(&mut self) -> Option<<Edit as undo::Edit>::Output> {
-		self.history.undo(&mut self.elements)
-	}
-
-	pub fn redo(&mut self) -> Option<<Edit as undo::Edit>::Output> {
-		self.history.redo(&mut self.elements)
 	}
 
 	#[must_use]
@@ -148,11 +136,11 @@ impl MapData {
 		)
 	}
 
-	pub fn raw_move_by<'a>(elements: &mut Elements, ids: impl IntoIterator<Item = &'a ElementId>, delta: DVec2) {
+	pub fn raw_move_by<'a>(&mut self, ids: impl IntoIterator<Item = &'a ElementId>, delta: DVec2) {
 		let mut moved = HashSet::with_capacity(100);
 
 		for element_id in ids {
-			Self::move_element(elements, &mut moved, element_id, &delta);
+			Self::move_element(&mut self.elements, &mut moved, element_id, &delta);
 		}
 	}
 	#[must_use]
@@ -260,16 +248,9 @@ impl MapData {
 			}
 		}
 
-		dbg!(invalid_ways);
-
 		for ref_set in references.values_mut() {
 			ref_set.sort_by_key(|r| r.1.get_index());
 		}
-
-		for e in &elements {
-			dbg!(e.id);
-		}
-		dbg!(&references);
 
 		Edit(ids, Action::Delete { elements, references })
 	}

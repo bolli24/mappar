@@ -14,7 +14,7 @@ use crate::imagery::imagery_fetcher::{ImageryFetcher, Tile};
 use crate::imagery::{Imagery, ImageryRef};
 use crate::map::element::Element;
 use crate::map::latlon::{CIRCUMFERENCE_EARTH, LatLon, latlon};
-use crate::map::map_data::MapData;
+use crate::map::map_data::{EditHistory, MapData};
 use crate::ui::debug_text::DebugText;
 use crate::util::convert::{ToDVec2, ToLyonPoint, ToPos2};
 use crate::util::quick_set::QuickSet;
@@ -52,6 +52,7 @@ const ZOOM_SPEED: f64 = 5.0;
 #[derive(new)]
 pub struct MapWidget<'a> {
 	map_data: &'a mut MapData,
+	history: &'a mut EditHistory,
 	styles: &'a mut Option<Styles>,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	id: Id,
@@ -180,6 +181,7 @@ impl Widget for MapWidget<'_> {
 						response: response.clone(),
 						interactive: self.interactive,
 						map_data: self.map_data,
+						history: self.history,
 						view: &view,
 						mem: self.mem,
 						world_delta,

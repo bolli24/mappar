@@ -1,6 +1,6 @@
 use super::{debug_text::DebugText, map_widget::map_memory::Selection, messages::Messages};
 use crate::map::element::MapElement;
-use crate::map::map_data::MapData;
+use crate::map::map_data::{EditHistory, MapData};
 use derive_new::new;
 use egui::{Frame, Key, Margin, RichText, TextBuffer, TextEdit, Ui, Widget, text_edit::TextEditOutput};
 use egui_extras::{Column, TableBuilder};
@@ -13,6 +13,7 @@ use log::info;
 #[derive(new)]
 pub struct KeyValueTable<'a> {
 	map_data: &'a mut MapData,
+	history: &'a mut EditHistory,
 	selection: &'a mut Selection,
 	messages: &'a mut Messages,
 	debug_text: &'a mut DebugText,
@@ -25,11 +26,10 @@ impl Widget for KeyValueTable<'_> {
 		const ACTION_COLUMN: f32 = 36.0;
 		let panel = ui.response().rect;
 		let column_width = ((panel.width() - ACTION_COLUMN) * 0.5).clamp(40.0, 400.0);
-		let map_data = &mut *self.map_data;
 
 		let id = self.selection.elements.iter().next();
 
-		let element = id.and_then(|id| map_data.get(id));
+		let element = id.and_then(|id| self.map_data.get(id));
 		let mut edit = None;
 
 		let response = Frame::NONE
@@ -72,11 +72,11 @@ impl Widget for KeyValueTable<'_> {
 									table_field(&mut update_value, ui);
 								});
 								if update_value != *value {
-									edit = Some(map_data.update_value(id, key.clone(), update_value));
+									edit = Some(self.map_data.update_value(id, key.clone(), update_value));
 								}
 								row.col(|ui| {
 									if ui.small_button(RichText::new(egui_phosphor::bold::TRASH)).clicked() {
-										edit = Some(map_data.remove_tag(id, key));
+										edit = Some(self.map_data.remove_tag(id, key));
 									}
 								});
 							} else {
@@ -95,18 +95,18 @@ impl Widget for KeyValueTable<'_> {
 								match new_tag {
 									Some((previous_key, previous_value)) => {
 										if *previous_value != value || *previous_key != key {
-											edit = Some(map_data.update_new_tag(id, key, value));
+											edit = Some(self.map_data.update_new_tag(id, key, value));
 										}
 									}
 									None => {
 										if !key.is_empty() || !value.is_empty() {
-											edit = Some(map_data.update_new_tag(id, key, value));
+											edit = Some(self.map_data.update_new_tag(id, key, value));
 										}
 									}
 								}
 								if confirm {
 									info!("Confirmed");
-									edit = Some(map_data.add_new_tag(id));
+									edit = Some(self.map_data.add_new_tag(id));
 								}
 							}
 						});
@@ -114,7 +114,7 @@ impl Widget for KeyValueTable<'_> {
 			})
 			.response;
 
-		if let Some(Err(err)) = edit.map(|edit| map_data.edit(edit)) {
+		if let Some(Err(err)) = edit.map(|edit| self.history.edit(self.map_data, edit)) {
 			self.messages.add(&err);
 		}
 

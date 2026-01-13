@@ -5,6 +5,7 @@ use statig::prelude::*;
 
 use super::{map_memory::MapMemory, render::DetailedElement, view::View};
 use crate::map::element::{Element, ElementId, ElementType, is_closed};
+use crate::map::map_data::EditHistory;
 use crate::{
 	dbgtxt,
 	map::map_data::MapData,
@@ -43,6 +44,7 @@ pub struct Context<'a> {
 	pub ui_context: &'a egui::Context,
 	pub response: egui::Response,
 	pub map_data: &'a mut MapData,
+	pub history: &'a mut EditHistory,
 	pub view: &'a View,
 	pub interactive: bool,
 	pub mem: &'a mut MapMemory,
@@ -116,6 +118,7 @@ impl MapStateMachine {
 			hover_elements,
 			debug_text,
 			map_data,
+			history,
 			..
 		} = context;
 
@@ -215,7 +218,7 @@ impl MapStateMachine {
 
 		if !mem.selection.elements.is_empty() && response.ctx.input(|i| i.key_pressed(Key::X)) {
 			let edit = map_data.delete(&mem.selection.elements);
-			map_data.edit(edit).expect("Deleting must not error.");
+			history.edit(map_data, edit).expect("Deleting must not error.");
 			mem.selection.clear(map_data);
 		}
 
@@ -239,11 +242,9 @@ impl MapStateMachine {
 	#[state]
 	fn move_elements(context: &mut Context<'_>, total_delta: &mut DVec2, initial_delta: &mut DVec2) -> Outcome<State> {
 		*total_delta += context.world_delta + *initial_delta;
-		MapData::raw_move_by(
-			&mut context.map_data.elements,
-			&context.mem.selection.elements,
-			context.world_delta + *initial_delta,
-		);
+		context
+			.map_data
+			.raw_move_by(&context.mem.selection.elements, context.world_delta + *initial_delta);
 
 		*initial_delta = DVec2::ZERO;
 
@@ -251,17 +252,15 @@ impl MapStateMachine {
 			let edit = context
 				.map_data
 				.move_by(&context.mem.selection.elements, *total_delta, true);
-			let result = context.map_data.edit(edit);
+			let result = context.history.edit(context.map_data, edit);
 			if let Err(err) = result {
 				message_error!(context.messages, "Error moving elements: {err}");
 			}
 			Transition(Self::select_default())
 		} else if context.response.clicked_by(PointerButton::Secondary) {
-			MapData::raw_move_by(
-				&mut context.map_data.elements,
-				&context.mem.selection.elements,
-				-*total_delta,
-			);
+			context
+				.map_data
+				.raw_move_by(&context.mem.selection.elements, -*total_delta);
 			Transition(Self::select_default())
 		} else {
 			Handled
@@ -322,6 +321,7 @@ impl MapStateMachine {
 			view,
 			mem,
 			map_data,
+			history,
 			hover_elements,
 			render_data,
 			..
@@ -427,8 +427,8 @@ impl MapStateMachine {
 							.collect();
 
 						let edit = map_data.add_node_on_way_segments(pos, ways);
-						map_data
-							.edit(edit)
+						history
+							.edit(map_data, edit)
 							.expect("Adding node to way segments must not error.");
 
 						// TODO: transition to moving node
@@ -442,7 +442,7 @@ impl MapStateMachine {
 				// Add new node
 				let edit = map_data.new_node(pos);
 				let new_node_id = edit.0[0];
-				map_data.edit(edit).expect("Creating node must not error.");
+				history.edit(map_data, edit).expect("Creating node must not error.");
 				new_node_id
 			};
 
@@ -451,7 +451,7 @@ impl MapStateMachine {
 					let edit = map_data.new_way(vec![first_id, node_id]);
 					let new_way_id = edit.0[0];
 					*first_node_or_way = Some(new_way_id);
-					map_data.edit(edit).expect("Creating way must not error.");
+					history.edit(map_data, edit).expect("Creating way must not error.");
 					mem.selection.elements.clear();
 					mem.selection.elements.insert(new_way_id);
 				}
@@ -468,7 +468,9 @@ impl MapStateMachine {
 						child_node = true;
 					}
 
-					map_data.edit(edit).expect("Adding node to way end must not error.");
+					history
+						.edit(map_data, edit)
+						.expect("Adding node to way end must not error.");
 
 					if child_node {
 						return Transition(State::Draw {
