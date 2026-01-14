@@ -4,3 +4,4 @@ pub mod edit;
 pub(crate) mod element;
 pub mod latlon;
 pub mod map_data;
+mod references_index;

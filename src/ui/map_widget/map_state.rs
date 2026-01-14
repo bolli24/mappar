@@ -125,9 +125,9 @@ impl MapStateMachine {
 		if let Some(element_id) = last_clicked_element
 			&& element_id.1 == ElementType::Way
 		{
-			let element = &map_data.elements[element_id];
+			let element = &map_data.get(element_id).expect("Element must exist.");
 			if let Element::Way { nodes } = &element.element {
-				let closed = is_closed(nodes);
+				let closed = is_closed(&nodes);
 				dbgtxt!(debug_text, "Closed: {closed}");
 			}
 		}
@@ -412,7 +412,8 @@ impl MapStateMachine {
 							.iter()
 							.filter(|e| e.id.1 == ElementType::Way)
 							.filter_map(|e| {
-								let Element::Way { nodes } = &map_data.elements[&e.id].element else {
+								let Element::Way { nodes } = &map_data.get(&e.id).expect("Element must exist").element
+								else {
 									unreachable!("Element must be way.");
 								};
 								nodes

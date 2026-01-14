@@ -128,6 +128,7 @@ impl undo::Edit for Edit {
 						unreachable_log!("Element must be way");
 					};
 					nodes.push(*node);
+					target.reference_index.add_reference(*element_id, *node);
 				}
 				Action::AddNodeToWaySegments { node, ways } => {
 					target.add(MapElement {
@@ -144,6 +145,7 @@ impl undo::Edit for Edit {
 						};
 
 						nodes.insert(*index, *element_id);
+						target.reference_index.add_reference(*id, *element_id);
 					}
 				}
 				Action::Delete { .. } => { // Handled below
@@ -155,8 +157,7 @@ impl undo::Edit for Edit {
 			MapData::raw_move_by(target, &self.0, *delta);
 		} else if let Action::Delete { elements, references } = &self.1 {
 			for element in elements.iter().rev() {
-				let removed = target.remove(&element.id);
-				debug_assert!(removed.is_some());
+				target.remove(&element.id);
 			}
 
 			for (parent, parent_refs) in references {
@@ -212,6 +213,9 @@ impl undo::Edit for Edit {
 				}
 
 				for (parent, parent_refs) in references {
+					target
+						.reference_index
+						.add_references(*parent, parent_refs.iter().map(|(id, _)| id));
 					// Make 2-ways that were closed before, closed again before adding the third node
 					if let Element::Way { nodes } = &mut target.get_mut(parent).expect("Element must exist.").element
 						&& nodes.len() == 2
@@ -293,7 +297,8 @@ impl undo::Edit for Edit {
 					let Element::Way { nodes } = &mut element.element else {
 						unreachable_log!("Element must be way");
 					};
-					nodes.pop();
+					let node = nodes.pop().expect("Node must have been removed");
+					target.reference_index.remove_reference(*element_id, node);
 				}
 				Action::AddNodeToWaySegments { ways, .. } => {
 					target.remove(element_id);

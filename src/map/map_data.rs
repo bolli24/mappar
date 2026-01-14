@@ -2,6 +2,7 @@ use super::edit::{Action, Edit, Multiple, Reference, References};
 use crate::map::element::{self, is_closed};
 use crate::map::element::{Element, ElementId, ElementType, MapElement, Member};
 use crate::map::latlon::LatLon;
+use crate::map::references_index::ReferenceIndex;
 use glam::DVec2;
 use smallvec::{SmallVec, smallvec};
 use std::cell::Cell;
@@ -13,10 +14,10 @@ pub type Elements = HashMap<ElementId, MapElement>;
 pub type EditHistory = Record<Edit>;
 
 pub struct MapData {
-	pub elements: Elements,
+	elements: Elements,
+	pub reference_index: ReferenceIndex,
 	last_new_ids: (i64, i64, i64),
 }
-
 impl Default for MapData {
 	fn default() -> Self {
 		Self::new()
@@ -28,16 +29,19 @@ impl MapData {
 	pub fn new() -> Self {
 		Self {
 			elements: HashMap::new(),
+			reference_index: ReferenceIndex::new(),
 			last_new_ids: (0, 0, 0),
 		}
 	}
 
 	pub fn add(&mut self, element: MapElement) {
+		self.reference_index.index_element(&element);
 		self.elements.insert(element.id, element);
 	}
 
-	pub fn remove(&mut self, id: &ElementId) -> Option<MapElement> {
-		self.elements.remove(id)
+	pub fn remove(&mut self, id: &ElementId) {
+		self.elements.remove(id);
+		self.reference_index.deindex_element(*id);
 	}
 
 	#[must_use]
@@ -258,9 +262,10 @@ impl MapData {
 	fn get_references(&self, references: &mut References, id: ElementId) {
 		puffin::profile_function!();
 
-		for other in self.elements.values() {
-			match &other.element {
-				Element::Way { nodes } if id.1 == ElementType::Node => {
+		for parent_id in self.reference_index.parents(&id) {
+			let element = self.get(parent_id).expect("Parent must exist");
+			match &element.element {
+				Element::Way { nodes } => {
 					let closed = is_closed(nodes);
 					for (index, node) in
 						nodes
@@ -270,7 +275,7 @@ impl MapData {
 					{
 						if *node == id {
 							references
-								.entry(other.id)
+								.entry(*parent_id)
 								.or_default()
 								.push((id, Reference::Path(index, closed)));
 						}
@@ -280,7 +285,7 @@ impl MapData {
 					for (index, Member { ref_id, role }) in members.iter().enumerate() {
 						if *ref_id == id {
 							references
-								.entry(other.id)
+								.entry(*parent_id)
 								.or_default()
 								.push((id, Reference::Member(index, role.clone())));
 						}

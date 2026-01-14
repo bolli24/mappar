@@ -135,9 +135,6 @@ proc-macro = false
 harness = false
 required-features = []
 
-[profile.dev]
-# opt-level = 1     # this should not be 0 for the performance of the web worker to not suck
-
 # Optimize just some dependencies to improve performance but keep debug build compile time low
 [profile.dev.package."image"]
 opt-level = 2
