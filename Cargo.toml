@@ -20,7 +20,7 @@ image = { version = "0.25", default-features = false, features = [
     "jpeg",
     "png",
 ] }
-resvg = { version = "0.45", default-features = false }
+resvg = { version = "0.46", default-features = false }
 glam = { version = "0.30", features = ["serde"] }
 lyon_tessellation = "1.0"
 egui-phosphor = { version = "0.11", default-features = false, features = [
@@ -33,11 +33,11 @@ thiserror = "2"
 ariadne = "0.6"
 
 serde = { version = "1.0", features = ["derive"] }
-serde-inline-default = "1.0.0"
+serde-inline-default = "1.0"
 serde_path_to_error = "0.1"
 strum = { version = "0.27", features = ["derive"] }
 
-derive-new = "0.7.0"
+derive-new = "0.7"
 
 futures = "0.3"
 
@@ -47,17 +47,17 @@ quick-xml = { version = "0.39", features = [
     "serialize",
     "overlapped-lists",
 ], default-features = false }
-bytes = "1.10"
-bytemuck = "1.23"
+bytes = "1.11"
+bytemuck = "1.24"
 
 chrono = { version = "0.4", features = ["wasmbind"] }
-web-time = "1.1.0"
+web-time = "1.1"
 
 undo = { version = "0.52", default-features = false, features = ["alloc"] }
 lru = "0.16"
-indexmap = "2.11"
+indexmap = "2.13"
 itertools = "0.14"
-regex = "1.11"
+regex = "1.12"
 lasso = { version = "0.7", features = ["serialize"] }
 smallvec = "1.15"
 either = "1.15"
@@ -83,8 +83,8 @@ eframe = { version = "0.33", default-features = false, features = [
     "wayland",
     "persistence",
 ] }
-wgpu = { version = "*", features = ["vulkan", "dx12", "metal", "gles"] }
-tokio = { version = "1.47", features = [
+wgpu = { version = "27", features = ["vulkan", "dx12", "metal", "gles"] }
+tokio = { version = "1.49", features = [
     "macros",
     "sync",
     "rt-multi-thread",
@@ -103,23 +103,23 @@ eframe = { version = "0.33", default-features = false, features = [
     "wgpu",
     "persistence",
 ] }
-wgpu = { version = "*", features = ["webgpu", "webgl"] }
-tokio = { version = "1.47", default-features = false, features = [
+wgpu = { version = "27", features = ["webgpu", "webgl"] }
+tokio = { version = "1.49", default-features = false, features = [
     "macros",
     "sync",
     "rt",
 ] }
-js-sys = "0.3.80"
-web-sys = { version = "0.3.80", features = [
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
     "Navigator",
     "StorageManager",
     "IdbFactory",
     "IdbOpenDbRequest",
     "Location",
 ] }
-wasm-bindgen = "0.2.103"
-wasm-bindgen-futures = "0.4.53"
-gloo-worker = "0.5.0"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+gloo-worker = "0.5"
 
 [build-dependencies]
 vergen-gitcl = "1"
