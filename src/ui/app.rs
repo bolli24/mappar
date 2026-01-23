@@ -7,7 +7,6 @@ use super::messages::Messages;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::imagery::{Imageries, get_imagery};
 use crate::map::map_data::{EditHistory, MapData};
-#[cfg(not(target_arch = "wasm32"))]
 use crate::message_error;
 use crate::ui::debug_text::DebugText;
 use crate::ui::edit_bar::EditBar;
