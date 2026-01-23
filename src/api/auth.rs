@@ -6,6 +6,7 @@ use oauth2::{
 	AuthUrl, AuthorizationCode, ClientId, CsrfToken, EndpointNotSet, EndpointSet, PkceCodeChallenge, RedirectUrl,
 	Scope, TokenResponse, TokenUrl,
 };
+use serde::Deserialize;
 use url::Url;
 
 #[derive(Clone)]
@@ -120,6 +121,12 @@ pub async fn login() -> anyhow::Result<String> {
 	use wasm_bindgen::prelude::*;
 	use web_sys::{BroadcastChannel, MessageEvent, window};
 
+	#[derive(Deserialize)]
+	struct OAuthCallbackMessage {
+		code: String,
+		state: String,
+	}
+
 	let client = create_client(crate::util::get_current_url_origin());
 
 	let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
@@ -133,17 +140,21 @@ pub async fn login() -> anyhow::Result<String> {
 	let closure = Closure::wrap(Box::new({
 		let sender = sender.clone();
 		move |event: MessageEvent| {
-			web_sys::console::log_1(&event.data());
-			let code_state = event
-				.data()
-				.as_string()
-				.expect("Message must be string.")
-				.split(',')
-				.map(ToOwned::to_owned)
-				.collect::<Vec<String>>();
-			sender
-				.blocking_send((code_state[0].clone(), code_state[1].clone()))
-				.expect("Messaging failed");
+			let Some(payload) = event.data().as_string() else {
+				log::warn!("OAuth callback message must be a string");
+				let _ = sender.blocking_send((String::new(), String::new()));
+				return;
+			};
+
+			match serde_json::from_str::<OAuthCallbackMessage>(&payload) {
+				Ok(msg) => {
+					let _ = sender.blocking_send((msg.code, msg.state));
+				}
+				Err(err) => {
+					log::warn!("Failed to parse OAuth callback message: {err}");
+					let _ = sender.blocking_send((String::new(), String::new()));
+				}
+			}
 		}
 	}) as Box<dyn FnMut(MessageEvent)>);
 
