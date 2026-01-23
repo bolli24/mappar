@@ -299,18 +299,20 @@ impl eframe::App for MyApp {
 						ui.add_space(16.0);
 						egui::widgets::global_theme_preference_switch(ui);
 					});
-
-					ui.add(EditBar::new(
-						self.map_state.edit_mode(),
-						&mut update_edit_mode,
-						&mut self.map_memory,
-						&mut self.map_data,
-					));
 				},
 				|ui| {
 					ui.add(AuthWidget::new(self.osm_client.clone(), self.messages.clone()));
 				},
 			);
+		});
+
+		egui::TopBottomPanel::top("edit_bar_panel").show(ctx, |ui| {
+			ui.add(EditBar::new(
+				self.map_state.edit_mode(),
+				&mut update_edit_mode,
+				&mut self.map_memory,
+				&mut self.map_data,
+			));
 		});
 
 		#[cfg(not(target_arch = "wasm32"))]
