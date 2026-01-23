@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 
 <!-- Disable zooming: -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -10,12 +10,13 @@
     <title>mappar</title>
 
     <!-- config for our rust wasm binary. go to https://trunkrs.dev/assets/#rust for more customization -->
-    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="2" data-bin="mappar" data-type="main" />
-    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="2" data-bin="dummy_worker" data-type="worker" />
+    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="2" data-bin="mappar" data-type="main"/>
+    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="2" data-bin="dummy_worker" data-type="worker"/>
     <!-- this is the base url relative to which other urls will be constructed. trunk will insert this from the public-url option -->
-    <base data-trunk-public-url />
+    <base data-trunk-public-url/>
 
     <link data-trunk rel="copy-dir" href="/assets/styles"/>
+    <link data-trunk rel="copy-file" href="/login.html"/>
 
     <link data-trunk rel="icon" href="/assets/favicon.ico">
 
@@ -122,37 +123,37 @@
 </head>
 
 <body>
-    <!-- The WASM code will resize the canvas dynamically -->
-    <!-- the id is hardcoded in main.rs . so, make sure both match. -->
-    <canvas id="the_canvas_id"></canvas>
+<!-- The WASM code will resize the canvas dynamically -->
+<!-- the id is hardcoded in main.rs . so, make sure both match. -->
+<canvas id="the_canvas_id"></canvas>
 
-    <!-- the loading spinner will be removed in main.rs -->
-    <div class="centered" id="loading_text">
-        <p style="font-size:16px">
-            Loading.
-        </p>
-        <div class="lds-dual-ring"></div>
-    </div>
+<!-- the loading spinner will be removed in main.rs -->
+<div class="centered" id="loading_text">
+    <p style="font-size:16px">
+        Loading.
+    </p>
+    <div class="lds-dual-ring"></div>
+</div>
 
-    <!--Register Service Worker. this will cache the wasm / js scripts for offline use (for PWA functionality). -->
-    <!-- Force refresh (Ctrl + F5) to load the latest files instead of cached files  -->
-    <script>
-        // We disable caching during development so that we always view the latest version.
-        if ('serviceWorker' in navigator && window.location.hash !== "#dev") {
-            let links = document.querySelectorAll("link");
-            const pattern = /mappar-[\w\d]+\.js$|mappar-[\w\d]+_bg\.wasm$/;
-            let files = Array.from(links.values()).map(link => "./" + link.href.split("/").slice(-1)).filter(link => pattern.test(link))
-            files.push("./snippets/mappar-5d5e66c528d8079d/module.js")
-            console.log(files)
+<!--Register Service Worker. this will cache the wasm / js scripts for offline use (for PWA functionality). -->
+<!-- Force refresh (Ctrl + F5) to load the latest files instead of cached files  -->
+<script>
+    // We disable caching during development so that we always view the latest version.
+    if ('serviceWorker' in navigator && window.location.hash !== "#dev") {
+        let links = document.querySelectorAll("link");
+        const pattern = /mappar-[\w\d]+\.js$|mappar-[\w\d]+_bg\.wasm$/;
+        let files = Array.from(links.values()).map(link => "./" + link.href.split("/").slice(-1)).filter(link => pattern.test(link))
+        files.push("./snippets/mappar-5d5e66c528d8079d/module.js")
+        console.log(files)
 
-            window.addEventListener('load', function () {
-                navigator.serviceWorker.register('sw.js');
-                navigator.serviceWorker.ready.then((registration) => {
-                    registration.active.postMessage(files)
-                })
-            });
-        }
-    </script>
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('sw.js');
+            navigator.serviceWorker.ready.then((registration) => {
+                registration.active.postMessage(files)
+            })
+        });
+    }
+</script>
 </body>
 
 </html>

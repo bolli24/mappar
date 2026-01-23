@@ -29,6 +29,31 @@ pub fn memory_derive(input: TokenStream) -> TokenStream {
 	expanded.into()
 }
 
+#[proc_macro_derive(TempMemory)]
+pub fn temp_memory_derive(input: TokenStream) -> TokenStream {
+	let ast = parse_macro_input!(input as DeriveInput);
+	let name = &ast.ident;
+
+	let expanded = quote! {
+		use egui::{Context, Id};
+		impl TempMemory for #name {
+			fn load_or_default(ctx: &Context, id: Id) -> Self {
+				ctx.data_mut(|d| d.get_temp_mut_or(id, Self::default()).clone())
+			}
+
+			fn load(ctx: &Context, id: Id) -> Option<Self> {
+				ctx.data_mut(|d| d.get_temp(id))
+			}
+
+			fn store(self, ctx: &Context, id: Id) {
+				ctx.data_mut(|d| d.insert_temp(id, self));
+			}
+		}
+	};
+
+	expanded.into()
+}
+
 #[proc_macro_derive(Id)]
 pub fn id_derive(input: TokenStream) -> TokenStream {
 	let ast = parse_macro_input!(input as DeriveInput);

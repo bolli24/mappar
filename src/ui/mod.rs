@@ -1,4 +1,5 @@
 pub mod app;
+mod auth_widget;
 mod debug_text;
 mod display_window;
 mod edit_bar;

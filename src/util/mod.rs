@@ -107,3 +107,12 @@ macro_rules! message_trace {
         }
     };
 }
+
+#[cfg(target_arch = "wasm32")]
+pub fn get_current_url_origin() -> String {
+	use web_sys::window;
+
+	let window = window().expect("Window must exist");
+	let location = window.location();
+	location.origin().expect("Origin must exist.")
+}

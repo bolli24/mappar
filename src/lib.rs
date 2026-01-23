@@ -8,6 +8,7 @@ pub use map::element::MapElement;
 pub use map::latlon::LatLon;
 pub use ui::app::MyApp;
 
+pub mod api;
 pub mod imagery;
 pub mod map;
 pub mod ui;

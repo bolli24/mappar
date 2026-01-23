@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mappar - OAuth login callback</title>
+</head>
+<body>
+
+<script>
+    let params = new URLSearchParams(window.location.search);
+    let channel = new BroadcastChannel("osm_oauth");
+    channel.postMessage(JSON.stringify({code: params.get("code"), state: params.get("state")}));
+    close()
+</script>
+
+<h2>Authentication successful! You can close this tab.</h2>
+
+</body>
+</html>

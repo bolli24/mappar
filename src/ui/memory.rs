@@ -6,3 +6,9 @@ pub trait Memory: SerializableAny + Clone {
 	fn load(ctx: &Context, id: Id) -> Option<Self>;
 	fn store(self, ctx: &Context, id: Id);
 }
+
+pub trait TempMemory: Clone {
+	fn load_or_default(ctx: &Context, id: Id) -> Self;
+	fn load(ctx: &Context, id: Id) -> Option<Self>;
+	fn store(self, ctx: &Context, id: Id);
+}

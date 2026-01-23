@@ -74,12 +74,12 @@ async fn get_local_xml() -> Result<String, ()> {
 	return Err(());
 }
 
-async fn fetch_josm_xml() -> Result<String, crate::map::api::Error> {
+async fn fetch_josm_xml() -> Result<String, super::api::client::Error> {
 	let client = Client::new();
 	#[cfg(not(target_arch = "wasm32"))]
 	let request = client
 		.get(JOSM_URL)
-		.header("User-Agent", crate::map::api::USER_AGENT)
+		.header("User-Agent", crate::api::USER_AGENT)
 		.build()?;
 	#[cfg(target_arch = "wasm32")]
 	let request = client.get(JOSM_URL).build()?;

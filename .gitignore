@@ -3,3 +3,6 @@
 api_data.xml
 
 /.direnv
+
+.env
+.infisical.json

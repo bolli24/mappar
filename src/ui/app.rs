@@ -6,7 +6,6 @@ use super::map_widget::map_state::MapStateMachine;
 use super::messages::Messages;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::imagery::{Imageries, get_imagery};
-use crate::map::api::get_data;
 use crate::map::map_data::{EditHistory, MapData};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::message_error;
@@ -25,8 +24,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use web_time::Instant;
 
+use crate::api::client::OsmClient;
 use crate::map::bounds::Bounds;
 use crate::map::latlon::{LatLon, latlon};
+use crate::ui::auth_widget::AuthWidget;
 use crate::ui::key_value_table::KeyValueTable;
 use epaint::mutex::{Mutex, RwLock};
 
@@ -55,6 +56,7 @@ pub struct MyApp {
 	map_state: StateMachine<MapStateMachine>,
 	backend: String,
 	no_cache: bool,
+	osm_client: Arc<tokio::sync::Mutex<OsmClient>>,
 }
 
 impl MyApp {
@@ -110,19 +112,21 @@ impl MyApp {
 		);
 
 		let pending_map_data = Arc::new(Mutex::new(None));
+		let osm_client = Arc::new(tokio::sync::Mutex::new(OsmClient::new(None, None)));
 
 		crate::spawn_task!({
 			let pending_map_data = pending_map_data.clone();
+			let osm_client = osm_client.clone();
+			let mut messages = messages.clone();
 			async move {
-				let new_map_data = get_data(bounds).await;
-				match new_map_data {
+				match osm_client.lock().await.get_data_from_bounds(bounds).await {
 					Ok(new_map_data) => {
 						let mut pending = pending_map_data.lock();
 						*pending = Some(new_map_data);
 					}
 					Err(err) => {
-						error!("Error fetching data:");
-						error!("{err:?}");
+						message_error!(messages, "Error fetching data:");
+						message_error!(messages, "{err:?}");
 					}
 				}
 			}
@@ -151,6 +155,7 @@ impl MyApp {
 			map_state: MapStateMachine::state_machine(MapStateMachine::default()),
 			backend,
 			no_cache,
+			osm_client,
 		};
 
 		app.layers.0.push_back(Layer("EsriWorldImagery".into(), true));
@@ -239,66 +244,74 @@ impl eframe::App for MyApp {
 		let mut update_edit_mode = None;
 
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-			egui::MenuBar::new().ui(ui, |ui| {
-				ui.menu_button("File", |ui| {
-					ui.checkbox(&mut self.debug_panel, "Debug Panel");
-					ui.checkbox(&mut self.inspection, "Egui Inspector");
-					#[cfg(not(target_arch = "wasm32"))]
-					{
-						if ui.button("Reload Styles").clicked() {
-							ui.close();
-							reload_styles = true;
-						}
-						if ui.button("Open Config Directory").clicked() {
-							ui.close();
-							open::that(self.project_dirs.config_dir())
-								.unwrap_or_else(|e| error!("Couldn't open config directory: {e}"));
-						}
-						if ui.button("Open Data Directory").clicked() {
-							ui.close();
-							open::that(self.project_dirs.data_dir())
-								.unwrap_or_else(|e| error!("Couldn't open data directory: {e}"));
-						}
-						if ui.button("Open Cache Directory").clicked() {
-							ui.close();
-							open::that(self.project_dirs.cache_dir())
-								.unwrap_or_else(|e| error!("Couldn't open config directory: {e}"));
-						}
-						if ui.button("Open Logs Directory").clicked() {
-							ui.close();
-							open::that(self.project_dirs.data_local_dir().join("logs"))
-								.unwrap_or_else(|e| error!("Couldn't open logs directory: {e}"));
-						}
-						if ui.button("Quit").clicked() {
-							ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-						}
-					}
-				});
-				ui.menu_button("Imagery", |ui| {
-					if ui.button("Imagery Settings").clicked() {
-						ui.close();
-						self.imagery_settings = !self.imagery_settings;
-					}
-					if ui.button("Update JOSM imagery").clicked() {
-						ui.close();
-						crate::imagery::update_josm_imagery(
+			Sides::new().show(
+				ui,
+				|ui| {
+					egui::MenuBar::new().ui(ui, |ui| {
+						ui.menu_button("File", |ui| {
+							ui.checkbox(&mut self.debug_panel, "Debug Panel");
+							ui.checkbox(&mut self.inspection, "Egui Inspector");
 							#[cfg(not(target_arch = "wasm32"))]
-							self.project_dirs.data_dir().join(crate::imagery::JOSM_FILE),
-							self.messages.clone(),
-							self.imageries.clone(),
-						);
-					}
-				});
-				ui.add_space(16.0);
-				egui::widgets::global_theme_preference_switch(ui);
-			});
+							{
+								if ui.button("Reload Styles").clicked() {
+									ui.close();
+									reload_styles = true;
+								}
+								if ui.button("Open Config Directory").clicked() {
+									ui.close();
+									open::that(self.project_dirs.config_dir())
+										.unwrap_or_else(|e| error!("Couldn't open config directory: {e}"));
+								}
+								if ui.button("Open Data Directory").clicked() {
+									ui.close();
+									open::that(self.project_dirs.data_dir())
+										.unwrap_or_else(|e| error!("Couldn't open data directory: {e}"));
+								}
+								if ui.button("Open Cache Directory").clicked() {
+									ui.close();
+									open::that(self.project_dirs.cache_dir())
+										.unwrap_or_else(|e| error!("Couldn't open config directory: {e}"));
+								}
+								if ui.button("Open Logs Directory").clicked() {
+									ui.close();
+									open::that(self.project_dirs.data_local_dir().join("logs"))
+										.unwrap_or_else(|e| error!("Couldn't open logs directory: {e}"));
+								}
+								if ui.button("Quit").clicked() {
+									ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+								}
+							}
+						});
+						ui.menu_button("Imagery", |ui| {
+							if ui.button("Imagery Settings").clicked() {
+								ui.close();
+								self.imagery_settings = !self.imagery_settings;
+							}
+							if ui.button("Update JOSM imagery").clicked() {
+								ui.close();
+								crate::imagery::update_josm_imagery(
+									#[cfg(not(target_arch = "wasm32"))]
+									self.project_dirs.data_dir().join(crate::imagery::JOSM_FILE),
+									self.messages.clone(),
+									self.imageries.clone(),
+								);
+							}
+						});
+						ui.add_space(16.0);
+						egui::widgets::global_theme_preference_switch(ui);
+					});
 
-			ui.add(EditBar::new(
-				self.map_state.edit_mode(),
-				&mut update_edit_mode,
-				&mut self.map_memory,
-				&mut self.map_data,
-			));
+					ui.add(EditBar::new(
+						self.map_state.edit_mode(),
+						&mut update_edit_mode,
+						&mut self.map_memory,
+						&mut self.map_data,
+					));
+				},
+				|ui| {
+					ui.add(AuthWidget::new(self.osm_client.clone(), self.messages.clone()));
+				},
+			);
 		});
 
 		#[cfg(not(target_arch = "wasm32"))]

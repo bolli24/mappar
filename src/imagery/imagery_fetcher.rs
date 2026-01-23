@@ -132,7 +132,7 @@ impl ImageryFetcher {
 
 		let client_builder = ClientBuilder::new();
 		#[cfg(not(target_arch = "wasm32"))]
-		let client_builder = client_builder.user_agent(crate::map::api::USER_AGENT);
+		let client_builder = client_builder.user_agent(crate::api::USER_AGENT);
 		let client = client_builder.build().expect("Client must be valid");
 
 		let fetcher = Self {
