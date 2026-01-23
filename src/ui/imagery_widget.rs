@@ -5,7 +5,7 @@ use crate::util::convert::CountryFlag;
 use derive_new::new;
 #[cfg(not(target_arch = "wasm32"))]
 use directories::ProjectDirs;
-use egui::{Button, CentralPanel, Label, MenuBar, Response, Sense, SidePanel, TopBottomPanel, Ui, Widget};
+use egui::{Button, CentralPanel, Id, Label, MenuBar, Response, Sense, SidePanel, TopBottomPanel, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -41,7 +41,8 @@ pub struct ImageriesWidget<'a> {
 
 impl Widget for ImageriesWidget<'_> {
 	fn ui(self, ui: &mut Ui) -> Response {
-		let mut mem = ImageriesMemory::load_or_default(ui.ctx(), Id::from("imagery_settings"));
+		let id = Id::from("imagery_settings");
+		let mut mem = ImageriesMemory::load_or_default(ui.ctx(), id);
 		let imageries = self.imageries.read();
 
 		TopBottomPanel::top("top_panel").show_inside(ui, |ui| {
@@ -123,7 +124,7 @@ impl Widget for ImageriesWidget<'_> {
 			})
 			.response;
 
-		mem.store(ui.ctx(), Id::from("imagery_settings"));
+		mem.store(ui.ctx(), id);
 
 		response
 	}

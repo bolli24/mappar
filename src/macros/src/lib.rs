@@ -10,17 +10,16 @@ pub fn memory_derive(input: TokenStream) -> TokenStream {
 	let name = &ast.ident;
 
 	let expanded = quote! {
-		use egui::{Context, Id};
 		impl Memory for #name {
-			fn load_or_default(ctx: &Context, id: Id) -> Self {
+			fn load_or_default(ctx: &egui::Context, id: egui::Id) -> Self {
 				ctx.data_mut(|d| d.get_persisted_mut_or(id, Self::default()).clone())
 			}
 
-			fn load(ctx: &Context, id: Id) -> Option<Self> {
+			fn load(ctx: &egui::Context, id: egui::Id) -> Option<Self> {
 				ctx.data_mut(|d| d.get_persisted(id))
 			}
 
-			fn store(self, ctx: &Context, id: Id) {
+			fn store(self, ctx: &egui::Context, id: egui::Id) {
 				ctx.data_mut(|d| d.insert_persisted(id, self));
 			}
 		}
@@ -35,17 +34,16 @@ pub fn temp_memory_derive(input: TokenStream) -> TokenStream {
 	let name = &ast.ident;
 
 	let expanded = quote! {
-		use egui::{Context, Id};
 		impl TempMemory for #name {
-			fn load_or_default(ctx: &Context, id: Id) -> Self {
+			fn load_or_default(ctx: &egui::Context, id: egui::Id) -> Self {
 				ctx.data_mut(|d| d.get_temp_mut_or(id, Self::default()).clone())
 			}
 
-			fn load(ctx: &Context, id: Id) -> Option<Self> {
+			fn load(ctx: &egui::Context, id: egui::Id) -> Option<Self> {
 				ctx.data_mut(|d| d.get_temp(id))
 			}
 
-			fn store(self, ctx: &Context, id: Id) {
+			fn store(self, ctx: &egui::Context, id: egui::Id) {
 				ctx.data_mut(|d| d.insert_temp(id, self));
 			}
 		}

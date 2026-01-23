@@ -3,7 +3,7 @@ use crate::api::client::OsmClient;
 use crate::ui::memory::TempMemory;
 use crate::ui::messages::Messages;
 use crate::{message_error, message_info, spawn_task};
-use egui::{Response, Ui, Widget};
+use egui::{Id, Response, Ui, Widget};
 use mappar_macros::TempMemory;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
