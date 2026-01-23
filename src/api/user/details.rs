@@ -39,19 +39,15 @@ struct ContributorTerms {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::api::client::Error;
-	use reqwest::StatusCode;
+	use crate::api::auth::OsmAuthToken;
+	use dotenvy_macro::dotenv;
 
 	#[tokio::test]
 	async fn get_user_details() {
-		let client = OsmClient::new(None, None);
-		let auth_error = client.get_user_details().await.unwrap_err();
+		let client = OsmClient::new(Some(OsmAuthToken(dotenv!("TEST_ACCOUNT_TOKEN").to_owned())), None);
+		let user_details = client.get_user_details().await.unwrap();
 
-		assert!(match auth_error {
-			Error::Api(StatusCode::UNAUTHORIZED, message) => {
-				message == "Couldn't authenticate you"
-			}
-			_ => false,
-		});
+		println!("{:?}", user_details);
+		assert_eq!(user_details.display_name, "mappar_test".to_owned());
 	}
 }

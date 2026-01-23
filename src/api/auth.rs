@@ -6,7 +6,6 @@ use oauth2::{
 	AuthUrl, AuthorizationCode, ClientId, CsrfToken, EndpointNotSet, EndpointSet, PkceCodeChallenge, RedirectUrl,
 	Scope, TokenResponse, TokenUrl,
 };
-use serde::Deserialize;
 use url::Url;
 
 #[derive(Clone)]
@@ -121,7 +120,7 @@ pub async fn login() -> anyhow::Result<String> {
 	use wasm_bindgen::prelude::*;
 	use web_sys::{BroadcastChannel, MessageEvent, window};
 
-	#[derive(Deserialize)]
+	#[derive(serde::Deserialize)]
 	struct OAuthCallbackMessage {
 		code: String,
 		state: String,
