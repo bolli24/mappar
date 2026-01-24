@@ -1,4 +1,5 @@
 use super::imagery_widget::ImageriesWidget;
+use super::input::{Command, KeyBinds};
 use super::layer_list::Layers;
 use super::map_widget::MapWidget;
 use super::map_widget::css::Styles;
@@ -16,7 +17,7 @@ use crate::ui::map_widget::map_memory::MapMemory;
 use crate::{dbgtxt, unreachable_log};
 #[cfg(not(target_arch = "wasm32"))]
 use directories::ProjectDirs;
-use egui::{Id, Modifiers, ScrollArea, Sides, Widget, Window};
+use egui::{Id, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
 use statig::prelude::{IntoStateMachineExt, StateMachine};
 use std::sync::Arc;
@@ -51,7 +52,8 @@ pub struct MyApp {
 	messages: Messages,
 	imagery_settings: bool,
 	#[cfg(not(target_arch = "wasm32"))]
-	project_dirs: directories::ProjectDirs,
+	project_dirs: ProjectDirs,
+	key_binds: KeyBinds,
 	map_state: StateMachine<MapStateMachine>,
 	backend: String,
 	no_cache: bool,
@@ -151,11 +153,14 @@ impl MyApp {
 			imagery_settings: false,
 			#[cfg(not(target_arch = "wasm32"))]
 			project_dirs,
+			key_binds: KeyBinds::default(),
 			map_state: MapStateMachine::state_machine(MapStateMachine::default()),
 			backend,
 			no_cache,
 			osm_client,
 		};
+
+		app.key_binds = KeyBinds::new(&mut app.messages);
 
 		app.layers.0.push_back(Layer("EsriWorldImagery".into(), true));
 		app.layers.0.push_back(Layer("standard".into(), true));
@@ -197,38 +202,24 @@ impl MyApp {
 
 impl eframe::App for MyApp {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+		self.key_binds.update_pressed_commands(ctx);
+
 		let maybe_new_map_data = self.pending_map_data.lock().take();
 		if let Some(new_map_data) = maybe_new_map_data {
 			self.map_data = new_map_data;
 		}
 
 		#[cfg(not(target_arch = "wasm32"))]
-		let mut reload_styles = false; // This is needed because we can't reload in the input closure
+		let mut reload_styles = false;
 		#[cfg(not(target_arch = "wasm32"))]
-		ctx.input(|input| {
-			for e in &input.events {
-				if let egui::Event::Key {
-					pressed: true,
-					key: egui::Key::F5,
-					repeat: false,
-					modifiers: Modifiers::NONE,
-					..
-				} = e
-				{
-					reload_styles = true;
-				}
-				if let egui::Event::Key {
-					pressed: true,
-					key: egui::Key::F3,
-					repeat: false,
-					modifiers: Modifiers::NONE,
-					..
-				} = e
-				{
-					self.debug_panel = !self.debug_panel;
-				}
+		{
+			if self.key_binds.pressed_once(Command::ReloadStyles) {
+				reload_styles = true;
 			}
-		});
+			if self.key_binds.pressed_once(Command::ToggleDebugPanel) {
+				self.debug_panel = !self.debug_panel;
+			}
+		}
 
 		dbgtxt!(self.debug_text, "History count: {}", self.history.len());
 
@@ -312,6 +303,7 @@ impl eframe::App for MyApp {
 				&mut update_edit_mode,
 				&mut self.map_memory,
 				&mut self.map_data,
+				&self.key_binds,
 			));
 		});
 
@@ -347,7 +339,13 @@ impl eframe::App for MyApp {
 			.width_range(80.0..=800.0)
 			.default_width(200.0)
 			.show(ctx, |ui| {
-				LayerList::new(&mut self.layers, &self.imageries.read(), &mut self.imagery_settings).ui(ui);
+				LayerList::new(
+					&mut self.layers,
+					&self.imageries.read(),
+					&mut self.imagery_settings,
+					&self.key_binds,
+				)
+				.ui(ui);
 				ui.separator();
 				KeyValueTable::new(
 					&mut self.map_data,
@@ -392,6 +390,7 @@ impl eframe::App for MyApp {
 					self.messages.clone(),
 					&mut self.map_state,
 					update_edit_mode,
+					&self.key_binds,
 				))
 				.rect;
 			rect.min += egui::Vec2::new(5.0, 5.0);
@@ -422,37 +421,33 @@ impl eframe::App for MyApp {
 				))
 			});
 
-		ctx.input(|i| {
-			if i.modifiers == Modifiers::CTRL | Modifiers::COMMAND {
-				let change_result = if i.key_pressed(egui::Key::Z) {
-					self.history.undo(&mut self.map_data).or_else(|| {
-						self.messages.add("Nothing to undo.");
-						None
-					})
-				} else if i.key_pressed(egui::Key::Y) {
-					self.history.redo(&mut self.map_data).or_else(|| {
-						self.messages.add("Nothing to redo.");
-						None
-					})
-				} else {
-					None
-				};
+		let change_result = if self.key_binds.pressed_once(Command::Undo) {
+			self.history.undo(&mut self.map_data).or_else(|| {
+				self.messages.add("Nothing to undo.");
+				None
+			})
+		} else if self.key_binds.pressed_once(Command::Redo) {
+			self.history.redo(&mut self.map_data).or_else(|| {
+				self.messages.add("Nothing to redo.");
+				None
+			})
+		} else {
+			None
+		};
 
-				if let Some(change_result) = change_result {
-					match change_result {
-						Ok(ids) => {
-							self.map_memory.selection.elements.clear();
-							for id in ids {
-								self.map_memory.selection.elements.insert(id);
-							}
-						}
-						Err(_) => {
-							unreachable_log!("Undo/Redo should not error.");
-						}
+		if let Some(change_result) = change_result {
+			match change_result {
+				Ok(ids) => {
+					self.map_memory.selection.elements.clear();
+					for id in ids {
+						self.map_memory.selection.elements.insert(id);
 					}
 				}
+				Err(_) => {
+					unreachable_log!("Undo/Redo should not error.");
+				}
 			}
-		});
+		}
 
 		#[allow(clippy::cast_precision_loss)]
 		{

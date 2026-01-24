@@ -16,6 +16,7 @@ use crate::map::element::Element;
 use crate::map::latlon::{CIRCUMFERENCE_EARTH, LatLon, latlon};
 use crate::map::map_data::{EditHistory, MapData};
 use crate::ui::debug_text::DebugText;
+use crate::ui::input::KeyBinds;
 use crate::util::convert::{ToDVec2, ToLyonPoint, ToPos2};
 use crate::util::quick_set::QuickSet;
 use css::Styles;
@@ -63,6 +64,7 @@ pub struct MapWidget<'a> {
 	messages: Messages,
 	map_state: &'a mut StateMachine<MapStateMachine>,
 	update_edit_mode: Option<EditMode>,
+	key_binds: &'a KeyBinds,
 }
 
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
@@ -190,6 +192,7 @@ impl Widget for MapWidget<'_> {
 						messages: self.messages.clone(),
 						update_edit_mode: self.update_edit_mode,
 						debug_text: self.debug_text.as_deref_mut(),
+						key_binds: &self.key_binds,
 					};
 
 					self.map_state.handle_with_context(&(), &mut context);

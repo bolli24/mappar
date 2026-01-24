@@ -5,6 +5,7 @@ use egui::{Color32, FontId, Frame, RichText, Widget};
 use egui_extras::{Column, TableBuilder};
 
 use crate::imagery::{Imageries, ImageryId};
+use crate::ui::input::{Command, KeyBinds};
 
 pub struct Layer(pub ImageryId, pub bool);
 
@@ -31,6 +32,7 @@ pub struct LayerList<'a> {
 	layers: &'a mut Layers,
 	imageries: &'a Imageries,
 	imagery_settings: &'a mut bool,
+	key_binds: &'a KeyBinds,
 }
 
 impl Widget for LayerList<'_> {
@@ -92,7 +94,7 @@ impl Widget for LayerList<'_> {
 					if ui
 						.button(RichText::new(egui_phosphor::bold::ARROWS_COUNTER_CLOCKWISE).size(20.0))
 						.clicked() || (ui.memory(|m| m.focused().is_none())
-						&& ui.input(|i| i.key_pressed(egui::Key::Backtick)))
+						&& self.key_binds.pressed(Command::RotateImageries))
 					{
 						self.layers.rotate();
 					}

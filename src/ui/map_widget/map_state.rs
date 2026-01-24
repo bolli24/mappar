@@ -6,6 +6,7 @@ use statig::prelude::*;
 use super::{map_memory::MapMemory, render::DetailedElement, view::View};
 use crate::map::element::{Element, ElementId, ElementType, is_closed};
 use crate::map::map_data::EditHistory;
+use crate::ui::input::{Command, KeyBinds};
 use crate::{
 	dbgtxt,
 	map::map_data::MapData,
@@ -54,6 +55,7 @@ pub struct Context<'a> {
 	pub messages: Messages,
 	pub update_edit_mode: Option<EditMode>,
 	pub debug_text: Option<&'a mut DebugText>,
+	pub key_binds: &'a KeyBinds,
 }
 
 #[state_machine(initial = "State::initial()", state(derive(Debug)), superstate(derive(Debug)))]
@@ -119,6 +121,7 @@ impl MapStateMachine {
 			debug_text,
 			map_data,
 			history,
+			key_binds,
 			..
 		} = context;
 
@@ -216,7 +219,7 @@ impl MapStateMachine {
 			mem.selection.elements.clear();
 		}
 
-		if !mem.selection.elements.is_empty() && response.ctx.input(|i| i.key_pressed(Key::X)) {
+		if !mem.selection.elements.is_empty() && key_binds.pressed(Command::Delete) {
 			let edit = map_data.delete(&mem.selection.elements);
 			history.edit(map_data, edit).expect("Deleting must not error.");
 			mem.selection.clear(map_data);
@@ -327,7 +330,7 @@ impl MapStateMachine {
 			..
 		} = context;
 
-		if response.clicked_by(PointerButton::Secondary) || response.ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+		if response.clicked_by(PointerButton::Secondary) || response.ctx.input(|i| i.key_pressed(Key::Escape)) {
 			return Transition(State::Draw {
 				first_node_or_way: None,
 			});
