@@ -147,8 +147,8 @@ fn init_logger() {
 	#[cfg(target_os = "windows")]
 	update_log_time(&latest_file).expect("Failed to update log file time");
 
-	// Remove annoying messages of wgpu 22.1.0
-	let config = ConfigBuilder::new().build();
+	// Remove annoying messages of wgpu
+	let config = ConfigBuilder::new().add_filter_ignore_str("wgpu").build();
 
 	let log_level = if cfg!(debug_assertions) {
 		LevelFilter::Info
