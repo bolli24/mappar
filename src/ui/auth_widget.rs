@@ -103,7 +103,7 @@ impl Widget for AuthWidget {
 							let mut client_guard = osm_client.lock().await;
 							store_token(&mut client_guard, &token, &mut messages);
 							client_guard.auth = Some(OsmAuthToken(token));
-							message_info!(messages, "Locked in successfully.");
+							message_info!(messages, "Logged in successfully.");
 							drop(client_guard);
 							fetch_user_info(osm_client, &mut messages).await;
 						}
