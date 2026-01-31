@@ -24,4 +24,3 @@ pages:
 desktop:
   script:
     - cargo test
-    - cargo build --bin mappar --release
