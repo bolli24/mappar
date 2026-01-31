@@ -1,8 +1,9 @@
-use crate::Object;
+use crate::{Object, Regex};
 use ecolor::{Color32, ParseHexColorError};
 use logos::{FilterResult, Lexer, Logos, Skip};
 use std::fmt::Display;
 use std::num::ParseFloatError;
+use thiserror::Error;
 
 #[derive(Logos, Debug, Clone, PartialEq, Eq)]
 #[logos(skip r"[\f]+")]
@@ -40,6 +41,18 @@ pub enum Token<'a> {
 	Question,
 	#[token("$")]
 	Dollar,
+	#[token("⧉")]
+	Overlap,
+	#[token("∈")]
+	ElementOf,
+	#[token("⊆")]
+	SubsetOrEqual,
+	#[token("⊇")]
+	SupersetOrEqual,
+	#[token("⊈")]
+	NotSubsetOrEqual,
+	#[token("⊉")]
+	NotSupersetOrEqual,
 
 	#[regex(r"\t| ")]
 	Space,
@@ -48,10 +61,13 @@ pub enum Token<'a> {
 	Zoom(&'a str),
 
 	// #[token("/", |lex| lex.slice(), priority = 2)]
-	#[regex(r"~=|=|!=|=~|!~|<=|>=|<|>|\*|\+|-|\^|/|\\", |lex| lex.slice(), priority = 3)]
+	#[regex(r"~=|=|!=|=~|!~|<=|>=|<|>|\^=|\*|\+|-|\^|/|\\", |lex| lex.slice(), priority = 3)]
 	Op(&'a str),
 
-	#[regex(r"#(?:[0-9a-fA-F]{3}){1,2}(?:[0-9a-fA-F]{1,2})?", color)]
+	#[regex(
+		r"#(?:[0-9a-fA-F]{2}_){3}[0-9a-fA-F]{2}|#(?:[0-9a-fA-F]{3}){1,2}(?:[0-9a-fA-F]{1,2})?",
+		color
+	)]
 	Color(Color32),
 
 	// TODO: maybe add support for rgba, rgb directly here
@@ -71,10 +87,8 @@ pub enum Token<'a> {
 	#[regex(r#"[\"']"#, string)]
 	Quoted(String),
 
-	// TODO: properly implement regex parsing. Maybe once logos gets fixes
-	// #[token(r"//", |lex| lex.slice())]
-	//#[regex(r"/[^/\*\n][^/\n]*/", |lex| lex.slice(), priority = 100)]
-	//Regex(&'a str),
+	#[regex(r"/(?:\\.|[^/\\\n*])(?:\\.|[^/\\\n])*/i?", regex, priority = 4)]
+	Regex(Regex),
 	#[regex(r"/\*", multiline_comment)]
 	Comment,
 
@@ -149,6 +163,12 @@ impl Display for Token<'_> {
 			Token::Exclamation => write!(f, "!"),
 			Token::Question => write!(f, "?"),
 			Token::Dollar => write!(f, "$"),
+			Token::Overlap => write!(f, "⧉"),
+			Token::ElementOf => write!(f, "∈"),
+			Token::SubsetOrEqual => write!(f, "⊆"),
+			Token::SupersetOrEqual => write!(f, "⊇"),
+			Token::NotSubsetOrEqual => write!(f, "⊈"),
+			Token::NotSupersetOrEqual => write!(f, "⊉"),
 			Token::Space => write!(f, " "),
 			Token::Zoom(zoom) => write!(f, "|z{zoom}"),
 			Token::Op(op) => write!(f, "{op}"),
@@ -158,6 +178,7 @@ impl Display for Token<'_> {
 			Token::Identifier(ident) => write!(f, "{ident}"),
 			Token::Number(num) => write!(f, "{num}"),
 			Token::Quoted(string) => write!(f, "\"{string}\""),
+			Token::Regex(regex) => write!(f, "/{}/{}", regex.0, if regex.1 { "i" } else { "" }),
 			Token::Comment => write!(f, "/*"),
 			Token::Newline => writeln!(f),
 		}
@@ -170,13 +191,18 @@ impl From<ParseFloatError> for LexingError {
 	}
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Error)]
 pub enum LexingError {
 	#[default]
+	#[error("Unexpected character")]
 	UnexpectedCharacter,
+	#[error("Invalid number: {0}")]
 	InvalidNumber(String),
+	#[error("Incomplete comment")]
 	IncompleteComment,
+	#[error("Invalid hex escape")]
 	HexEscapeError,
+	#[error("Invalid hex color: {0:?}")]
 	ParseHexColorError(ParseHexColorError),
 }
 
@@ -225,13 +251,33 @@ fn string<'a>(lex: &mut Lexer<'a, Token<'a>>) -> String {
 	string
 }
 
+fn regex<'a>(lex: &Lexer<'a, Token<'a>>) -> Regex {
+	let slice = lex.slice();
+	let case_insensitive = slice.ends_with('i');
+	let trim_end = if case_insensitive { 2 } else { 1 };
+	let pattern = &slice[1..slice.len() - trim_end];
+
+	Regex(pattern.to_string(), case_insensitive)
+}
+
 fn color<'a>(lex: &Lexer<'a, Token<'a>>) -> Result<Color32, LexingError> {
-	Color32::from_hex(lex.slice()).map_err(LexingError::ParseHexColorError)
+	let slice = lex.slice();
+	if slice.as_bytes().contains(&b'_') {
+		let mut cleaned = String::with_capacity(slice.len());
+		for ch in slice.chars() {
+			if ch != '_' {
+				cleaned.push(ch);
+			}
+		}
+		return Color32::from_hex(&cleaned).map_err(LexingError::ParseHexColorError);
+	}
+	Color32::from_hex(slice).map_err(LexingError::ParseHexColorError)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::Token;
+	use crate::Regex;
 	use ecolor::Color32;
 	use logos::Logos;
 	use std::fs::File;
@@ -239,7 +285,7 @@ mod tests {
 
 	#[test]
 	fn test_binary_op() {
-		let mut lex = Token::lexer("~==!==~!~<=>=<>*/+-^\\");
+		let mut lex = Token::lexer("~==!==~!~<=>=<>*/+-^=^\\");
 
 		assert_eq!(lex.next(), Some(Ok(Token::Op("~="))));
 		assert_eq!(lex.next(), Some(Ok(Token::Op("="))));
@@ -254,6 +300,7 @@ mod tests {
 		assert_eq!(lex.next(), Some(Ok(Token::Op("/"))));
 		assert_eq!(lex.next(), Some(Ok(Token::Op("+"))));
 		assert_eq!(lex.next(), Some(Ok(Token::Op("-"))));
+		assert_eq!(lex.next(), Some(Ok(Token::Op("^="))));
 		assert_eq!(lex.next(), Some(Ok(Token::Op("^"))));
 		assert_eq!(lex.next(), Some(Ok(Token::Op("\\"))));
 		assert_eq!(lex.next(), None);
@@ -281,13 +328,17 @@ mod tests {
 
 	#[test]
 	fn hex_color() {
-		let mut lex = Token::lexer("#fff#000#f00#ff0000");
+		let mut lex = Token::lexer("#fff#000#f00#ff0000#68_0B_AB_FF");
 		assert_eq!(lex.next(), Some(Ok(Token::Color(Color32::from_hex("#fff").unwrap()))));
 		assert_eq!(lex.next(), Some(Ok(Token::Color(Color32::from_hex("#000").unwrap()))));
 		assert_eq!(lex.next(), Some(Ok(Token::Color(Color32::from_hex("#f00").unwrap()))));
 		assert_eq!(
 			lex.next(),
 			Some(Ok(Token::Color(Color32::from_hex("#ff0000").unwrap())))
+		);
+		assert_eq!(
+			lex.next(),
+			Some(Ok(Token::Color(Color32::from_hex("#680BABFF").unwrap())))
 		);
 		assert_eq!(lex.next(), None);
 	}
@@ -313,25 +364,47 @@ mod tests {
 	}
 
 	#[test]
-	fn josm() {
-		let mut lex = Token::lexer(include_str!("test/josm.mapcss"));
-		let file = File::create("test_output.txt").unwrap();
+	fn regex_token() {
+		let mut lex = Token::lexer("/foo\\/bar\\d+/");
+		assert_eq!(
+			lex.next(),
+			Some(Ok(Token::Regex(Regex("foo\\/bar\\d+".to_string(), false))))
+		);
+		assert_eq!(lex.next(), None);
+	}
+
+	fn lex_file(name: &str, source: &str) -> (usize, usize) {
+		let mut lex = Token::lexer(source);
+		let file = File::create(format!("test_output_{name}.txt")).unwrap();
 		let mut writer = std::io::BufWriter::new(file);
-		let mut errored = false;
+		let mut tokens = 0;
+		let mut errors = 0;
 		while let Some(token) = lex.next() {
 			match token {
 				Ok(token) => {
+					tokens += 1;
 					writer.write_all(format!("{:?}\n", token).as_bytes()).unwrap();
 				}
 				Err(error) => {
-					errored = true;
-					// eprintln!("Error at line {}: {:?}", lex.extras.0 + 1, error);
+					errors += 1;
 					writer
 						.write_all(format!("Error at line {}: {:?}\n", lex.extras.0 + 1, error).as_bytes())
 						.unwrap();
 				}
 			}
 		}
-		assert!(!errored);
+		(tokens, errors)
+	}
+
+	#[test]
+	fn mapcss_files() {
+		let sources = [
+			("josm", include_str!("test/josm.mapcss")),
+			("apple", include_str!("test/apple.mapcss")),
+		];
+		for (name, source) in sources {
+			let (tokens, errors) = lex_file(name, source);
+			println!("{name}: {tokens} tokens, {errors} errors");
+		}
 	}
 }

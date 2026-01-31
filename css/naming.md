@@ -1,0 +1,10 @@
+| JOSM term (per `css/grammar.bnf`)                | Rust MapCSS type (`css/src/lib.rs`)                             | Notes                                                                                    |
+|--------------------------------------------------|-----------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| `ruleset`                                        | `CSS(pub Vec<Styleset>)`                                        | Whole stylesheet vs root collection of stylesets.                                        |
+| `rule` (selector + declarations)                 | `Styleset { selectors: Selectors, rules: Vec<Rule> }`           | Rust splits declaration block into `Rule::Style` / `Rule::ClassAssign`.                  |
+| `selectors` / `uSelectors` (comma-separated)     | `Union(pub Vec<Intersection>)`                                  | Intersection list stored in `Union`.                                                     |
+| `selector` / `intersection` (space-concatenated) | `Intersection(pub Vec<Selector>, Option<Layer>)`                | Optional layer stored separately.                                                        |
+| `subselector`                                    | `SubSelector::Object / Class / PseudoClass / …`                 | Includes custom variants for settings; negated pseudo-classes mis-labeled as `NotClass`. |
+| `child`                                          | `Selector::ChildRelation(ChildRelation)`                        | Holds two boxed `SubSelector`s plus optional `Link`.                                     |
+| `test` / `condition`                             | `Condition::{Binary, Regex, Tag, Truthy, Falsy, Function, Not}` | Different enum names; regex treated as separate variant.                                 |
+| `style`                                          | `CssStyle { key, specifier }` within `Rule::Style`              | Only a handful of property keys implemented downstream.                                  |

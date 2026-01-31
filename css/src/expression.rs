@@ -1,7 +1,7 @@
-use std::fmt::{Debug, Display};
-
+use crate::Spanned;
 use crate::{BinaryOp, Function, UnaryOp};
-use crate::{SimpleSpan, Spanned};
+use ecolor::Color32;
+use std::fmt::{Debug, Display};
 
 // TODO: replace Number etc with Value
 #[derive(Clone)]
@@ -9,6 +9,7 @@ pub enum Expression {
 	Number(f64),
 	Identifier(String),
 	String(String),
+	Color(Color32),
 	Bool(bool),
 	Function(Function),
 	Binary(Box<Spanned<Self>>, BinaryOp, Box<Spanned<Self>>),
@@ -21,6 +22,7 @@ pub enum Value {
 	Number(f64),
 	Identifier(String),
 	String(String),
+	Color(Color32),
 	Bool(bool),
 }
 
@@ -29,6 +31,7 @@ pub enum ValueType {
 	Number,
 	Identifier,
 	String,
+	Color,
 	Bool,
 }
 
@@ -39,6 +42,7 @@ impl Value {
 			Self::Number(_) => ValueType::Number,
 			Self::Identifier(_) => ValueType::Identifier,
 			Self::String(_) => ValueType::String,
+			Self::Color(_) => ValueType::Color,
 			Self::Bool(_) => ValueType::Bool,
 		}
 	}
@@ -77,6 +81,14 @@ impl Value {
 			panic!("Expected value to be bool: {self:?}");
 		}
 	}
+
+	#[must_use]
+	pub fn ident_or_string(self) -> Option<String> {
+		match self {
+			Self::String(string) | Self::Identifier(string) => Some(string),
+			_ => None,
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,6 +112,7 @@ impl Display for Type {
 			Self::Expression(expression_type) | Self::Function(expression_type) => match expression_type {
 				ExpressionType::Number => "number",
 				ExpressionType::String => "string",
+				ExpressionType::Color => "color",
 				ExpressionType::Bool => "boolean",
 				ExpressionType::Regex => "regular expression",
 				ExpressionType::Unknown => "unknown",
@@ -115,40 +128,27 @@ impl Display for Type {
 pub enum ExpressionType {
 	Number,
 	String,
+	Color,
 	Bool,
 	Regex,
 	Unknown,
 }
 
-#[derive(Debug, Clone)]
-pub struct Error(pub Reason, pub SimpleSpan);
-
-#[derive(thiserror::Error, Debug, Clone)]
-pub enum Reason {}
-
 impl Expression {
-	pub fn eval(&self) -> Result<Value, Error> {
-		let value = match self {
-			Self::Number(number) => Value::Number(*number),
-			Self::String(string) => Value::String(string.clone()),
-			Self::Bool(bool) => Value::Bool(*bool),
-			Self::Identifier(identifier) => Value::Identifier(identifier.clone()),
-			_ => todo!(),
-		};
-		Ok(value)
-	}
-
 	#[must_use]
 	pub fn get_type(&self) -> ExpressionType {
 		match self {
 			Self::Number(_) => ExpressionType::Number,
 			Self::Identifier(_) => ExpressionType::Unknown,
 			Self::String(_) => ExpressionType::String,
+			Self::Color(_) => ExpressionType::Color,
 			Self::Bool(_) => ExpressionType::Bool,
 			Self::Function(function) => function.get_return_type(),
 			Self::Binary(a, op, b) => {
-				let a_type = a.0.get_type();
-				let b_type = b.0.get_type();
+				let Spanned(a_expr, _) = a.as_ref();
+				let Spanned(b_expr, _) = b.as_ref();
+				let a_type = a_expr.get_type();
+				let b_type = b_expr.get_type();
 				if a_type == ExpressionType::Unknown || b_type == ExpressionType::Unknown {
 					return ExpressionType::Unknown;
 				}
@@ -163,6 +163,13 @@ impl Expression {
 					BinaryOp::ListMembership => todo!(),
 					BinaryOp::RegexMatch => {
 						if a_type == ExpressionType::String && b_type == ExpressionType::Regex {
+							ExpressionType::Bool
+						} else {
+							ExpressionType::Unknown
+						}
+					}
+					BinaryOp::StartsWith => {
+						if a_type == ExpressionType::String && b_type == ExpressionType::String {
 							ExpressionType::Bool
 						} else {
 							ExpressionType::Unknown
@@ -185,7 +192,8 @@ impl Expression {
 				}
 			}
 			Self::Unary(value, op) => {
-				let value_type = value.0.get_type();
+				let Spanned(value_expr, _) = value.as_ref();
+				let value_type = value_expr.get_type();
 				match op {
 					UnaryOp::Not if value_type == ExpressionType::Bool => ExpressionType::Bool,
 					UnaryOp::Neg if value_type == ExpressionType::Number => ExpressionType::Number,
@@ -200,12 +208,20 @@ impl Display for Expression {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Self::Number(n) => write!(f, "{n}"),
-			Self::Identifier(name) => write!(f, "{name}"),
+			Self::Identifier(name) => write!(f, "ident:{name}"),
 			Self::String(string) => write!(f, "\"{string}\""),
+			Self::Color(color) => write!(f, "{color:?}"),
 			Self::Bool(bool) => write!(f, "{bool}"),
 			Self::Function(function) => write!(f, "{function}"),
-			Self::Binary(a, op, b) => write!(f, "({} {} {})", a.0, op, b.0),
-			Self::Unary(expr, op) => write!(f, "{op}{}", expr.0),
+			Self::Binary(a, op, b) => {
+				let Spanned(a_expr, _) = a.as_ref();
+				let Spanned(b_expr, _) = b.as_ref();
+				write!(f, "({} {} {})", a_expr, op, b_expr)
+			}
+			Self::Unary(expr, op) => {
+				let Spanned(expr_inner, _) = expr.as_ref();
+				write!(f, "{op}{}", expr_inner)
+			}
 		}
 	}
 }

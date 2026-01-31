@@ -89,7 +89,7 @@ impl MyApp {
 			..Default::default()
 		};
 
-		let messages = Messages::new();
+		let mut messages = Messages::new();
 
 		#[cfg(not(target_arch = "wasm32"))]
 		let project_dirs = Self::project_dirs();
@@ -137,7 +137,7 @@ impl MyApp {
 			map_data: MapData::new(),
 			history: EditHistory::new(),
 			pending_map_data,
-			styles: get_default_styles(cc.egui_ctx.tex_manager()),
+			styles: get_default_styles(cc.egui_ctx.tex_manager(), &mut messages),
 			imagery_fetcher,
 			imageries,
 			layers: Layers::new(),
@@ -310,7 +310,7 @@ impl eframe::App for MyApp {
 		#[cfg(not(target_arch = "wasm32"))]
 		if reload_styles {
 			info!("Reloading MapCSS styles.");
-			self.styles = get_default_styles(ctx.tex_manager());
+			self.styles = get_default_styles(ctx.tex_manager(), &mut self.messages);
 		}
 
 		egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {

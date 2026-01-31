@@ -2,7 +2,9 @@ use std::{collections::HashSet, fmt::Display};
 
 use ariadne::{Color, Config, Label, Report, ReportKind, Source};
 use log::warn;
-use mappar_css::{EvalError, SimpleSpan, Specifier};
+use mappar_css::{SimpleSpan, Specifier};
+
+use crate::ui::map_widget::css::eval::EvalError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -15,8 +17,8 @@ pub enum Error {
 	#[error("Unknown property: {0}")]
 	UnknownProperty(String),
 
-	#[error("Couldn't evaluate expression: {}", .0.0)]
-	EvaluationFailed(EvalError),
+	#[error(transparent)]
+	EvaluationFailed(#[from] EvalError),
 }
 
 pub struct Reporting {

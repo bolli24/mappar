@@ -1,17 +1,17 @@
+use crate::map::element::{Element, ElementId, MapElement};
 use crate::ui::map_widget::style::Style as MapStyle;
 use context::StyleContext;
 use error::{Error, Reporting};
+use eval::{EvalContext, ExpressionEval};
 use icon::Icon;
 
+use crate::ui::messages::Messages;
 use egui::mutex::RwLock;
 use egui::{Color32, TextureOptions};
 use epaint::{TextureId, TextureManager};
 use log::{error, info};
 use mappar_css::color::get_named_color;
-use mappar_css::eval::ValueType;
 use mappar_css::*;
-
-use crate::map::element::{Element, ElementId, MapElement};
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -19,11 +19,12 @@ use std::sync::Arc;
 
 pub mod context;
 mod error;
+pub mod eval;
 pub mod icon;
 
 // TODO: maybe use sparse set instead of hashmap
 pub struct Styles {
-	css: CSS,
+	rule_set: RuleSet,
 	style_mapping: HashMap<ElementId, MapStyle>,
 	class_assignments: HashMap<Selectors, Vec<String>>,
 	icons: Arc<RwLock<HashMap<String, Icon>>>,
@@ -45,14 +46,16 @@ impl Drop for Styles {
 	}
 }
 
-pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Option<Styles> {
+pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>, messages: &mut Messages) -> Option<Styles> {
 	const PATH: &str = "./assets/styles/default.mapcss";
+
+	let start = web_time::Instant::now();
 
 	info!("Getting default MapCSS styles.");
 	#[cfg(not(target_arch = "wasm32"))]
 	let css_string = std::fs::read_to_string(PATH)
 		.map_err(|err| {
-			error!("Couldn't load default styles ({PATH}): {err:?}");
+			crate::message_error!(messages, "Couldn't load default styles ({PATH}): {err:?}");
 		})
 		.ok()?;
 	#[cfg(target_arch = "wasm32")]
@@ -61,7 +64,7 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 	let fallback_texture = init_fallback_texture(&texture_manager);
 
 	let mut styles = Styles {
-		css: parse_str(&css_string, PATH)?,
+		rule_set: parse_str(&css_string, PATH)?,
 		style_mapping: HashMap::new(),
 		class_assignments: HashMap::new(),
 		icons: Arc::new(RwLock::new(HashMap::new())),
@@ -70,17 +73,19 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 		reporting: RefCell::new(Reporting::new(PATH.to_string(), css_string)),
 	};
 
-	for styleset in &styles.css.0 {
+	for styleset in &styles.rule_set.0 {
 		let mut class_names = Vec::new();
-		for rule in &styleset.rules {
+		for rule in &styleset.declarations {
 			match rule {
-				Rule::ClassAssign(class_name) => {
+				Declaration::ClassAssign(class_name) => {
 					class_names.push(class_name.clone());
 				}
-				Rule::Style(style_rule) => {
+				Declaration::Style(style_rule) => {
 					if style_rule.0.key == "icon-image" {
-						if let Some(file_name) = styles.try_eval_string(&style_rule.0.specifier, &style_rule.0.key) {
-							styles.load_icon(&file_name);
+						if let Specifier::Expression(Spanned(Expression::String(file_name), _)) =
+							&style_rule.0.specifier.0
+						{
+							styles.load_icon(file_name);
 						}
 					}
 				}
@@ -90,6 +95,8 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>) -> Optio
 			styles.class_assignments.insert(styleset.selectors.clone(), class_names);
 		}
 	}
+
+	crate::message_info!(messages, "Loaded styles. Took {:?}.", start.elapsed());
 
 	Some(styles)
 }
@@ -108,9 +115,12 @@ impl Styles {
 	fn create_style(&self, element: &MapElement, context: &StyleContext) -> MapStyle {
 		let mut style = MapStyle::default();
 
-		let stylesets = matching_rules(&self.css, element, context);
+		let stylesets = matching_rules(&self.rule_set, element, context);
 		// TODO: sort styles by specificity
-		for Styleset { rules, .. } in stylesets {
+		for Styleset {
+			declarations: rules, ..
+		} in stylesets
+		{
 			self.apply_rules(element, &mut style, rules, context);
 		}
 
@@ -118,13 +128,13 @@ impl Styles {
 	}
 
 	#[inline]
-	fn apply_rules(&self, element: &MapElement, style: &mut MapStyle, rules: &[Rule], context: &StyleContext) {
+	fn apply_rules(&self, element: &MapElement, style: &mut MapStyle, rules: &[Declaration], context: &StyleContext) {
 		for rule in rules {
 			match rule {
-				Rule::Style(style_rule) => {
+				Declaration::Style(style_rule) => {
 					self.apply_style_rule(element, style, style_rule, context);
 				}
-				Rule::ClassAssign(_) => {}
+				Declaration::ClassAssign(_) => {}
 			}
 		}
 	}
@@ -143,20 +153,25 @@ impl Styles {
 		match key.as_str() {
 			"color" | "colour" => self.try_assign_color(&mut style.color, specifier, key),
 			"fill-color" | "fill-colour" => self.try_assign_color(&mut style.fill_color, specifier, key),
-			"width" | "size" => self.try_assign_number(&mut style.size, specifier, key),
+			"width" | "size" => self.try_assign_number(element, &mut style.size, specifier, key),
 			"icon-image" => {
-				if let Some(icon_file) = self.try_eval_string(specifier, key) {
+				if let Some(icon_file) = self.try_eval_string(element, specifier, key) {
 					style.icon = self.icons.read().get(&icon_file).copied();
 				}
 			}
 			"text" => match &style_rule.0.specifier.0 {
-				Specifier::Named(name) if name == "auto" => style.text.text = element.get_auto_text(),
-				_ => self.try_assign_string(&mut style.text.text, specifier, key),
+				Specifier::Named(name) if name == "auto" => {
+					let text = element.get_auto_text();
+					if !text.is_empty() {
+						style.text.text = text;
+					}
+				}
+				_ => self.try_assign_string(element, &mut style.text.text, specifier, key),
 			},
-			"font-size" => self.try_assign_number(&mut style.text.font_size, specifier, key),
+			"font-size" => self.try_assign_number(element, &mut style.text.font_size, specifier, key),
 			"text-color" => self.try_assign_color(&mut style.text.color, specifier, key),
 			"text-position" => self.try_assign_enum(&mut style.text.position, specifier, key),
-			"icon-rotation" => self.try_assing_rotation(&mut style.icon_rotation, specifier, key),
+			"icon-rotation" => self.try_assing_rotation(element, &mut style.icon_rotation, specifier, key),
 			name => self.error(Error::UnknownProperty(name.to_string()), style_rule.1),
 		}
 	}
@@ -194,24 +209,24 @@ impl Styles {
 	}
 
 	#[inline]
-	fn try_assing_rotation(&self, number: &mut f32, specifier: &Spanned<Specifier>, key: &str) {
+	fn try_assing_rotation(&self, element: &MapElement, number: &mut f32, specifier: &Spanned<Specifier>, key: &str) {
 		if let Specifier::Rotation(rotation) = specifier.0 {
 			*number = rotation as f32;
 		} else {
-			self.try_eval_number(specifier, key);
+			self.try_eval_number(element, specifier, key);
 		}
 	}
 
 	#[inline]
-	fn try_assign_number(&self, number: &mut f32, specifier: &Spanned<Specifier>, key: &str) {
-		if let Some(value) = self.try_eval_number(specifier, key) {
+	fn try_assign_number(&self, element: &MapElement, number: &mut f32, specifier: &Spanned<Specifier>, key: &str) {
+		if let Some(value) = self.try_eval_number(element, specifier, key) {
 			*number = value as f32;
 		}
 	}
 
 	#[inline]
-	fn try_assign_string(&self, string: &mut String, specifier: &Spanned<Specifier>, key: &str) {
-		if let Some(value) = self.try_eval_string(specifier, key) {
+	fn try_assign_string(&self, element: &MapElement, string: &mut String, specifier: &Spanned<Specifier>, key: &str) {
+		if let Some(value) = self.try_eval_string(element, specifier, key) {
 			*string = value;
 		}
 	}
@@ -224,15 +239,29 @@ impl Styles {
 	}
 
 	#[inline]
-	fn try_eval_number(&self, specifier: &Spanned<Specifier>, key: &str) -> Option<f64> {
-		self.try_eval_as(specifier, key, ValueType::Number)
+	fn try_eval_number(&self, element: &MapElement, specifier: &Spanned<Specifier>, key: &str) -> Option<f64> {
+		self.try_eval_as(element, specifier, key, ValueType::Number)
 			.map(Value::unrwap_number)
 	}
 
 	#[inline]
-	fn try_eval_string(&self, specifier: &Spanned<Specifier>, key: &str) -> Option<String> {
-		self.try_eval_as(specifier, key, ValueType::String)
+	fn try_eval_string(&self, element: &MapElement, specifier: &Spanned<Specifier>, key: &str) -> Option<String> {
+		self.try_eval_as(element, specifier, key, ValueType::String)
 			.map(Value::unwrap_string)
+	}
+
+	fn try_eval_ident_or_string(
+		&self,
+		element: &MapElement,
+		specifier: &Spanned<Specifier>,
+		key: &str,
+	) -> Option<String> {
+		if let Specifier::Expression(Spanned(Expression::Identifier(string), _)) = &specifier.0 {
+			Some(string.clone())
+		} else {
+			self.try_eval_as(element, specifier, key, ValueType::String)
+				.map(Value::unwrap_string)
+		}
 	}
 
 	#[inline]
@@ -250,9 +279,16 @@ impl Styles {
 		}
 	}
 
-	fn try_eval_as(&self, specifier: &Spanned<Specifier>, key: &str, expr_type: ValueType) -> Option<Value> {
+	fn try_eval_as(
+		&self,
+		element: &MapElement,
+		specifier: &Spanned<Specifier>,
+		key: &str,
+		expr_type: ValueType,
+	) -> Option<Value> {
 		if let Specifier::Expression(expr) = &specifier.0 {
-			match expr.0.eval() {
+			let ctx = EvalContext { element };
+			match expr.0.eval(&ctx) {
 				Ok(value) => {
 					if value.get_type() == expr_type {
 						Some(value)
@@ -265,7 +301,7 @@ impl Styles {
 					}
 				}
 				Err(err) => {
-					self.reporting.borrow_mut().report(err.0, expr.1);
+					self.reporting.borrow_mut().report(err, expr.1);
 					None
 				}
 			}
@@ -296,12 +332,15 @@ impl Styles {
 }
 
 fn matching_rules<'a>(
-	css: &'a CSS,
+	rule_set: &'a RuleSet,
 	element: &'a MapElement,
 	context: &StyleContext,
 ) -> impl Iterator<Item = &'a Styleset> {
 	// puffin::profile_function!();
-	css.0.iter().filter(|styleset| matches_rule(styleset, element, context))
+	rule_set
+		.0
+		.iter()
+		.filter(|styleset| matches_rule(styleset, element, context))
 }
 
 fn matches_rule(styleset: &Styleset, element: &MapElement, context: &StyleContext) -> bool {
@@ -318,7 +357,10 @@ fn matches_rule(styleset: &Styleset, element: &MapElement, context: &StyleContex
 fn matches_selector(selector: &Selector, element: &MapElement, context: &StyleContext) -> bool {
 	match selector {
 		Selector::SubSelector(selector) => matches_subselector(selector, element, context),
-		Selector::ChildRelation(..) => todo!(),
+		Selector::ChildRelation(..)
+		| Selector::OverlapRelation(..)
+		| Selector::ParentRelation(..)
+		| Selector::SetRelation(..) => todo!(),
 	}
 }
 
@@ -346,7 +388,10 @@ fn matches_pseudo_class(pseudo_class: &Option<String>, element: &MapElement, _co
 }
 
 fn matches_zoom(zoom: Option<Zoom>, context: &StyleContext) -> bool {
-	zoom.is_none_or(|zoom| context.zoom_level > f32::from(zoom.0) && context.zoom_level < f32::from(zoom.1))
+	zoom.is_none_or(|zoom| {
+		let current_zoom = context.zoom_level.round_ties_even() as u8;
+		current_zoom > zoom.0 && current_zoom < zoom.1
+	})
 }
 
 fn matches_object(object: Object, element: &MapElement, _context: &StyleContext) -> bool {
@@ -361,12 +406,19 @@ fn matches_object(object: Object, element: &MapElement, _context: &StyleContext)
 }
 
 fn matches_conditions(conditions: &[Condition], element: &MapElement, _context: &StyleContext) -> bool {
+	let eval_context = EvalContext { element };
 	conditions.iter().all(|condition| match condition {
-		Condition::Binary(tag_key, BinaryOp::Eq, Expression::Identifier(tag_value)) => {
-			element.get_tag_with_new(tag_key) == Some(tag_value)
+		Condition::Binary(Spanned(a, _), BinaryOp::Eq, Spanned(b, _)) => {
+			let Some(tag_key) = a.eval(&eval_context).ok().and_then(Value::ident_or_string) else {
+				return false;
+			};
+			let Some(tag_value) = b.eval(&eval_context).ok().and_then(Value::ident_or_string) else {
+				return false;
+			};
+			element.get_tag_with_new(&tag_key) == Some(&tag_value)
 		}
 		Condition::Tag(tag) => element.get_tag_with_new(tag).is_some(),
-		_ => todo!("Condtion type: {condition:?}"),
+		_ => todo!("Condition type: {condition:?}"),
 	})
 }
 

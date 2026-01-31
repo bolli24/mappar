@@ -5,6 +5,10 @@ description = "A MapCSS parser with powerful error reporting."
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "mapcss-validate"
+path = "src/bin/validate.rs"
+
 [dependencies]
 chumsky = { version = "0.12" }
 logos = "0.16"

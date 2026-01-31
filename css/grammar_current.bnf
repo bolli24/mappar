@@ -1,0 +1,124 @@
+# Derived from current parser behavior in src/lib.rs
+# Token mapping (from src/lexer.rs):
+# - ID: Identifier
+# - NUMBER: Number
+# - COLOR: Color (hex, including #RRGGBB, #RRGGBBAA, or underscore-separated #RR_GG_BB_AA)
+# - REGEX: Regex literal /.../
+# - QUOTED: Quoted string
+# - ZOOM: Zoom literal (|zN, |zN-, |z-N, |zN-M)
+# - SPACE: whitespace token (space or tab)
+# - NEWLINE: line break token
+
+ruleset         ::= rule (S rule)*;
+rule            ::= selectors declaration;
+
+selectors       ::= union_selector;
+union_selector  ::= selector (S? "," S? selector)* ","?;
+
+selector        ::= selector_item (S+ selector_item)* layer?;
+selector_item   ::= child_relation
+                 | parent_relation
+                 | overlap_relation
+                 | set_relation
+                 | subselector;
+
+child_relation  ::= subselector S? ">" link? S? subselector;
+parent_relation ::= subselector S? "<" link? S? subselector;
+overlap_relation::= subselector S? "⧉" S? subselector;
+set_relation    ::= subselector S? set_operator S? subselector;
+
+set_operator    ::= "∈" | "⊆" | "⊇" | "⊈" | "⊉";
+
+link            ::= "[" S? link_property S? binary_op S? expression S? "]" | ;
+link_property   ::= "index" | "role";
+
+subselector     ::= object zoom? pseudo_class? tests*
+                 | object zoom? tests* pseudo_class?
+                 | object S+
+                 | class
+                 | "!" class
+                 | pseudo_class
+                 | "!" pseudo_class
+                 | setting
+                 | setting_group
+                 | tests+;
+
+object          ::= "node" | "way" | "relation" | "area" | "canvas" | "*" | "meta";
+zoom            ::= ZOOM;
+layer           ::= "::" identifier | ;
+
+setting         ::= "setting" "::" identifier;
+setting_group   ::= "settings" "::" identifier;
+
+class           ::= "." identifier;
+pseudo_class    ::= ":" identifier;
+
+tests           ::= test+;
+test            ::= "[" S? condition S? "]";
+
+condition       ::= regex_condition
+                 | REGEX
+                 | expression_condition
+                 | function
+                 | tag_binary_condition
+                 | tag "?!"
+                 | tag "?"
+                 | tag
+                 | "!" S? condition;
+
+regex_condition ::= tag S? ("=~" | "!~") S? REGEX;
+tag_binary_condition ::= tag S? binary_op S? expression;
+
+expression_condition ::= term S? condition_op S? term;
+condition_op    ::= "=" | "!=" | "<=" | ">=" | "<" | ">" | "^=" | "~=";
+
+tag             ::= identifier (":" identifier)* | QUOTED;
+
+expression      ::= comparison;
+comparison      ::= term (S? compare_op S? term)*;
+compare_op      ::= "=" | "!=" | "<=" | ">=" | "<" | ">" | "^=";
+
+term            ::= factor (S? ("+" | "-") S? factor)*;
+factor          ::= unary (S? ("*" | "/") S? unary)*;
+unary           ::= ("-" | "!")* atom;
+atom            ::= function
+                 | identifier
+                 | QUOTED
+                 | NUMBER
+                 | COLOR
+                 | "(" S? expression S? ")";
+
+function        ::= identifier "(" S? (expression (S? "," S? expression)*)? S? ")";
+
+declaration     ::= "{" S? styleset? S? "}";
+styleset        ::= style (S? ";" S? style)* ";"?;
+
+style           ::= key S? ":" S? specifier
+                 | class_assign;
+class_assign    ::= "set" S+ "."? identifier;
+
+specifier       ::= labelled_color
+                 | sizes
+                 | rotation
+                 | expression;
+
+labelled_color  ::= identifier? color;
+color           ::= COLOR
+                 | "rgb" "(" S? number S? "," S? number S? "," S? number S? ")"
+                 | "rgba" "(" S? number S? "," S? number S? "," S? number S? "," S? number S? ")";
+
+sizes           ::= size (S? "," S? size)+ | size_with_unit;
+size            ::= number unit?;
+size_with_unit  ::= number unit;
+
+rotation        ::= number rotation_unit;
+
+key             ::= identifier;
+identifier      ::= ID;
+number          ::= NUMBER;
+unit            ::= "px" | "pt" | "%";
+rotation_unit   ::= "rad" | "deg" | "°" | "grad" | "turn";
+
+binary_op       ::= "=" | "!=" | "=~" | "!~" | "~=" | "^=" | "<=" | ">=" | "<" | ">" | "+" | "-" | "*" | "/";
+
+S               ::= SPACE | NEWLINE;

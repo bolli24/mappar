@@ -1,4 +1,3 @@
-node[man_made=pump][substance=~/(^|_)?water$/] {
-    icon-image: "presets/landmark/pump_water.svg";
-    set icon_z17;
+node[man_made=pump] {
+    size: 1;
 }

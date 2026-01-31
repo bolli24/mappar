@@ -12,47 +12,107 @@ use std::hash::Hash;
 use std::ops::Mul;
 
 pub mod color;
-pub mod eval;
+pub mod expression;
 pub mod lexer;
 
 pub use chumsky::span::SimpleSpan;
-pub use eval::Error as EvalError;
-pub use eval::{Expression, ExpressionType, Type, Value, ValueType};
+pub use expression::{Expression, ExpressionType, Type, Value, ValueType};
 
 // TODO: better regex
 
-pub struct CSS(pub Vec<Styleset>);
+#[derive(Debug, Clone)]
+pub struct RuleSet(pub Vec<Styleset>);
 
-#[must_use]
-pub fn parse_str(src: &str, file_name: &str) -> Option<CSS> {
-	let token_iter = Token::lexer(src).spanned().filter_map(|(tok, span)| match tok {
-		Ok(tok) => Some((tok, span.into())),
-		_ => None,
-	});
-
-	let token_stream = Stream::from_iter(token_iter).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
-	return match expr_parser().parse(token_stream).into_result() {
-		Ok(result) => Some(result),
-		Err(errs) => {
-			let src = Source::from(&src);
-			for err in errs {
-				Report::build(ReportKind::Error, (&file_name, err.span().into_range()))
-					.with_message(err.to_string())
-					.with_label(
-						Label::new((&file_name, err.span().into_range()))
-							.with_message(err.reason())
-							.with_color(Color::Red),
-					)
-					.finish()
-					.eprint((&file_name, src.clone()))
-					.unwrap();
-			}
-			None
-		}
-	};
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ParseStats {
+	pub lex_errors: usize,
+	pub parse_errors: usize,
+	pub rules: usize,
+	pub selector_groups: usize,
+	pub selectors: usize,
+	pub declarations: usize,
+	pub style_decls: usize,
+	pub class_assigns: usize,
 }
 
-fn expr_parser<'a, I>() -> impl Parser<'a, I, CSS, extra::Err<Rich<'a, Token<'a>>>> + Clone
+#[must_use]
+pub fn parse_str(src: &str, file_name: &str) -> Option<RuleSet> {
+	parse_str_with_stats(src, file_name).0
+}
+
+#[must_use]
+pub fn parse_str_with_stats(src: &str, file_name: &str) -> (Option<RuleSet>, ParseStats) {
+	let mut tokens = Vec::new();
+	let mut lex_errors: Vec<Rich<'_, Token<'_>>> = Vec::new();
+	for (tok, span) in Token::lexer(src).spanned() {
+		let span: SimpleSpan = span.into();
+		match tok {
+			Ok(tok) => tokens.push((tok, span)),
+			Err(err) => lex_errors.push(Rich::custom(span, err.to_string())),
+		}
+	}
+	let mut stats = ParseStats {
+		lex_errors: lex_errors.len(),
+		..ParseStats::default()
+	};
+	if !lex_errors.is_empty() {
+		let source = Source::from(src);
+		for err in lex_errors {
+			Report::build(ReportKind::Error, (&file_name, err.span().into_range()))
+				.with_message(err.to_string())
+				.with_label(
+					Label::new((&file_name, err.span().into_range()))
+						.with_message(err.reason())
+						.with_color(Color::Red),
+				)
+				.finish()
+				.eprint((&file_name, source.clone()))
+				.unwrap();
+		}
+		return (None, stats);
+	}
+
+	let token_stream = Stream::from_iter(tokens).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
+	let (result, errs) = expr_parser().parse(token_stream).into_output_errors();
+	stats.parse_errors = errs.len();
+	if let Some(rule_set) = &result {
+		stats.rules = rule_set.0.len();
+		for styleset in &rule_set.0 {
+			stats.declarations += styleset.declarations.len();
+			stats.selector_groups += styleset.selectors.0.len();
+			for intersection in &styleset.selectors.0 {
+				stats.selectors += intersection.0.len();
+			}
+			for declaration in &styleset.declarations {
+				match declaration {
+					Declaration::Style(_) => stats.style_decls += 1,
+					Declaration::ClassAssign(_) => stats.class_assigns += 1,
+				}
+			}
+		}
+	}
+
+	if errs.is_empty() {
+		return (result, stats);
+	}
+
+	let source = Source::from(src);
+	for err in errs {
+		Report::build(ReportKind::Error, (&file_name, err.span().into_range()))
+			.with_message(err.to_string())
+			.with_label(
+				Label::new((&file_name, err.span().into_range()))
+					.with_message(err.reason())
+					.with_color(Color::Red),
+			)
+			.finish()
+			.eprint((&file_name, source.clone()))
+			.unwrap();
+	}
+	(None, stats)
+}
+
+fn expr_parser<'a, I>() -> impl Parser<'a, I, RuleSet, extra::Err<Rich<'a, Token<'a>>>> + Clone
 where
 	I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
@@ -89,6 +149,7 @@ where
 		Token::Op("!=") => BinaryOp::NotEq,
 		Token::Op("=~") => BinaryOp::RegexMatch,
 		Token::Op("~=") => BinaryOp::ListMembership,
+		Token::Op("^=") => BinaryOp::StartsWith,
 		Token::Op("<=") => BinaryOp::Le,
 		Token::Op(">=") => BinaryOp::Ge,
 		Token::Op("<") => BinaryOp::Lt,
@@ -144,7 +205,8 @@ where
 		function.clone().map(Expression::Function),
 		select! {
 			Token::Identifier(ident) => Expression::Identifier(ident.to_string()),
-			Token::Quoted(s) => Expression::String(s)
+			Token::Quoted(s) => Expression::String(s),
+			Token::Color(color) => Expression::Color(color),
 		},
 		number.map(Expression::Number),
 		expression.clone().map(|expr| expr.0).delimited_by(
@@ -180,6 +242,25 @@ where
 		},
 	);
 
+	let comparison = term.clone().then_ignore(opt_spaces.clone()).foldl_with(
+		binary
+			.filter(|op| {
+				matches!(
+					op,
+					BinaryOp::Eq
+						| BinaryOp::NotEq | BinaryOp::Le
+						| BinaryOp::Ge | BinaryOp::Lt
+						| BinaryOp::Gt | BinaryOp::StartsWith
+				)
+			})
+			.then_ignore(opt_spaces.clone())
+			.then(term.clone())
+			.repeated(),
+		|a: Spanned<Expression>, (op, b): (BinaryOp, Spanned<Expression>), extras| {
+			Spanned(Expression::Binary(Box::new(a), op, Box::new(b)), extras.span())
+		},
+	);
+
 	/*
 	   let atom = int
 	   .or(expr.delimited_by(just('('), just(')')))
@@ -187,7 +268,7 @@ where
 	   .or(ident.map(Expr::Var));
 	*/
 
-	expression.define(term.labelled("expression"));
+	expression.define(comparison.labelled("expression"));
 
 	let repeated_u8 = number
 		.map(|f: f64| f.round().clamp(0.0, 255.0) as u8)
@@ -246,7 +327,7 @@ where
 		.then_ignore(just(Token::Colon).padded_by(opt_spaces.clone()))
 		.then(specifier)
 		.map_with(|(key, specifier), extras| {
-			Rule::Style(Spanned(
+			Declaration::Style(Spanned(
 				CssStyle {
 					key,
 					specifier: specifier.into(),
@@ -259,16 +340,19 @@ where
 		.ignore_then(req_space.clone())
 		.ignore_then(just(Token::Dot).ignored().or(empty().ignored()))
 		.ignore_then(identifier)
-		.map(|name| Rule::ClassAssign(name));
+		.map(|name| Declaration::ClassAssign(name));
 
-	let style = choice((key_specifier, class_assign));
+	let style = choice((key_specifier, class_assign)).recover_with(skip_then_retry_until(
+		any().ignored(),
+		just(Token::BraceClose).ignored(),
+	));
 
 	let styleset = style
 		.padded_by(opt_spaces.clone())
 		.clone()
 		.separated_by(just(Token::Semicolon).padded_by(opt_spaces.clone()))
 		.allow_trailing()
-		.collect::<Vec<Rule>>();
+		.collect::<Vec<Declaration>>();
 
 	let declaration = styleset
 		.or(empty().map(|()| Vec::new())) // TODO: do we need this?
@@ -286,42 +370,7 @@ where
 		)))
 		.labelled("declaration");
 
-	let escaped_slash = just(Token::Op("\\"))
-		.then_ignore(just(Token::Op("\\")))
-		.map(|_| "\\\\")
-		.or(just(Token::Op("\\")).then_ignore(just(Token::Op("/"))).map(|_| "\\/"));
-
-	let regex_chars = escaped_slash.or(select!(
-		Token::Identifier(name) => name,
-		Token::Op(op) if op != "/" => op,
-		Token::Number(number) => number,
-		Token::Unit(unit) => unit,
-		Token::Space => " ",
-		Token::Dot => ".",
-		Token::Colon => ":",
-		Token::Comma => ",",
-		Token::Semicolon => ";",
-		Token::Pipe => "|",
-		Token::At => "@",
-		Token::Exclamation => "!",
-		Token::Question => "?",
-		Token::Dollar => "$",
-		Token::ParenOpen => "(",
-		Token::ParenClose => ")",
-		Token::BracketOpen => "[",
-		Token::BracketClose => "]",
-		Token::BraceOpen => "{",
-		Token::BraceClose => "}",
-	));
-
-	let regex = just(Token::Op("/"))
-		.ignore_then(
-			regex_chars
-				.repeated()
-				.collect::<Vec<&str>>()
-				.map(|strings| strings.join("")),
-		)
-		.then_ignore(just(Token::Op("/")));
+	let regex = select!(Token::Regex(regex) => regex);
 
 	let binary_condition = tag
 		.clone()
@@ -333,18 +382,50 @@ where
 	let regex_condition = tag
 		.clone()
 		.then_ignore(opt_spaces.clone())
-		.then_ignore(just(Token::Op("=~")))
+		.then(select! {
+			Token::Op("=~") => false,
+			Token::Op("!~") => true,
+		})
 		.then_ignore(opt_spaces.clone())
-		.then(regex.clone());
+		.then(regex)
+		.map(|((name, is_negated), regex)| {
+			if is_negated {
+				Condition::Not(Box::new(Condition::Regex(name, regex)))
+			} else {
+				Condition::Regex(name, regex)
+			}
+		});
+
+	let expression_condition =
+		term.clone()
+			.then_ignore(opt_spaces.clone())
+			.then(binary.filter(|op| {
+				matches!(
+					op,
+					BinaryOp::Eq
+						| BinaryOp::NotEq | BinaryOp::Le
+						| BinaryOp::Ge | BinaryOp::Lt
+						| BinaryOp::Gt | BinaryOp::StartsWith
+						| BinaryOp::ListMembership
+				)
+			}))
+			.then_ignore(opt_spaces.clone())
+			.then(term.clone())
+			.map(|((a, op), b)| Condition::Binary(a, op, b));
 
 	// TODO: at not falsy and not truthy: !building?!  !building?
 	let condition = recursive(|condition| {
 		choice((
-			regex_condition.map(|(name, regex)| Condition::Regex(name, regex)),
+			regex_condition,
+			regex.map(Condition::TagRegex),
+			expression_condition.clone(),
 			function.clone().map(Condition::Function), // function
 			binary_condition
-				.clone() // tag binary tag
-				.map(|((tag, op), value)| Condition::Binary(tag, op, value.0)),
+				.clone() // tag binary expression
+				.map_with(|((tag, op), value), extras| {
+					let span = extras.span();
+					Condition::Binary(Spanned(Expression::Identifier(tag), span), op, value)
+				}),
 			tag.clone()
 				.then_ignore(just(Token::Question)) // tag?!
 				.then_ignore(just(Token::Exclamation))
@@ -355,7 +436,9 @@ where
 				.ignore_then(opt_spaces.clone())
 				.ignore_then(condition)
 				.try_map(|c, span| match c {
-					Condition::Binary(_, _, _) => Err(Rich::custom(span, "Can't negate binary expressions.")),
+					Condition::Binary(_, _, _) => {
+						Err(Rich::custom(span, "Can't negate binary expressions."))
+					}
 					_ => Ok(Condition::Not(Box::new(c))),
 				}),
 		))
@@ -366,7 +449,8 @@ where
 		.padded_by(opt_spaces.clone())
 		.delimited_by(just(Token::BracketOpen), just(Token::BracketClose));
 
-	let tests = test.repeated().collect::<Vec<_>>();
+	let tests = test.clone().repeated().collect::<Vec<_>>();
+	let tests_required = test.repeated().at_least(1).collect::<Vec<_>>();
 
 	let maybe_layer = just(Token::Colon)
 		.ignore_then(just(Token::Colon))
@@ -426,6 +510,7 @@ where
 		maybe_class,
 		setting,
 		setting_group,
+		tests_required.map(SubSelector::Tests),
 	))
 	.labelled("subselector");
 
@@ -458,14 +543,50 @@ where
 		.clone()
 		.then_ignore(opt_spaces.clone())
 		.then_ignore(just(Token::Op(">")))
-		.then(link)
+		.then(link.clone())
 		.then_ignore(opt_spaces.clone())
 		.then(sub_selector.clone())
 		.map(|((a, link), b)| ChildRelation(Box::new(a), Box::new(b), link));
 
+	let overlap_relation = sub_selector
+		.clone()
+		.then_ignore(opt_spaces.clone())
+		.then_ignore(just(Token::Overlap))
+		.then_ignore(opt_spaces.clone())
+		.then(sub_selector.clone())
+		.map(|(a, b)| OverlapRelation(Box::new(a), Box::new(b)));
+
+	let parent_relation = sub_selector
+		.clone()
+		.then_ignore(opt_spaces.clone())
+		.then_ignore(just(Token::Op("<")))
+		.then(link)
+		.then_ignore(opt_spaces.clone())
+		.then(sub_selector.clone())
+		.map(|((a, link), b)| ParentRelation(Box::new(a), Box::new(b), link));
+
+	let set_operator = select! {
+		Token::ElementOf => SetOperator::ElementOf,
+		Token::SubsetOrEqual => SetOperator::SubsetOrEqual,
+		Token::SupersetOrEqual => SetOperator::SupersetOrEqual,
+		Token::NotSubsetOrEqual => SetOperator::NotSubsetOrEqual,
+		Token::NotSupersetOrEqual => SetOperator::NotSupersetOrEqual,
+	};
+
+	let set_relation = sub_selector
+		.clone()
+		.then_ignore(opt_spaces.clone())
+		.then(set_operator)
+		.then_ignore(opt_spaces.clone())
+		.then(sub_selector.clone())
+		.map(|((a, op), b)| SetRelation(Box::new(a), Box::new(b), op));
+
 	//	selector     ::= subselector | child;
 	let selector = choice((
 		child_relation.map(Selector::ChildRelation),
+		parent_relation.map(Selector::ParentRelation),
+		overlap_relation.map(Selector::OverlapRelation),
+		set_relation.map(Selector::SetRelation),
 		sub_selector.clone().map(Selector::SubSelector),
 	)) // .class1 .class2 OR .class1.class2
 	.separated_by(opt_spaces.clone())
@@ -488,7 +609,7 @@ where
 
 	let rule = selectors.then(declaration).map(|(selectors, styles)| Styleset {
 		selectors,
-		rules: styles,
+		declarations: styles,
 	});
 
 	let rule_set = rule
@@ -496,7 +617,7 @@ where
 		.collect()
 		.padded_by(opt_spaces.clone());
 
-	rule_set.map(CSS)
+	rule_set.map(RuleSet)
 }
 
 #[derive(Debug, Clone)]
@@ -514,6 +635,7 @@ pub enum BinaryOp {
 	NotEq,
 	ListMembership,
 	RegexMatch,
+	StartsWith,
 	Le,
 	Ge,
 	Lt,
@@ -535,6 +657,7 @@ impl Display for BinaryOp {
 			Self::NotEq => write!(f, "!="),
 			Self::ListMembership => write!(f, "~="),
 			Self::RegexMatch => write!(f, "=~"),
+			Self::StartsWith => write!(f, "^="),
 			Self::Le => write!(f, "<="),
 			Self::Ge => write!(f, ">="),
 			Self::Lt => write!(f, "<"),
@@ -603,10 +726,10 @@ impl TryFrom<&str> for Zoom {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Styleset {
 	pub selectors: Selectors,
-	pub rules: Vec<Rule>,
+	pub declarations: Vec<Declaration>,
 }
 
 pub type Selectors = Union;
@@ -641,6 +764,9 @@ pub struct Intersection(pub Vec<Selector>, pub Option<Layer>);
 pub enum Selector {
 	SubSelector(SubSelector),
 	ChildRelation(ChildRelation),
+	OverlapRelation(OverlapRelation),
+	ParentRelation(ParentRelation),
+	SetRelation(SetRelation),
 }
 
 /// A >[link] B
@@ -648,6 +774,24 @@ pub enum Selector {
 #[derive(Debug, Clone)]
 pub struct ChildRelation(pub Box<SubSelector>, pub Box<SubSelector>, pub Option<Link>);
 // Uses box to reduce size of Selector (72 vs 168 bytes)
+
+#[derive(Debug, Clone)]
+pub struct OverlapRelation(pub Box<SubSelector>, pub Box<SubSelector>);
+
+#[derive(Debug, Clone)]
+pub struct ParentRelation(pub Box<SubSelector>, pub Box<SubSelector>, pub Option<Link>);
+
+#[derive(Debug, Clone, Copy)]
+pub enum SetOperator {
+	ElementOf,
+	SubsetOrEqual,
+	SupersetOrEqual,
+	NotSubsetOrEqual,
+	NotSupersetOrEqual,
+}
+
+#[derive(Debug, Clone)]
+pub struct SetRelation(pub Box<SubSelector>, pub Box<SubSelector>, pub SetOperator);
 
 #[derive(Debug, Clone)]
 pub struct Link(LinkProperty, BinaryOp, Expression);
@@ -670,6 +814,7 @@ pub enum SubSelector {
 	NotPseudoClass(String),
 	Setting(String),
 	SettingGroup(String),
+	Tests(Vec<Condition>),
 }
 
 impl SubSelector {
@@ -688,7 +833,7 @@ type Layer = String;
 type PseudoClass = String;
 
 #[derive(Debug, Clone)]
-pub enum Rule {
+pub enum Declaration {
 	Style(Spanned<CssStyle>),
 	ClassAssign(String),
 }
@@ -798,15 +943,19 @@ impl Mul<f64> for RotationUnit {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Regex(String, bool);
+
 #[derive(Debug, Clone)]
 pub enum Condition {
-	Binary(String, BinaryOp, Expression),
+	Binary(Spanned<Expression>, BinaryOp, Spanned<Expression>),
 	Not(Box<Self>),
 	Truthy(String),
 	Falsy(String),
 	Tag(String),
 	Function(Function),
-	Regex(String, String),
+	Regex(String, Regex),
+	TagRegex(Regex),
 }
 
 #[derive(Debug, Clone)]
@@ -835,25 +984,150 @@ impl Display for Function {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use std::fs::File;
+	use std::io::Write;
+
+	/// Parse without printing errors (for testing error cases)
+	fn parse_str_silent(src: &str) -> Option<RuleSet> {
+		let mut tokens = Vec::new();
+		for (tok, span) in Token::lexer(src).spanned() {
+			let span: SimpleSpan = span.into();
+			match tok {
+				Ok(tok) => tokens.push((tok, span)),
+				Err(_) => return None,
+			}
+		}
+		let token_stream = Stream::from_iter(tokens).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
+		let (result, errs) = expr_parser().parse(token_stream).into_output_errors();
+		if errs.is_empty() { result } else { None }
+	}
 
 	#[test]
 	fn parse() {
 		let test_files = [
-			(include_str!("test/simple.mapcss"), "simple.css"),
-			(include_str!("test/josm.mapcss"), "josm.css"),
-			// TODO: (include_str!("test/apple.mapcss"), "apple.css"),
+			(include_str!("test/simple.mapcss"), "simple.mapcss"),
+			(include_str!("test/josm.mapcss"), "josm.mapcss"),
+			(include_str!("test/apple.mapcss"), "apple.mapcss"),
+			(include_str!("../../assets/styles/default.mapcss"), "default.mapcss"),
 		];
-		let mut erorred = false;
+		let mut succeeded = 0;
+		let mut failed = 0;
 		for (src, file_name) in test_files {
 			println!("Parsing {file_name:?}");
 
 			let start = std::time::Instant::now();
-			if parse_str(src, file_name).is_none() {
-				erorred = false;
-			}
+			let result = parse_str(src, file_name);
 			println!("Parsed in {:?}", start.elapsed());
 
-			assert!(!erorred)
+			// Write parsed output to file
+			let output_name = file_name.replace(".mapcss", "");
+			let output_path = format!("parse_output_{output_name}.txt");
+			let file = File::create(&output_path).unwrap();
+			let mut writer = std::io::BufWriter::new(file);
+			if let Some(rule_set) = &result {
+				succeeded += 1;
+				writeln!(writer, "Parsed {} rules from {file_name}", rule_set.0.len()).unwrap();
+				for (i, styleset) in rule_set.0.iter().enumerate() {
+					writeln!(writer, "\nRule {i}:").unwrap();
+					writeln!(writer, "  Selectors: {:?}", styleset.selectors).unwrap();
+					writeln!(writer, "  Declarations:").unwrap();
+					for decl in &styleset.declarations {
+						writeln!(writer, "    {:?}", decl).unwrap();
+					}
+				}
+			} else {
+				failed += 1;
+				writeln!(writer, "Failed to parse {file_name}").unwrap();
+			}
 		}
+		println!("Parse results: {succeeded} succeeded, {failed} failed");
+	}
+
+	#[test]
+	fn parse_recovers_declaration_block() {
+		let src = "way { color: ; width: 2px; }";
+		let token_iter = Token::lexer(src).spanned().filter_map(|(tok, span)| match tok {
+			Ok(tok) => Some((tok, span.into())),
+			_ => None,
+		});
+		let token_stream = Stream::from_iter(token_iter).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
+
+		let (output, errors) = expr_parser().parse(token_stream).into_output_errors();
+		assert!(output.is_some(), "expected recovered output, errors: {errors:?}");
+		assert!(!errors.is_empty(), "expected recovery errors");
+
+		let rule_set = output.unwrap();
+		assert_eq!(rule_set.0.len(), 1);
+		let styleset = &rule_set.0[0];
+		let style_decls: Vec<_> = styleset
+			.declarations
+			.iter()
+			.filter(|decl| matches!(decl, Declaration::Style(_)))
+			.collect();
+		assert_eq!(style_decls.len(), 1);
+		if let Declaration::Style(Spanned(style, _)) = style_decls[0] {
+			assert_eq!(style.key, "width");
+		} else {
+			unreachable!("expected a style declaration");
+		}
+	}
+
+	#[test]
+	fn parse_recovers_declaration_block_nested_delimiters() {
+		let src = "way { color rgb(1, 2, 3); width: 2px; }";
+		let token_iter = Token::lexer(src).spanned().filter_map(|(tok, span)| match tok {
+			Ok(tok) => Some((tok, span.into())),
+			_ => None,
+		});
+		let token_stream = Stream::from_iter(token_iter).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
+
+		let (output, errors) = expr_parser().parse(token_stream).into_output_errors();
+		assert!(output.is_some(), "expected recovered output, errors: {errors:?}");
+		assert!(!errors.is_empty(), "expected recovery errors");
+
+		let rule_set = output.unwrap();
+		assert_eq!(rule_set.0.len(), 1);
+		let styleset = &rule_set.0[0];
+		let style_decls: Vec<_> = styleset
+			.declarations
+			.iter()
+			.filter(|decl| matches!(decl, Declaration::Style(_)))
+			.collect();
+		assert_eq!(style_decls.len(), 1);
+		if let Declaration::Style(Spanned(style, _)) = style_decls[0] {
+			assert_eq!(style.key, "width");
+		} else {
+			unreachable!("expected a style declaration");
+		}
+	}
+
+	#[test]
+	fn lexing_error_is_reported() {
+		let src = "node ` { color: #fff; }";
+		assert!(parse_str_silent(src).is_none());
+	}
+
+	#[test]
+	fn lexing_error_incomplete_comment() {
+		let src = "node /*";
+		assert!(parse_str_silent(src).is_none());
+	}
+
+	#[test]
+	fn lexing_error_invalid_color() {
+		let src = "node { color: #ggg; }";
+		assert!(parse_str_silent(src).is_none());
+	}
+
+	#[test]
+	fn lexing_error_multiple() {
+		let src = "node ` { color: #ggg; } @";
+		assert!(parse_str_silent(src).is_none());
+	}
+
+	#[test]
+	fn lexing_error_multiple_message() {
+		let src = "node ` { color: #ggg; } @";
+		assert!(parse_str_silent(src).is_none());
 	}
 }

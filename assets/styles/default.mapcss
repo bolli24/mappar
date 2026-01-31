@@ -11,6 +11,10 @@ node|z16- {
     text: auto;
 }
 
+node|z20-22 {
+    text: osm_id();
+}
+
 way {
     color: #404052;
     size: 2.0;

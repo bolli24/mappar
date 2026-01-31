@@ -14390,16 +14390,7 @@ BracketClose
 BracketOpen
 Identifier("substance")
 Op("=~")
-Op("/")
-ParenOpen
-Op("^")
-Pipe
-Identifier("_")
-ParenClose
-Question
-Identifier("water")
-Dollar
-Op("/")
+Regex(Regex("(^|_)?water$", false))
 BracketClose
 Space
 BraceOpen
@@ -43411,15 +43402,7 @@ BracketClose
 BracketOpen
 Identifier("maxspeed")
 Op("=~")
-Op("/")
-Op("^")
-BracketOpen
-Number("0")
-Number("-9")
-BracketClose
-Op("+")
-Dollar
-Op("/")
+Regex(Regex("^[0-9]+$", false))
 BracketClose
 BracketOpen
 Exclamation
@@ -43502,16 +43485,7 @@ BracketClose
 BracketOpen
 Identifier("maxspeed")
 Op("=~")
-Op("/")
-Op("^")
-BracketOpen
-Number("0")
-Number("-9")
-BracketClose
-Op("+")
-Space
-Identifier("mph")
-Op("/")
+Regex(Regex("^[0-9]+ mph", false))
 BracketClose
 BracketOpen
 Exclamation
@@ -43564,18 +43538,7 @@ BracketClose
 BracketOpen
 Identifier("maxspeed")
 Op("=~")
-Op("/")
-BracketOpen
-Number("0")
-Number("-9")
-BracketClose
-Op("+")
-Space
-Identifier("km")
-Op("\\")
-Op("/")
-Identifier("h")
-Op("/")
+Regex(Regex("[0-9]+ km\\/h", false))
 BracketClose
 BracketOpen
 Exclamation
@@ -43628,15 +43591,7 @@ BracketClose
 BracketOpen
 Identifier("maxspeed")
 Op("=~")
-Op("/")
-BracketOpen
-Number("0")
-Number("-9")
-BracketClose
-Op("+")
-Space
-Identifier("knots")
-Op("/")
+Regex(Regex("[0-9]+ knots", false))
 BracketClose
 BracketOpen
 Exclamation
