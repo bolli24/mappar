@@ -1,5 +1,6 @@
 use super::map_data::MapData;
 use crate::map::element::{Element, ElementId, ElementInfo, MapElement, Member, is_closed};
+use crate::ui::map_widget::css::cache::DependencyMask;
 use crate::unreachable_log;
 use glam::DVec2;
 use indexmap::IndexMap;
@@ -81,13 +82,43 @@ pub enum EditError {
 	KeyAlreadyExists(String),
 }
 
+impl Action {
+	/// Returns the dependency mask for what this action affects.
+	/// Used to determine when to increment element generation.
+	pub fn affects(&self) -> DependencyMask {
+		match self {
+			Action::AddTag { .. }
+			| Action::AddNewTag { .. }
+			| Action::UpdateValue { .. }
+			| Action::OverrideTag { .. }
+			| Action::RemoveTag { .. }
+			| Action::UpdateNewTag { .. } => DependencyMask::SELF_TAGS,
+
+			Action::Move(..) => DependencyMask::empty(),
+			Action::NewElement { .. } => DependencyMask::empty(),
+			Action::AddNodeToWayEnd { .. } => DependencyMask::empty(),
+			Action::AddNodeToWaySegments { .. } => DependencyMask::empty(),
+			Action::Delete { .. } => DependencyMask::empty(),
+		}
+	}
+}
+
 // TODO: Merging
 impl undo::Edit for Edit {
 	type Target = MapData;
 	type Output = Result<Multiple, EditError>;
 
 	fn edit(&mut self, target: &mut Self::Target) -> Self::Output {
+		let affects = self.1.affects();
+
 		for element_id in &self.0 {
+			// Increment generation if this action affects style dependencies
+			if !affects.is_empty() {
+				if let Some(element) = target.get_mut(element_id) {
+					element.generation = element.generation.wrapping_add(1);
+				}
+			}
+
 			match &self.1 {
 				Action::AddNewTag { key, value } | Action::AddTag { key, value } => {
 					let element = target.get_mut(element_id).expect("Element must exist");
@@ -120,6 +151,7 @@ impl undo::Edit for Edit {
 						tags: IndexMap::default(),
 						info: ElementInfo::default(),
 						new_tag: None,
+						generation: 0,
 					});
 				}
 				Action::AddNodeToWayEnd { node } => {
@@ -137,6 +169,7 @@ impl undo::Edit for Edit {
 						tags: IndexMap::default(),
 						info: ElementInfo::default(),
 						new_tag: None,
+						generation: 0,
 					});
 
 					for (id, index) in ways {
@@ -202,6 +235,8 @@ impl undo::Edit for Edit {
 	}
 
 	fn undo(&mut self, target: &mut Self::Target) -> Self::Output {
+		let affects = self.1.affects();
+
 		match &self.1 {
 			Action::Move(delta, _) => {
 				MapData::raw_move_by(target, &self.0, -*delta);
@@ -263,6 +298,13 @@ impl undo::Edit for Edit {
 		}
 
 		for element_id in &self.0 {
+			// Increment generation if this action affects style dependencies
+			if !affects.is_empty() {
+				if let Some(element) = target.get_mut(element_id) {
+					element.generation = element.generation.wrapping_add(1);
+				}
+			}
+
 			let Some(element) = target.get_mut(element_id) else {
 				unreachable_log!("Element {} must exist", element_id);
 			};

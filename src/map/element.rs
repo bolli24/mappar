@@ -128,6 +128,7 @@ pub struct MapElement {
 	pub element: Element,
 	pub tags: IndexMap<String, String>,
 	pub new_tag: Option<(String, String)>,
+	pub generation: u64,
 }
 
 pub const AUTO_TEXT_TAGS: [&str; 6] = ["name", "int_name", "ref", "operator", "brand", "addr:housenumber"];

@@ -87,7 +87,7 @@ impl DetailedElement {
 		map_data: &MapData,
 		styles: &mut Option<Styles>,
 		view: &View,
-		style_context: &StyleContext,
+		style_context: &mut StyleContext,
 	) {
 		// puffin::profile_function!(map_element.id.to_string());
 

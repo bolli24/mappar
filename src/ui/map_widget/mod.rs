@@ -146,8 +146,10 @@ impl Widget for MapWidget<'_> {
 
 					let mut render_data = Vec::with_capacity(self.map_data.len());
 					let select_threshold = 5.0 * view.scale;
-					let style_context = StyleContext {
+					let mut style_context = StyleContext {
 						zoom_level: view.zoom_level as f32,
+						zoom_bucket: view.zoom_level.round_ties_even() as u8,
+						updated_styles: 0,
 					};
 
 					{
@@ -164,9 +166,16 @@ impl Widget for MapWidget<'_> {
 								self.map_data,
 								self.styles,
 								&view,
-								&style_context,
+								&mut style_context,
 							);
 						}
+					}
+
+					if style_context.updated_styles == 0 {
+						dbgtxt!(self.debug_text, "Updated styles: 0 ({})", self.mem.last_updated_styles);
+					} else {
+						dbgtxt!(self.debug_text, "Updated styles: {}", style_context.updated_styles);
+						self.mem.last_updated_styles = style_context.updated_styles;
 					}
 
 					let mut hover_elements = {

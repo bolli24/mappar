@@ -9,6 +9,7 @@ pub struct MapMemory {
 	pub zoom_level: f64,
 	pub camera_pos: DVec2,
 	pub selection: Selection,
+	pub last_updated_styles: usize,
 }
 
 impl Default for MapMemory {
@@ -17,6 +18,7 @@ impl Default for MapMemory {
 			zoom_level: 1.0,
 			camera_pos: DVec2::ZERO,
 			selection: Selection::default(),
+			last_updated_styles: 0,
 		}
 	}
 }

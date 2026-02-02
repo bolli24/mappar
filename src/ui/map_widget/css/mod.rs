@@ -1,14 +1,14 @@
-use crate::map::element::{Element, ElementId, MapElement};
+use crate::map::element::{Element, MapElement};
+use crate::ui::map_widget::css::cache::{DependencyMask, StyleCache};
 use crate::ui::map_widget::style::Style as MapStyle;
-use context::StyleContext;
-use error::{Error, Reporting};
-use eval::{EvalContext, ExpressionEval};
-use icon::Icon;
-
 use crate::ui::messages::Messages;
+use context::StyleContext;
 use egui::mutex::RwLock;
 use egui::{Color32, TextureOptions};
 use epaint::{TextureId, TextureManager};
+use error::{Error, Reporting};
+use eval::{EvalContext, ExpressionEval};
+use icon::Icon;
 use log::{error, info};
 use mappar_css::color::get_named_color;
 use mappar_css::*;
@@ -17,20 +17,23 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+pub mod cache;
 pub mod context;
 mod error;
 pub mod eval;
 pub mod icon;
 
+pub struct AnalyzedStyleset(Styleset, DependencyMask);
+
 // TODO: maybe use sparse set instead of hashmap
 pub struct Styles {
-	rule_set: RuleSet,
-	style_mapping: HashMap<ElementId, MapStyle>,
+	rule_set: Vec<AnalyzedStyleset>,
 	class_assignments: HashMap<Selectors, Vec<String>>,
 	icons: Arc<RwLock<HashMap<String, Icon>>>,
 	texture_manager: Arc<RwLock<TextureManager>>,
 	fallback_texture: TextureId,
 	reporting: RefCell<Reporting>,
+	cache: StyleCache,
 }
 
 impl Drop for Styles {
@@ -63,17 +66,44 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>, messages
 
 	let fallback_texture = init_fallback_texture(&texture_manager);
 
+	let rule_set = parse_str(&css_string, PATH)?
+		.0
+		.into_iter()
+		.map(|styleset| {
+			let deps = styleset
+				.selectors
+				.0
+				.iter()
+				.fold(DependencyMask::empty(), |acc, intersection| {
+					intersection.0.iter().fold(acc, |mut acc2, selector| {
+						if let Selector::SubSelector(sub) = selector {
+							if let SubSelector::Object(_, zoom, conditions, _) = sub {
+								if zoom.is_some() {
+									acc2 |= DependencyMask::ZOOM;
+								}
+								if !conditions.is_empty() {
+									acc2 |= DependencyMask::SELF_TAGS;
+								}
+							}
+						}
+						acc2
+					})
+				});
+			AnalyzedStyleset(styleset, deps)
+		})
+		.collect();
+
 	let mut styles = Styles {
-		rule_set: parse_str(&css_string, PATH)?,
-		style_mapping: HashMap::new(),
+		rule_set,
 		class_assignments: HashMap::new(),
 		icons: Arc::new(RwLock::new(HashMap::new())),
 		texture_manager,
 		fallback_texture,
 		reporting: RefCell::new(Reporting::new(PATH.to_string(), css_string)),
+		cache: StyleCache::new(),
 	};
 
-	for styleset in &styles.rule_set.0 {
+	for AnalyzedStyleset(styleset, _) in &styles.rule_set {
 		let mut class_names = Vec::new();
 		for rule in &styleset.declarations {
 			match rule {
@@ -102,14 +132,31 @@ pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>, messages
 }
 
 impl Styles {
-	pub fn get_style(&self, element: &MapElement, context: &StyleContext) -> MapStyle {
-		/* if !self.styles.contains_key(&element.id) {
-			let style = self.create_style(element, map_data);
-			self.styles.insert(element.id, style);
-		}
+	pub fn get_style(&mut self, element: &MapElement, context: &mut StyleContext) -> MapStyle {
+		use crate::ui::map_widget::css::cache::CachedStyle;
 
-		&self.styles[&element.id] */
-		self.create_style(element, context)
+		let cache_key = (element.id, context.zoom_bucket);
+		let cached = self.cache.0.get(&cache_key);
+
+		let needs_update = match cached {
+			None => true,
+			Some(cached) => cached.generation != element.generation,
+		};
+
+		if needs_update {
+			context.updated_styles += 1;
+			let style = self.create_style(element, context);
+			self.cache.0.insert(
+				cache_key,
+				CachedStyle {
+					style: style.clone(),
+					generation: element.generation,
+				},
+			);
+			style
+		} else {
+			cached.unwrap().style.clone()
+		}
 	}
 
 	fn create_style(&self, element: &MapElement, context: &StyleContext) -> MapStyle {
@@ -117,9 +164,12 @@ impl Styles {
 
 		let stylesets = matching_rules(&self.rule_set, element, context);
 		// TODO: sort styles by specificity
-		for Styleset {
-			declarations: rules, ..
-		} in stylesets
+		for AnalyzedStyleset(
+			Styleset {
+				declarations: rules, ..
+			},
+			_deps,
+		) in stylesets
 		{
 			self.apply_rules(element, &mut style, rules, context);
 		}
@@ -332,15 +382,14 @@ impl Styles {
 }
 
 fn matching_rules<'a>(
-	rule_set: &'a RuleSet,
+	rule_set: &'a Vec<AnalyzedStyleset>,
 	element: &'a MapElement,
 	context: &StyleContext,
-) -> impl Iterator<Item = &'a Styleset> {
+) -> impl Iterator<Item = &'a AnalyzedStyleset> {
 	// puffin::profile_function!();
 	rule_set
-		.0
 		.iter()
-		.filter(|styleset| matches_rule(styleset, element, context))
+		.filter(|styleset| matches_rule(&styleset.0, element, context))
 }
 
 fn matches_rule(styleset: &Styleset, element: &MapElement, context: &StyleContext) -> bool {
@@ -388,10 +437,7 @@ fn matches_pseudo_class(pseudo_class: &Option<String>, element: &MapElement, _co
 }
 
 fn matches_zoom(zoom: Option<Zoom>, context: &StyleContext) -> bool {
-	zoom.is_none_or(|zoom| {
-		let current_zoom = context.zoom_level.round_ties_even() as u8;
-		current_zoom > zoom.0 && current_zoom < zoom.1
-	})
+	zoom.is_none_or(|zoom| context.zoom_bucket > zoom.0 && context.zoom_bucket < zoom.1)
 }
 
 fn matches_object(object: Object, element: &MapElement, _context: &StyleContext) -> bool {

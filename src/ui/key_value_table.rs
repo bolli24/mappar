@@ -193,6 +193,7 @@ mod tests {
 			},
 			tags,
 			new_tag: None,
+			generation: 0,
 		}
 	}
 

@@ -97,6 +97,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 						element,
 						tags,
 						new_tag: None,
+						generation: 0,
 					});
 				}
 				Event::Empty(ref e) => {
@@ -112,6 +113,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 						element: Element::Node { pos: lat_lon?.into() },
 						tags: IndexMap::new(),
 						new_tag: None,
+						generation: 0,
 					});
 				}
 				Event::Eof => {
