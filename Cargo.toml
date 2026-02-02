@@ -21,7 +21,7 @@ image = { version = "0.25", default-features = false, features = [
     "png",
 ] }
 resvg = { version = "0.46", default-features = false }
-glam = { version = "0.30", features = ["serde"] }
+glam = { version = "0.31", features = ["serde"] }
 lyon_tessellation = "1.0"
 egui-phosphor = { version = "0.11", default-features = false, features = [
     "bold",
@@ -135,7 +135,7 @@ wasm-bindgen-futures = "0.4"
 gloo-worker = "0.5"
 
 [build-dependencies]
-vergen-gitcl = "1"
+vergen-gitcl = "9"
 
 [[bin]] # This is used for gloo-worker
 name = "dummy_worker"
