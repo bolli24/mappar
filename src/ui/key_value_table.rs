@@ -22,10 +22,10 @@ pub struct KeyValueTable<'a> {
 impl Widget for KeyValueTable<'_> {
 	fn ui(self, ui: &mut Ui) -> egui::Response {
 		ui.label(RichText::new("Tags").font(FontId::proportional(20.0)));
-		// const COLUMN_MARGIN: f32 = 20.0; // FIXME: Make it so we don't need this for the side panel to be able to shrink
 		const ACTION_COLUMN: f32 = 36.0;
-		let panel = ui.response().rect;
-		let column_width = ((panel.width() - ACTION_COLUMN) * 0.5).clamp(40.0, 400.0);
+		let available_width = ui.available_width();
+		let spacing = ui.spacing().item_spacing.x * 2.0; // 2 gaps between 3 columns
+		let column_width = ((available_width - ACTION_COLUMN - spacing) * 0.5).clamp(40.0, 400.0);
 
 		let id = self.selection.elements.iter().next();
 
