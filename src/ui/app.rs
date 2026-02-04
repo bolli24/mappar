@@ -38,6 +38,8 @@ pub struct MyApp {
 	history: EditHistory,
 	pending_map_data: Arc<Mutex<Option<MapData>>>,
 	styles: Option<Styles>,
+	#[cfg(target_arch = "wasm32")]
+	pending_styles: Arc<Mutex<Option<Styles>>>,
 	map_widget_id: Id,
 	imagery_fetcher: Arc<Mutex<ImageryFetcher>>,
 	imageries: Arc<RwLock<Imageries>>,
@@ -113,6 +115,8 @@ impl MyApp {
 		);
 
 		let pending_map_data = Arc::new(Mutex::new(None));
+		#[cfg(target_arch = "wasm32")]
+		let pending_styles: Arc<Mutex<Option<Styles>>> = Arc::new(Mutex::new(None));
 		let osm_client = Arc::new(tokio::sync::Mutex::new(OsmClient::new(None, None)));
 
 		crate::spawn_task!({
@@ -133,11 +137,23 @@ impl MyApp {
 			}
 		});
 
+		#[cfg(target_arch = "wasm32")]
+		let styles = {
+			let pending_styles = pending_styles.clone();
+			get_default_styles(cc.egui_ctx.tex_manager(), &mut messages, move |styles| {
+				*pending_styles.lock() = styles;
+			})
+		};
+		#[cfg(not(target_arch = "wasm32"))]
+		let styles = get_default_styles(cc.egui_ctx.tex_manager(), &mut messages);
+
 		let mut app = Self {
 			map_data: MapData::new(),
 			history: EditHistory::new(),
 			pending_map_data,
-			styles: get_default_styles(cc.egui_ctx.tex_manager(), &mut messages),
+			styles,
+			#[cfg(target_arch = "wasm32")]
+			pending_styles,
 			imagery_fetcher,
 			imageries,
 			layers: Layers::new(),
@@ -209,16 +225,15 @@ impl eframe::App for MyApp {
 			self.map_data = new_map_data;
 		}
 
-		#[cfg(not(target_arch = "wasm32"))]
+		#[cfg(target_arch = "wasm32")]
+		if let Some(new_styles) = self.pending_styles.lock().take() {
+			self.styles = Some(new_styles);
+		}
+
 		let mut reload_styles = false;
 		#[cfg(not(target_arch = "wasm32"))]
-		{
-			if self.key_binds.pressed_once(Command::ReloadStyles) {
-				reload_styles = true;
-			}
-			if self.key_binds.pressed_once(Command::ToggleDebugPanel) {
-				self.debug_panel = !self.debug_panel;
-			}
+		if self.key_binds.pressed_once(Command::ToggleDebugPanel) {
+			self.debug_panel = !self.debug_panel;
 		}
 
 		dbgtxt!(self.debug_text, "History count: {}", self.history.len());
@@ -241,12 +256,12 @@ impl eframe::App for MyApp {
 						ui.menu_button("File", |ui| {
 							ui.checkbox(&mut self.debug_panel, "Debug Panel");
 							ui.checkbox(&mut self.inspection, "Egui Inspector");
+							if ui.button("Reload Styles").clicked() {
+								ui.close();
+								reload_styles = true;
+							}
 							#[cfg(not(target_arch = "wasm32"))]
 							{
-								if ui.button("Reload Styles").clicked() {
-									ui.close();
-									reload_styles = true;
-								}
 								if ui.button("Open Config Directory").clicked() {
 									ui.close();
 									open::that(self.project_dirs.config_dir())
@@ -307,10 +322,19 @@ impl eframe::App for MyApp {
 			));
 		});
 
-		#[cfg(not(target_arch = "wasm32"))]
 		if reload_styles {
 			info!("Reloading MapCSS styles.");
-			self.styles = get_default_styles(ctx.tex_manager(), &mut self.messages);
+			#[cfg(not(target_arch = "wasm32"))]
+			{
+				self.styles = get_default_styles(ctx.tex_manager(), &mut self.messages);
+			}
+			#[cfg(target_arch = "wasm32")]
+			{
+				let pending_styles = self.pending_styles.clone();
+				self.styles = get_default_styles(ctx.tex_manager(), &mut self.messages, move |styles| {
+					*pending_styles.lock() = styles;
+				});
+			}
 		}
 
 		egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {

@@ -1,4 +1,6 @@
 use crate::map::element::{Element, MapElement};
+#[cfg(target_arch = "wasm32")]
+use crate::spawn_task;
 use crate::ui::map_widget::css::cache::{DependencyMask, StyleCache};
 use crate::ui::map_widget::style::Style as MapStyle;
 use crate::ui::messages::Messages;
@@ -12,6 +14,8 @@ use icon::Icon;
 use log::{error, info};
 use mappar_css::color::get_named_color;
 use mappar_css::*;
+#[cfg(target_arch = "wasm32")]
+use reqwest::Client;
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -49,20 +53,75 @@ impl Drop for Styles {
 	}
 }
 
-pub fn get_default_styles(texture_manager: Arc<RwLock<TextureManager>>, messages: &mut Messages) -> Option<Styles> {
-	const PATH: &str = "./assets/styles/default.mapcss";
+const PATH: &str = "./assets/styles/default.mapcss";
+#[cfg(target_arch = "wasm32")]
+const WASM_PATH: &str = "/assets/styles/default.mapcss";
 
-	let start = web_time::Instant::now();
-
+pub fn get_default_styles(
+	texture_manager: Arc<RwLock<TextureManager>>,
+	messages: &mut Messages,
+	#[cfg(target_arch = "wasm32")] on_loaded: impl FnOnce(Option<Styles>) + Send + 'static,
+) -> Option<Styles> {
 	info!("Getting default MapCSS styles.");
 	#[cfg(not(target_arch = "wasm32"))]
-	let css_string = std::fs::read_to_string(PATH)
-		.map_err(|err| {
-			crate::message_error!(messages, "Couldn't load default styles ({PATH}): {err:?}");
-		})
-		.ok()?;
+	{
+		let css_string = std::fs::read_to_string(PATH)
+			.map_err(|err| {
+				crate::message_error!(messages, "Couldn't load default styles ({PATH}): {err:?}");
+			})
+			.ok()?;
+		parse_styles(css_string, texture_manager, messages)
+	}
 	#[cfg(target_arch = "wasm32")]
-	let css_string = include_str!("../../../../assets/styles/default.mapcss").to_string();
+	{
+		let messages = messages.clone();
+		spawn_task!(fetch_styles_from_server(texture_manager, messages, on_loaded));
+		None
+	}
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn fetch_styles_from_server(
+	texture_manager: Arc<RwLock<TextureManager>>,
+	mut messages: Messages,
+	on_loaded: impl FnOnce(Option<Styles>) + Send + 'static,
+) {
+	let origin = crate::util::get_current_url_origin();
+	let url = format!("{}{}", origin, WASM_PATH);
+
+	info!("Fetching MapCSS styles from: {url}");
+
+	let client = Client::new();
+	match client.get(&url).send().await {
+		Ok(response) => match response.error_for_status() {
+			Ok(response) => match response.text().await {
+				Ok(css_string) => {
+					let styles = parse_styles(css_string, texture_manager, &mut messages);
+					on_loaded(styles);
+				}
+				Err(err) => {
+					crate::message_error!(messages, "Failed to read CSS response: {err}");
+					on_loaded(None);
+				}
+			},
+			Err(err) => {
+				crate::message_error!(messages, "Failed to fetch CSS (status error): {err}");
+				on_loaded(None);
+			}
+		},
+		Err(err) => {
+			crate::message_error!(messages, "Failed to fetch CSS: {err}");
+			on_loaded(None);
+		}
+	}
+}
+
+fn parse_styles(
+	css_string: String,
+	texture_manager: Arc<RwLock<TextureManager>>,
+	messages: &mut Messages,
+) -> Option<Styles> {
+	let start = web_time::Instant::now();
 
 	let fallback_texture = init_fallback_texture(&texture_manager);
 

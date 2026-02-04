@@ -436,9 +436,7 @@ where
 				.ignore_then(opt_spaces.clone())
 				.ignore_then(condition)
 				.try_map(|c, span| match c {
-					Condition::Binary(_, _, _) => {
-						Err(Rich::custom(span, "Can't negate binary expressions."))
-					}
+					Condition::Binary(_, _, _) => Err(Rich::custom(span, "Can't negate binary expressions.")),
 					_ => Ok(Condition::Not(Box::new(c))),
 				}),
 		))

@@ -28,67 +28,68 @@ pub enum IconError {
 	IconDimensionMismatch(f32, f32),
 }
 
-// TODO: Maybe use async io
+#[cfg(not(target_arch = "wasm32"))]
 pub fn try_get_icon_texture(
 	file_name: &str,
 	texture_manager: &Arc<RwLock<TextureManager>>,
-	#[cfg(target_arch = "wasm32")] icons: &Arc<RwLock<std::collections::HashMap<String, Icon>>>,
-	#[cfg(target_arch = "wasm32")] fallback_texture: TextureId,
 ) -> Result<TextureId, IconError> {
-	#[cfg(not(target_arch = "wasm32"))]
-	{
-		use std::io::Read;
-		let file_path = std::path::Path::new("./assets/styles").join(file_name);
-		let mut file = std::fs::File::open(&file_path).map_err(imagery_fetcher::Error::ImageIo)?;
-		let mut image_data = Vec::new();
-		file.read_to_end(&mut image_data)
-			.map_err(imagery_fetcher::Error::ImageIo)?;
-		let bytes = bytes::Bytes::from(image_data);
+	use std::io::Read;
+	let file_path = std::path::Path::new("./assets/styles").join(file_name);
+	let mut file = std::fs::File::open(&file_path).map_err(imagery_fetcher::Error::ImageIo)?;
+	let mut image_data = Vec::new();
+	file.read_to_end(&mut image_data)
+		.map_err(imagery_fetcher::Error::ImageIo)?;
+	let bytes = bytes::Bytes::from(image_data);
 
-		let extension = file_path
-			.extension()
-			.ok_or(IconError::InvalidFileExtension(file_name.to_string()))?
-			.to_str()
-			.ok_or(IconError::InvalidFileExtension(file_name.to_string()))?
-			.to_lowercase();
+	let extension = file_path
+		.extension()
+		.ok_or(IconError::InvalidFileExtension(file_name.to_string()))?
+		.to_str()
+		.ok_or(IconError::InvalidFileExtension(file_name.to_string()))?
+		.to_lowercase();
 
-		let color_image = decode_or_render(&extension, &bytes)?;
+	let color_image = decode_or_render(&extension, &bytes)?;
 
-		Ok(imagery_fetcher::ImageryFetcher::create_texture_from_decoded(
-			texture_manager,
-			format!("icon {file_name}"),
-			color_image,
-		))
-	}
+	Ok(imagery_fetcher::ImageryFetcher::create_texture_from_decoded(
+		texture_manager,
+		format!("icon {file_name}"),
+		color_image,
+	))
+}
 
-	#[cfg(target_arch = "wasm32")]
-	{
-		let icons = icons.clone();
-		let texture_manager = texture_manager.clone();
-		let base_url = web_sys::window()
-			.ok_or(IconError::NoBaseUrl)?
-			.location()
-			.href()
-			.map_err(|_| IconError::NoBaseUrl)?;
-		let url = reqwest::Url::parse(&base_url)?.join("styles/")?.join(file_name)?;
-		let file_name = file_name.to_string();
+#[cfg(target_arch = "wasm32")]
+pub fn try_get_icon_texture(
+	file_name: &str,
+	texture_manager: &Arc<RwLock<TextureManager>>,
+	icons: &Arc<RwLock<std::collections::HashMap<String, Icon>>>,
+	fallback_texture: TextureId,
+) -> Result<TextureId, IconError> {
+	let icons = icons.clone();
+	let texture_manager = texture_manager.clone();
+	let base_url = web_sys::window()
+		.ok_or(IconError::NoBaseUrl)?
+		.location()
+		.href()
+		.map_err(|_| IconError::NoBaseUrl)?;
+	let url = reqwest::Url::parse(&base_url)?
+		.join("assets/styles/")?
+		.join(file_name)?;
+	let file_name = file_name.to_string();
 
-		log::info!("Fetching icon file: {url}");
+	log::info!("Fetching icon file: {url}");
 
-		wasm_bindgen_futures::spawn_local(async move {
-			let result = fetch_icon(url, &file_name, &texture_manager).await;
+	wasm_bindgen_futures::spawn_local(async move {
+		let result = fetch_icon(url, &file_name, &texture_manager).await;
 
-			match result {
-				Ok(texture_id) => {
-					icons.write().insert(file_name, Icon(texture_id));
-				}
-
-				Err(err) => log::error!("Unable to get icon file '{file_name}': {err:?}"),
+		match result {
+			Ok(texture_id) => {
+				icons.write().insert(file_name, Icon(texture_id));
 			}
-		});
+			Err(err) => log::error!("Unable to get icon file '{file_name}': {err:?}"),
+		}
+	});
 
-		Ok(fallback_texture)
-	}
+	Ok(fallback_texture)
 }
 
 #[cfg(target_arch = "wasm32")]
