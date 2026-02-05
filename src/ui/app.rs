@@ -29,6 +29,7 @@ use crate::map::bounds::Bounds;
 use crate::map::latlon::{LatLon, latlon};
 use crate::ui::auth_widget::AuthWidget;
 use crate::ui::key_value_table::KeyValueTable;
+use crate::ui::relations_table::RelationsTable;
 use epaint::mutex::{Mutex, RwLock};
 
 const MAX_RECENT_FRAME_COUNT: usize = 1000;
@@ -218,6 +219,7 @@ impl MyApp {
 
 impl eframe::App for MyApp {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+		self.map_memory.highlighted_elements.clear();
 		self.key_binds.update_pressed_commands(ctx);
 
 		let maybe_new_map_data = self.pending_map_data.lock().take();
@@ -377,6 +379,16 @@ impl eframe::App for MyApp {
 					&mut self.map_memory.selection,
 					&mut self.messages,
 					&mut self.debug_text,
+				)
+				.ui(ui);
+				ui.separator();
+				RelationsTable::new(
+					&mut self.map_data,
+					&mut self.history,
+					&mut self.map_memory.selection,
+					&mut self.messages,
+					&mut self.debug_text,
+					&mut self.map_memory.highlighted_elements,
 				)
 				.ui(ui);
 			});

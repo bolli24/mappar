@@ -32,6 +32,13 @@ impl Widget for KeyValueTable<'_> {
 		let element = id.and_then(|id| self.map_data.get(id));
 		let mut edit = None;
 
+		if self.selection.elements.len() > 1 {
+			return ui.label("Select only one element to edit tags.");
+		}
+		let Some(MapElement { tags, new_tag, id, .. }) = element else {
+			return ui.label("Nothing is selected.");
+		};
+
 		let response = Frame::NONE
 			.show(ui, |ui| {
 				TableBuilder::new(ui)
@@ -50,16 +57,7 @@ impl Widget for KeyValueTable<'_> {
 							ui.strong("Value");
 						});
 					})
-					.body(|mut body| {
-						if self.selection.elements.len() > 1 {
-							body.ui_mut().label("Select only one element to edit tags.");
-							return;
-						}
-						let Some(MapElement { tags, new_tag, .. }) = element else {
-							body.ui_mut().label("Nothing is selected.");
-							return;
-						};
-						let id = *id.unwrap();
+					.body(|body| {
 						let mut tags_iter = tags.iter();
 						body.rows(16.0, tags.len() + 1, |mut row| {
 							if let Some((key, value)) = tags_iter.next() {
@@ -72,11 +70,11 @@ impl Widget for KeyValueTable<'_> {
 									table_field(&mut update_value, ui);
 								});
 								if update_value != *value {
-									edit = Some(self.map_data.update_value(id, key.clone(), update_value));
+									edit = Some(self.map_data.update_value(*id, key.clone(), update_value));
 								}
 								row.col(|ui| {
 									if ui.small_button(RichText::new(egui_phosphor::bold::TRASH)).clicked() {
-										edit = Some(self.map_data.remove_tag(id, key));
+										edit = Some(self.map_data.remove_tag(*id, key));
 									}
 								});
 							} else {
@@ -95,18 +93,18 @@ impl Widget for KeyValueTable<'_> {
 								match new_tag {
 									Some((previous_key, previous_value)) => {
 										if *previous_value != value || *previous_key != key {
-											edit = Some(self.map_data.update_new_tag(id, key, value));
+											edit = Some(self.map_data.update_new_tag(*id, key, value));
 										}
 									}
 									None => {
 										if !key.is_empty() || !value.is_empty() {
-											edit = Some(self.map_data.update_new_tag(id, key, value));
+											edit = Some(self.map_data.update_new_tag(*id, key, value));
 										}
 									}
 								}
 								if confirm {
 									info!("Confirmed");
-									edit = Some(self.map_data.add_new_tag(id));
+									edit = Some(self.map_data.add_new_tag(*id));
 								}
 							}
 						});
@@ -170,7 +168,7 @@ pub fn get_tags(elements: &[MapElement]) -> IndexMap<String, Either<String, FxHa
 	result
 }
 
-fn table_field(value: &mut dyn TextBuffer, ui: &mut Ui) -> TextEditOutput {
+pub fn table_field(value: &mut dyn TextBuffer, ui: &mut Ui) -> TextEditOutput {
 	TextEdit::singleline(value).margin(Margin::same(1)).show(ui)
 }
 

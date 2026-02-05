@@ -9,7 +9,6 @@ mod style;
 mod view;
 
 use super::messages::Messages;
-use crate::dbgtxt;
 use crate::imagery::imagery_fetcher::{ImageryFetcher, Tile};
 use crate::imagery::{Imagery, ImageryRef};
 use crate::map::element::Element;
@@ -19,6 +18,7 @@ use crate::ui::debug_text::DebugText;
 use crate::ui::input::KeyBinds;
 use crate::util::convert::{ToDVec2, ToLyonPoint, ToPos2};
 use crate::util::quick_set::QuickSet;
+use crate::dbgtxt;
 use css::Styles;
 use css::context::StyleContext;
 use derive_new::new;
@@ -201,7 +201,7 @@ impl Widget for MapWidget<'_> {
 						messages: self.messages.clone(),
 						update_edit_mode: self.update_edit_mode,
 						debug_text: self.debug_text.as_deref_mut(),
-						key_binds: &self.key_binds,
+						key_binds: self.key_binds,
 					};
 
 					self.map_state.handle_with_context(&(), &mut context);
@@ -212,16 +212,30 @@ impl Widget for MapWidget<'_> {
 					dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");
 
 					let mut shapes = DrawList::new();
-					let show_hover = matches!(
-						self.map_state.state(),
-						MapState::Select { .. } | MapState::BoxSelect { .. } | MapState::Draw { .. }
+					let show_hover = self.interactive
+						&& matches!(
+							self.map_state.state(),
+							MapState::Select { .. } | MapState::BoxSelect { .. } | MapState::Draw { .. }
+						);
+
+					self.mem.highlighted_elements.extend(
+						self.map_data
+							.reference_index
+							.relation_descendants(self.mem.highlighted_elements.iter().copied()),
 					);
+
+					let selected_children = self
+						.map_data
+						.reference_index
+						.relation_descendants(self.mem.selection.elements.iter().copied());
 
 					ui.ctx().fonts_mut(|fonts| {
 						for element in &render_data {
-							let hovered = show_hover && self.interactive && hover_elements.contains(&element.id);
-							let selected = self.mem.selection.elements.contains(&element.id);
-							if let Some(hightlighted) = element.maybe_highlighted(hovered, selected) {
+							let hovered = hover_elements.contains(&element.id)
+								|| self.mem.highlighted_elements.contains(&element.id);
+							let selected = self.mem.selection.elements.contains(&element.id)
+								|| selected_children.contains(&element.id);
+							if let Some(hightlighted) = element.maybe_highlighted(hovered && show_hover, selected) {
 								draw_element(&hightlighted, &mut shapes, &view, fonts);
 							}
 							draw_element(element, &mut shapes, &view, fonts);

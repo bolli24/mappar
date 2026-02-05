@@ -10,3 +10,4 @@ mod layer_list;
 pub mod map_widget;
 pub mod memory;
 pub mod messages;
+mod relations_table;

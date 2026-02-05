@@ -1,8 +1,8 @@
-use std::collections::HashSet;
-
 use crate::map::element::{ElementId, ElementType};
 use crate::map::map_data::MapData;
+use egui::ahash::AHashSet;
 use glam::DVec2;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct MapMemory {
@@ -10,6 +10,7 @@ pub struct MapMemory {
 	pub camera_pos: DVec2,
 	pub selection: Selection,
 	pub last_updated_styles: usize,
+	pub highlighted_elements: AHashSet<ElementId>,
 }
 
 impl Default for MapMemory {
@@ -19,6 +20,7 @@ impl Default for MapMemory {
 			camera_pos: DVec2::ZERO,
 			selection: Selection::default(),
 			last_updated_styles: 0,
+			highlighted_elements: AHashSet::new(),
 		}
 	}
 }
