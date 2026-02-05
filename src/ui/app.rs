@@ -19,7 +19,9 @@ use crate::{dbgtxt, unreachable_log};
 use directories::ProjectDirs;
 use egui::ahash::AHashSet;
 use egui::{Id, ScrollArea, Sides, Widget, Window};
-use log::{error, info};
+#[cfg(not(target_arch = "wasm32"))]
+use log::error;
+use log::info;
 use statig::prelude::{IntoStateMachineExt, StateMachine};
 use std::sync::Arc;
 use std::time::Duration;
@@ -66,7 +68,7 @@ pub struct MyApp {
 	map_state: StateMachine<MapStateMachine>,
 	backend: String,
 	no_cache: bool,
-	osm_client: Arc<tokio::sync::Mutex<OsmClient>>,
+	osm_client: OsmClient,
 }
 
 impl MyApp {
@@ -125,7 +127,7 @@ impl MyApp {
 		let mut download_tasks = AHashSet::new();
 		#[cfg(target_arch = "wasm32")]
 		let pending_styles: Arc<Mutex<Option<Styles>>> = Arc::new(Mutex::new(None));
-		let osm_client = Arc::new(tokio::sync::Mutex::new(OsmClient::new(None, None)));
+		let osm_client = OsmClient::new(None, None);
 
 		crate::spawn_task!({
 			let map_data_sender = map_data_channel.0.clone();
@@ -134,8 +136,6 @@ impl MyApp {
 			download_tasks.insert(task);
 			async move {
 				let result = osm_client
-					.lock()
-					.await
 					.get_data_from_bounds(bounds)
 					.await
 					.map(|result| (result, task));

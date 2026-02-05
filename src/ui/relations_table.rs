@@ -10,7 +10,6 @@ use egui::ahash::AHashSet;
 use egui::{Button, Frame, RichText, Sides, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
 use epaint::FontId;
-use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(new)]
@@ -23,7 +22,7 @@ pub struct RelationsTable<'a> {
 	highlighted_elements: &'a mut AHashSet<ElementId>,
 	map_data_sender: &'a UnboundedSender<MapDataResult>,
 	download_tasks: &'a mut AHashSet<DownloadTask>,
-	osm_client: Arc<tokio::sync::Mutex<OsmClient>>,
+	osm_client: OsmClient,
 }
 
 impl Widget for RelationsTable<'_> {
@@ -147,14 +146,13 @@ impl Widget for RelationsTable<'_> {
 
 						spawn_task!({
 							let map_data_sender = self.map_data_sender.clone();
+							let osm_client = self.osm_client.clone();
 							let id = element.id;
 							self.download_tasks.insert(task);
 							async move {
 								map_data_sender
 									.send(
-										self.osm_client
-											.lock()
-											.await
+										osm_client
 											.get_full(id)
 											.await
 											.map(|result| (result, task)),

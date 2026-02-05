@@ -1,17 +1,27 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::api::OAUTH_URL;
 use crate::api::auth::OsmAuthToken;
 use crate::api::user::UserDetails;
-use crate::api::{API_URL, OAUTH_URL, USER_AGENT};
+use crate::api::{API_URL, USER_AGENT};
+use egui::mutex::RwLock;
 use log::warn;
 use reqwest::{Client, Method, Response, StatusCode};
 use serde::Deserialize;
+use std::sync::Arc;
 
-pub struct OsmClient {
-	client: Client,
+#[derive(Debug, Default, Clone)]
+pub struct AuthState {
 	pub auth: Option<OsmAuthToken>,
 	pub user: Option<UserDetails>,
+}
+
+#[derive(Clone)]
+pub struct OsmClient {
+	client: Client,
+	auth_state: Arc<RwLock<AuthState>>,
 	base_url: String,
 	#[cfg(not(target_arch = "wasm32"))]
-	pub credential_entry: keyring::Entry,
+	pub credential_entry: Arc<keyring::Entry>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -37,13 +47,44 @@ impl OsmClient {
 	pub fn new(auth: Option<OsmAuthToken>, user: Option<UserDetails>) -> Self {
 		Self {
 			client: Client::new(),
-			auth,
-			user,
+			auth_state: Arc::new(RwLock::new(AuthState { auth, user })),
 			base_url: API_URL.to_owned(),
 			#[cfg(not(target_arch = "wasm32"))]
-			credential_entry: keyring::Entry::new_with_target(OAUTH_URL, "mappar", "user")
-				.expect("Error creating keyring entry."),
+			credential_entry: Arc::new(
+				keyring::Entry::new_with_target(OAUTH_URL, "mappar", "user").expect("Error creating keyring entry."),
+			),
 		}
+	}
+
+	// Helper methods for auth state access
+	pub fn auth(&self) -> Option<OsmAuthToken> {
+		self.auth_state.read().auth.clone()
+	}
+
+	pub fn set_auth(&self, auth: Option<OsmAuthToken>) {
+		self.auth_state.write().auth = auth;
+	}
+
+	pub fn user(&self) -> Option<UserDetails> {
+		self.auth_state.read().user.clone()
+	}
+
+	pub fn set_user(&self, user: Option<UserDetails>) {
+		self.auth_state.write().user = user;
+	}
+
+	pub fn logout(&self) {
+		let mut state = self.auth_state.write();
+		state.auth = None;
+		state.user = None;
+	}
+
+	pub fn is_authenticated(&self) -> bool {
+		self.auth_state.read().auth.is_some()
+	}
+
+	pub fn has_user(&self) -> bool {
+		self.auth_state.read().user.is_some()
 	}
 
 	pub async fn call(&self, path: &str, body: Option<String>, method: Method) -> ApiResult<Response> {
@@ -52,9 +93,14 @@ impl OsmClient {
 		} else {
 			format!("{}/{}", self.base_url, path)
 		};
+
+		// Clone auth token while holding lock briefly
+		let auth_token = self.auth_state.read().auth.clone();
+
+		// Build and execute request WITHOUT holding lock
 		let mut request_builder = self.client.request(method, url).header("User-Agent", USER_AGENT);
 
-		if let Some(auth) = &self.auth {
+		if let Some(auth) = &auth_token {
 			request_builder = request_builder.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", auth.0));
 		}
 		if let Some(body) = body {

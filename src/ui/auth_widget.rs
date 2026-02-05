@@ -5,26 +5,24 @@ use crate::ui::messages::Messages;
 use crate::{message_error, message_info, spawn_task};
 use egui::{Id, Response, Ui, Widget};
 use mappar_macros::TempMemory;
-use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
-async fn fetch_user_info(osm_client: Arc<tokio::sync::Mutex<OsmClient>>, messages: &mut Messages) {
-	let mut client_guard = osm_client.lock().await;
-	let user_details = client_guard.get_user_details().await;
+async fn fetch_user_info(osm_client: OsmClient, messages: &mut Messages) {
+	let user_details = osm_client.get_user_details().await;
 	match user_details {
 		Ok(user_details) => {
-			client_guard.user = Some(user_details);
+			osm_client.set_user(Some(user_details));
 		}
 		Err(error) => {
 			message_error!(messages, "Error getting user details: {:?}", error);
-			client_guard.auth = None;
+			osm_client.set_auth(None);
 		}
 	}
 }
 
 #[derive(derive_new::new)]
 pub struct AuthWidget {
-	osm_client: Arc<tokio::sync::Mutex<OsmClient>>,
+	osm_client: OsmClient,
 	messages: Messages,
 }
 
@@ -51,21 +49,19 @@ impl Widget for AuthWidget {
 		let mut mem: AuthMemory = TempMemory::load_or_default(ui.ctx(), id);
 		let mut logout = false;
 
-		let Ok(mut client_guard) = self.osm_client.try_lock() else {
-			return ui.spinner();
-		};
-
-		if !mem.cancellation.is_cancelled() && client_guard.auth.is_none() {
+		// Show spinner during login flow (cancellation not cancelled means login in progress)
+		if !mem.cancellation.is_cancelled() && !self.osm_client.is_authenticated() {
 			if ui.button("Cancel").clicked() {
 				mem.cancellation.cancel();
 			} else {
+				mem.store(ui.ctx(), id);
 				return ui.spinner();
 			}
 		}
 
 		let osm_client = self.osm_client.clone();
 
-		let response = if let Some(user_details) = &client_guard.user {
+		let response = if let Some(user_details) = self.osm_client.user() {
 			ui.horizontal(|ui| {
 				ui.label(&user_details.display_name)
 					.on_hover_text(user_details.id.to_string());
@@ -74,9 +70,9 @@ impl Widget for AuthWidget {
 			.response
 		} else {
 			if !mem.tried_getting_token {
-				if let Some(token) = get_token(&client_guard, &mut self.messages) {
+				if let Some(token) = get_token(&self.osm_client, &mut self.messages) {
 					log::info!("Got login token: {}...", &token.0[0..5]);
-					client_guard.auth = Some(token);
+					self.osm_client.set_auth(Some(token));
 					let osm_client = self.osm_client.clone();
 					let mut messages = self.messages.clone();
 					spawn_task!(async move {
@@ -100,11 +96,9 @@ impl Widget for AuthWidget {
 						_ = cancellation.cancelled() => Err(anyhow::anyhow!("Login flow canceled by user."))
 					} {
 						Ok(token) => {
-							let mut client_guard = osm_client.lock().await;
-							store_token(&mut client_guard, &token, &mut messages);
-							client_guard.auth = Some(OsmAuthToken(token));
+							store_token(&osm_client, &token, &mut messages);
+							osm_client.set_auth(Some(OsmAuthToken(token)));
 							message_info!(messages, "Logged in successfully.");
-							drop(client_guard);
 							fetch_user_info(osm_client, &mut messages).await;
 						}
 						Err(err) => {
@@ -118,9 +112,8 @@ impl Widget for AuthWidget {
 		};
 
 		if logout {
-			client_guard.auth = None;
-			client_guard.user = None;
-			delete_stored_token(&client_guard, &mut self.messages);
+			self.osm_client.logout();
+			delete_stored_token(&self.osm_client, &mut self.messages);
 		}
 
 		mem.store(ui.ctx(), id);
@@ -168,14 +161,14 @@ fn get_token(_client: &OsmClient, _messages: &mut Messages) -> Option<OsmAuthTok
 
 // TODO: message error
 #[cfg(not(target_arch = "wasm32"))]
-fn store_token(client: &mut OsmClient, token: &str, messages: &mut Messages) {
+fn store_token(client: &OsmClient, token: &str, messages: &mut Messages) {
 	let _ = client.credential_entry.set_password(token).inspect_err(|err| {
 		message_error!(messages, "Error storing token: {:?}", err);
 	});
 }
 
 #[cfg(target_arch = "wasm32")]
-fn store_token(_client: &mut OsmClient, token: &str, messages: &mut Messages) {
+fn store_token(_client: &OsmClient, token: &str, messages: &mut Messages) {
 	let window = web_sys::window().expect("Window must be available.");
 	let storage = window
 		.local_storage()

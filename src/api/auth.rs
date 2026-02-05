@@ -8,7 +8,7 @@ use oauth2::{
 };
 use url::Url;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct OsmAuthToken(pub String);
 
 type OsmClient = BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
