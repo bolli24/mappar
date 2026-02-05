@@ -211,7 +211,7 @@ impl undo::Edit for Edit {
 							}
 						}
 						Reference::Member(index, _) => {
-							let Element::Relation { members } =
+							let Element::Relation { members, .. } =
 								&mut target.get_mut(parent).expect("Element must exist.").element
 							else {
 								unreachable!("Element must be relation.");
@@ -276,7 +276,7 @@ impl undo::Edit for Edit {
 								}
 							}
 							Reference::Member(index, role) => {
-								let Element::Relation { members } =
+								let Element::Relation { members, .. } =
 									&mut target.get_mut(parent).expect("Element must exist.").element
 								else {
 									unreachable!("Element must be relation.");

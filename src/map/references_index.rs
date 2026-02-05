@@ -24,7 +24,7 @@ impl ReferenceIndex {
 			Element::Way { nodes } => {
 				self.add_references(element.id, nodes);
 			}
-			Element::Relation { members } => self.add_references(element.id, members.iter().map(|m| &m.ref_id)),
+			Element::Relation { members, .. } => self.add_references(element.id, members.iter().map(|m| &m.ref_id)),
 		};
 	}
 

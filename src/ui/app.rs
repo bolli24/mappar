@@ -8,15 +8,16 @@ use super::messages::Messages;
 use crate::imagery::imagery_fetcher::ImageryFetcher;
 use crate::imagery::{Imageries, get_imagery};
 use crate::map::map_data::{EditHistory, MapData};
-use crate::message_error;
 use crate::ui::debug_text::DebugText;
 use crate::ui::edit_bar::EditBar;
 use crate::ui::layer_list::{Layer, LayerList};
 use crate::ui::map_widget::css::get_default_styles;
 use crate::ui::map_widget::map_memory::MapMemory;
+use crate::{Element, ElementId, message_error};
 use crate::{dbgtxt, unreachable_log};
 #[cfg(not(target_arch = "wasm32"))]
 use directories::ProjectDirs;
+use egui::ahash::AHashSet;
 use egui::{Id, ScrollArea, Sides, Widget, Window};
 use log::{error, info};
 use statig::prelude::{IntoStateMachineExt, StateMachine};
@@ -24,20 +25,25 @@ use std::sync::Arc;
 use std::time::Duration;
 use web_time::Instant;
 
-use crate::api::client::OsmClient;
+use crate::api::client::{ApiResult, OsmClient};
 use crate::map::bounds::Bounds;
 use crate::map::latlon::{LatLon, latlon};
 use crate::ui::auth_widget::AuthWidget;
 use crate::ui::key_value_table::KeyValueTable;
 use crate::ui::relations_table::RelationsTable;
 use epaint::mutex::{Mutex, RwLock};
+use tokio::sync::mpsc::error::TryRecvError;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 const MAX_RECENT_FRAME_COUNT: usize = 1000;
+
+pub type MapDataResult = ApiResult<(MapData, DownloadTask)>;
 
 pub struct MyApp {
 	map_data: MapData,
 	history: EditHistory,
-	pending_map_data: Arc<Mutex<Option<MapData>>>,
+	map_data_channel: (UnboundedSender<MapDataResult>, UnboundedReceiver<MapDataResult>),
+	download_tasks: AHashSet<DownloadTask>,
 	styles: Option<Styles>,
 	#[cfg(target_arch = "wasm32")]
 	pending_styles: Arc<Mutex<Option<Styles>>>,
@@ -115,26 +121,25 @@ impl MyApp {
 			|state| state.adapter.get_info().backend.to_string(),
 		);
 
-		let pending_map_data = Arc::new(Mutex::new(None));
+		let map_data_channel = unbounded_channel::<MapDataResult>();
+		let mut download_tasks = AHashSet::new();
 		#[cfg(target_arch = "wasm32")]
 		let pending_styles: Arc<Mutex<Option<Styles>>> = Arc::new(Mutex::new(None));
 		let osm_client = Arc::new(tokio::sync::Mutex::new(OsmClient::new(None, None)));
 
 		crate::spawn_task!({
-			let pending_map_data = pending_map_data.clone();
+			let map_data_sender = map_data_channel.0.clone();
 			let osm_client = osm_client.clone();
-			let mut messages = messages.clone();
+			let task = DownloadTask::BBox(bounds);
+			download_tasks.insert(task);
 			async move {
-				match osm_client.lock().await.get_data_from_bounds(bounds).await {
-					Ok(new_map_data) => {
-						let mut pending = pending_map_data.lock();
-						*pending = Some(new_map_data);
-					}
-					Err(err) => {
-						message_error!(messages, "Error fetching data:");
-						message_error!(messages, "{err:?}");
-					}
-				}
+				let result = osm_client
+					.lock()
+					.await
+					.get_data_from_bounds(bounds)
+					.await
+					.map(|result| (result, task));
+				map_data_sender.send(result).expect("Channel must not be closed.");
 			}
 		});
 
@@ -151,7 +156,8 @@ impl MyApp {
 		let mut app = Self {
 			map_data: MapData::new(),
 			history: EditHistory::new(),
-			pending_map_data,
+			map_data_channel,
+			download_tasks,
 			styles,
 			#[cfg(target_arch = "wasm32")]
 			pending_styles,
@@ -222,9 +228,28 @@ impl eframe::App for MyApp {
 		self.map_memory.highlighted_elements.clear();
 		self.key_binds.update_pressed_commands(ctx);
 
-		let maybe_new_map_data = self.pending_map_data.lock().take();
-		if let Some(new_map_data) = maybe_new_map_data {
-			self.map_data = new_map_data;
+		match self.map_data_channel.1.try_recv() {
+			Ok(Ok((new_map_data, task))) => {
+				self.map_data.join(new_map_data);
+				if let DownloadTask::Relation(id) = &task {
+					if let Element::Relation { fully_downloaded, .. } =
+						&mut self.map_data.get_mut(id).expect("Relation must exist.").element
+					{
+						*fully_downloaded = true;
+					} else {
+						unreachable!("Element must be relation.");
+					}
+				}
+				self.download_tasks.remove(&task);
+			}
+			Ok(Err(api_error)) => {
+				message_error!(self.messages, "Error fetching data:");
+				message_error!(self.messages, "{api_error}");
+			}
+			Err(TryRecvError::Disconnected) => {
+				unreachable!("Map data channel can never be disconnected.");
+			}
+			Err(TryRecvError::Empty) => {}
 		}
 
 		#[cfg(target_arch = "wasm32")]
@@ -389,6 +414,9 @@ impl eframe::App for MyApp {
 					&mut self.messages,
 					&mut self.debug_text,
 					&mut self.map_memory.highlighted_elements,
+					&self.map_data_channel.0,
+					&mut self.download_tasks,
+					self.osm_client.clone(),
 				)
 				.ui(ui);
 			});
@@ -518,4 +546,10 @@ impl eframe::App for MyApp {
 		puffin::GlobalProfiler::lock().new_frame();
 		self.last_update = Instant::now();
 	}
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum DownloadTask {
+	BBox(Bounds),
+	Relation(ElementId),
 }

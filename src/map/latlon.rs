@@ -1,16 +1,32 @@
 use glam::DVec2;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
+use std::hash::{Hash, Hasher};
 use std::ops::Add;
 
 pub const RADIUS_EARTH: f64 = 6_378_137.0;
 pub const CIRCUMFERENCE_EARTH: f64 = 2.0 * PI * RADIUS_EARTH;
 
-#[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct LatLon {
 	#[serde(rename = "@lat")]
 	pub lat: f64,
 	#[serde(rename = "@lon")]
 	pub lon: f64,
+}
+
+impl PartialEq for LatLon {
+	fn eq(&self, other: &Self) -> bool {
+		self.lat.to_bits() == other.lat.to_bits() && self.lon.to_bits() == other.lon.to_bits()
+	}
+}
+
+impl Eq for LatLon {}
+
+impl Hash for LatLon {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.lat.to_bits().hash(state);
+		self.lon.to_bits().hash(state);
+	}
 }
 
 impl LatLon {

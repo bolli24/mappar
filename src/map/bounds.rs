@@ -2,7 +2,7 @@ use crate::LatLon;
 use crate::map::latlon::latlon;
 use std::fmt::Display;
 
-#[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Bounds {
 	pub min: LatLon,
 	pub max: LatLon,

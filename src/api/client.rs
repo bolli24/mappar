@@ -24,6 +24,8 @@ pub enum Error {
 	Xml,
 	#[error("Deserialization error: {0}")]
 	Deserialization(#[from] quick_xml::DeError),
+	#[error("Can't get full element data for node.")]
+	GetFullNode,
 }
 
 pub type ApiResult<T> = Result<T, Error>;

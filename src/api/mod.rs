@@ -1,6 +1,7 @@
 pub mod auth;
 mod capabilities;
 pub mod client;
+mod full;
 pub mod map;
 pub mod user;
 

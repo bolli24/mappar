@@ -61,9 +61,25 @@ impl MapData {
 		None
 	}
 
+	pub fn join(&mut self, other: Self) {
+		for element in other.elements.into_values() {
+			if !self.elements.contains_key(&element.id) {
+				self.add(element);
+			}
+		}
+		self.last_new_ids.0 = self.last_new_ids.0.min(other.last_new_ids.0);
+		self.last_new_ids.1 = self.last_new_ids.1.min(other.last_new_ids.1);
+		self.last_new_ids.2 = self.last_new_ids.2.min(other.last_new_ids.2);
+	}
+
 	pub fn iter(&self) -> impl Iterator<Item = &MapElement> {
 		self.elements.values()
 	}
+
+	pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut MapElement> {
+		self.elements.values_mut()
+	}
+
 	#[must_use]
 	pub fn len(&self) -> usize {
 		self.elements.len()
@@ -281,7 +297,7 @@ impl MapData {
 						}
 					}
 				}
-				Element::Relation { members } => {
+				Element::Relation { members, .. } => {
 					for (index, Member { ref_id, role }) in members.iter().enumerate() {
 						if *ref_id == id {
 							references

@@ -185,7 +185,14 @@ pub struct Member {
 
 #[derive(Debug, Clone)]
 pub enum Element {
-	Node { pos: Cell<LatLon> },
-	Way { nodes: Vec<ElementId> }, // TODO: change this to Vec<i64>
-	Relation { members: Vec<Member> },
+	Node {
+		pos: Cell<LatLon>,
+	},
+	Way {
+		nodes: Vec<ElementId>,
+	}, // TODO: change this to Vec<i64>
+	Relation {
+		members: Vec<Member>,
+		fully_downloaded: bool,
+	},
 }

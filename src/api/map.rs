@@ -1,4 +1,4 @@
-use crate::api::client::{Error, OsmClient};
+use crate::api::client::{ApiResult, Error, OsmClient};
 use crate::map::bounds::Bounds;
 use crate::map::element::{Element, ElementId, ElementInfo, ElementType, MapElement, Member};
 use crate::map::latlon::{LatLon, latlon};
@@ -12,7 +12,7 @@ use std::str::from_utf8;
 use web_time::Instant;
 
 impl OsmClient {
-	pub async fn get_data_from_bounds(&self, bounds: Bounds) -> Result<MapData, Error> {
+	pub async fn get_data_from_bounds(&self, bounds: Bounds) -> ApiResult<MapData> {
 		let start = Instant::now();
 		info!("Getting data from the API");
 		let xml = self.get(&format!("/api/0.6/map?bbox={bounds}")).await?.text().await?;
@@ -21,10 +21,8 @@ impl OsmClient {
 
 		let data = parse_osm_xml(&xml).ok_or(Error::Xml)?;
 
-		#[cfg(not(target_arch = "wasm32"))]
-		if cfg!(debug_assertions) {
-			std::fs::write("../api_data.xml", xml).expect("Error writing debug xml file");
-		}
+		#[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
+		std::fs::write("../api_data.xml", xml).expect("Error writing debug xml file");
 
 		info!("Parsed data successfully. Took: {:?}", start.elapsed());
 
@@ -33,7 +31,7 @@ impl OsmClient {
 }
 
 // TODO: better Error handling, maybe use anyhow
-fn parse_osm_xml(xml: &str) -> Option<MapData> {
+pub(crate) fn parse_osm_xml(xml: &str) -> Option<MapData> {
 	let mut data = MapData::new();
 	let mut reader = Reader::from_str(xml);
 
@@ -85,7 +83,13 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					let (element, element_type) = match e.name().as_ref() {
 						b"node" => (Element::Node { pos: lat_lon?.into() }, ElementType::Node),
 						b"way" => (Element::Way { nodes }, ElementType::Way),
-						b"relation" => (Element::Relation { members }, ElementType::Relation),
+						b"relation" => (
+							Element::Relation {
+								members,
+								fully_downloaded: false,
+							},
+							ElementType::Relation,
+						),
 						_ => {
 							warn!("Unknown element type: {e:?}");
 							continue;
@@ -127,6 +131,30 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 			}
 		}
 	}
+
+	data.iter()
+		.filter_map(|element| {
+			if let Element::Relation { members, .. } = &element.element {
+				let all_present = members.iter().all(|m| data.get(&m.ref_id).is_some());
+				if all_present { Some(element.id) } else { None }
+			} else {
+				None
+			}
+		})
+		.collect::<Vec<_>>()
+		.iter()
+		.for_each(|id| {
+			if let Some(MapElement {
+				element: Element::Relation { fully_downloaded, .. },
+				..
+			}) = data.get_mut(id)
+			{
+				*fully_downloaded = true;
+			} else {
+				unreachable!("Element must exist.")
+			}
+		});
+
 	Some(data)
 }
 
