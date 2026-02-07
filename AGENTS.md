@@ -59,8 +59,13 @@ Three crates in a Cargo workspace:
     - `references_index.rs` — Bidirectional index tracking which elements reference others
 - **`ui/`** — egui-based interface:
     - `app.rs` — `MyApp` main state, implements `eframe::App`
-    - `map_widget/` — Map rendering & editing. Uses `statig` state machine (`MapStateMachine`) with `EditMode::Select`
-      and `EditMode::DrawPen` modes.
+    - `map_widget/` — Map rendering & editing:
+        - `map_view.rs` — `MapView` reusable widget: handles base map rendering (tiles, elements, zoom/pan). Can be
+          used standalone as a read-only view (implements `Widget`) or composed into `MapWidget` for interactive
+          editing.
+        - `mod.rs` — `MapWidget` composes `MapView` and adds interactivity: hover detection, `statig` state machine
+          (`MapStateMachine`) with `EditMode::Select` and `EditMode::DrawPen`, selection highlighting, and selection
+          box.
     - `map_widget/css/` — MapCSS style evaluation and caching for rendering
     - `key_value_table.rs` — Tag editor
     - `relations_table.rs` — Relation member editor

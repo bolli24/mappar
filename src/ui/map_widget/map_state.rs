@@ -47,7 +47,6 @@ pub struct Context<'a> {
 	pub map_data: &'a mut MapData,
 	pub history: &'a mut EditHistory,
 	pub view: &'a View,
-	pub interactive: bool,
 	pub mem: &'a mut MapMemory,
 	pub world_delta: DVec2,
 	pub render_data: &'a mut [DetailedElement],
@@ -79,11 +78,7 @@ impl MapStateMachine {
 
 	#[superstate]
 	fn default(&mut self, context: &mut Context<'_>) -> Outcome<State> {
-		let Context {
-			response,
-			update_edit_mode,
-			..
-		} = context;
+		let Context { update_edit_mode, .. } = context;
 
 		if let Some(new_mode) = update_edit_mode.take() {
 			self.edit_mode = new_mode;
@@ -98,13 +93,6 @@ impl MapStateMachine {
 			};
 		}
 
-		if response.drag_started_by(PointerButton::Middle)
-			|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT)
-				&& response.drag_started_by(PointerButton::Primary))
-		{
-			return Transition(State::MoveView {});
-		}
-
 		Handled
 	}
 
@@ -114,7 +102,6 @@ impl MapStateMachine {
 			ui_context,
 			response,
 			view,
-			interactive,
 			mem,
 			world_delta,
 			hover_elements,
@@ -135,11 +122,9 @@ impl MapStateMachine {
 			}
 		}
 
-		if !*interactive {
-			return Handled;
-		}
+		let alt_held = ui_context.input(|i| i.modifiers == Modifiers::ALT);
 
-		if ui_context.input(|i| i.pointer.button_down(PointerButton::Primary)) {
+		if ui_context.input(|i| i.pointer.button_down(PointerButton::Primary)) && !alt_held {
 			view.pointer_world_pos
 				.map(|pos| self.pointer_down_pos.get_or_insert(pos));
 			self.pointer_down_delta += *world_delta;
@@ -148,7 +133,7 @@ impl MapStateMachine {
 			self.pointer_down_delta = DVec2::ZERO;
 		}
 
-		if response.drag_started_by(PointerButton::Primary) && !response.ctx.input(|i| i.modifiers == Modifiers::ALT) {
+		if response.drag_started_by(PointerButton::Primary) && !alt_held {
 			if let Some(last) = last_clicked_element {
 				if mem.selection.elements.contains(last) {
 					return Transition(State::MoveElements {
@@ -211,11 +196,12 @@ impl MapStateMachine {
 
 		if let Some(hover_element) = hover_elements.single()
 			&& ui_context.input(|i| i.pointer.button_down(PointerButton::Primary))
+			&& !alt_held
 		{
 			add_element(*hover_element);
 			*last_clicked_element = Some(*hover_element);
 		}
-		if response.clicked_by(PointerButton::Primary) && hover_elements.is_empty() {
+		if response.clicked_by(PointerButton::Primary) && hover_elements.is_empty() && !alt_held {
 			mem.selection.elements.clear();
 		}
 
@@ -226,20 +212,6 @@ impl MapStateMachine {
 		}
 
 		Super
-	}
-
-	#[state(superstate = "default")]
-	fn move_view(context: &mut Context<'_>) -> Outcome<State> {
-		context.mem.camera_pos -= context.world_delta;
-		let response = &context.response;
-
-		if response.dragged_by(PointerButton::Middle)
-			|| (response.ctx.input(|i| i.modifiers == Modifiers::ALT) && response.dragged_by(PointerButton::Primary))
-		{
-			Handled
-		} else {
-			Transition(Self::select_default())
-		}
 	}
 
 	#[state]
@@ -387,8 +359,11 @@ impl MapStateMachine {
 			self.preview = Preview::None;
 		}
 
+		let alt_held = response.ctx.input(|i| i.modifiers == Modifiers::ALT);
+
 		if let Some(pos) = view.pointer_world_pos
-			&& (response.ctx.input(|i| i.pointer.button_pressed(PointerButton::Primary)))
+			&& response.ctx.input(|i| i.pointer.button_pressed(PointerButton::Primary))
+			&& !alt_held
 		{
 			let node_id = if let Some(hover_element) = hover_elements.single() {
 				match &hover_element {

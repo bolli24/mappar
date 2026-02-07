@@ -449,7 +449,6 @@ impl eframe::App for MyApp {
 					self.map_widget_id,
 					Some(&mut self.debug_text),
 					&mut self.map_memory,
-					true,
 					active_imagery_ref,
 					self.messages.clone(),
 					&mut self.map_state,

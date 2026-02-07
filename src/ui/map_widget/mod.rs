@@ -2,6 +2,7 @@ pub mod css;
 mod draw_list;
 pub mod map_memory;
 pub mod map_state;
+pub mod map_view;
 mod polygon;
 mod preview;
 pub mod render;
@@ -9,24 +10,22 @@ mod style;
 mod view;
 
 use super::messages::Messages;
+use crate::dbgtxt;
 use crate::imagery::imagery_fetcher::{ImageryFetcher, Tile};
 use crate::imagery::{Imagery, ImageryRef};
-use crate::map::element::Element;
 use crate::map::latlon::{CIRCUMFERENCE_EARTH, LatLon, latlon};
 use crate::map::map_data::{EditHistory, MapData};
 use crate::ui::debug_text::DebugText;
 use crate::ui::input::KeyBinds;
 use crate::util::convert::{ToDVec2, ToLyonPoint, ToPos2};
 use crate::util::quick_set::QuickSet;
-use crate::dbgtxt;
 use css::Styles;
-use css::context::StyleContext;
 use derive_new::new;
 use draw_list::DrawList;
 use egui::emath::Rot2;
 use egui::{
-	Color32, Frame, Galley, Id, Mesh, Painter, Pos2, Rect, Response, ScrollArea, Sense, StrokeKind, TextureId,
-	TopBottomPanel, Vec2, Widget, pos2, vec2,
+	Color32, Galley, Id, Mesh, Painter, Pos2, Rect, Response, StrokeKind, TextureId, TopBottomPanel, Vec2, Widget,
+	pos2, vec2,
 };
 use epaint::mutex::Mutex;
 use epaint::{CornerRadius, FontsView, PathShape, PathStroke, Shape, TextShape};
@@ -38,6 +37,7 @@ use lyon_tessellation::{
 };
 use map_memory::MapMemory;
 use map_state::{EditMode, MapStateMachine, State as MapState};
+use map_view::MapView;
 use render::{DetailedElement, RenderElement};
 use statig::prelude::StateMachine;
 use std::cmp::Ordering;
@@ -59,7 +59,6 @@ pub struct MapWidget<'a> {
 	id: Id,
 	debug_text: Option<&'a mut DebugText>,
 	mem: &'a mut MapMemory,
-	interactive: bool,
 	active_imagery_ref: Option<ImageryRef>,
 	messages: Messages,
 	map_state: &'a mut StateMachine<MapStateMachine>,
@@ -72,199 +71,110 @@ const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 impl Widget for MapWidget<'_> {
 	#[allow(clippy::too_many_lines)]
 	fn ui(mut self, ui: &mut egui::Ui) -> Response {
-		let frame_response = ScrollArea::neither()
-			.show(ui, |ui| {
-				Frame::canvas(ui.style()).show(ui, |ui| {
-					puffin::profile_function!("Draw Map");
-					// FIXME: overlap with info bar
-					let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
-					ui.ctx().request_repaint();
-					let clip_rect = ui.clip_rect();
-					dbgtxt!(self.debug_text, "Clip Rect: {clip_rect:?}");
-					let viewport = response.interact_rect;
-					dbgtxt!(self.debug_text, "Viewport: {viewport:?}");
+		// 1. Build MapView with reborrows and call show()
+		let output = {
+			MapView {
+				map_data: Some(&*self.map_data),
+				styles: &mut *self.styles,
+				imagery_fetcher: self.imagery_fetcher.clone(),
+				id: self.id,
+				debug_text: self.debug_text.as_deref_mut(),
+				mem: &mut *self.mem,
+				active_imagery_ref: self.active_imagery_ref,
+				messages: self.messages.clone(),
+			}
+			.show(ui)
+		};
+		// After this block, self.debug_text/mem/map_data/styles are available again
 
-					if self.interactive {
-						let zoom = f64::from(
-							response.ctx.input(|i| i.smooth_scroll_delta).x
-								+ response.ctx.input(|i| i.smooth_scroll_delta).y,
-						);
-						if zoom != 0.0 && response.contains_pointer() {
-							// TODO: fix zoom speed on chrome
-							let zoom_diff = zoom / 1000.0 * ZOOM_SPEED;
-							let old_zoom = self.mem.zoom_level;
-							self.mem.zoom_level += zoom_diff;
-							self.mem.zoom_level = self.mem.zoom_level.clamp(1.0, 25.0);
+		// 2. Hover detection
+		let mut hover_elements = {
+			puffin::profile_scope!("Get hover elements");
+			let single = match output.view.pointer_world_pos {
+				Some(_) => closest_element(&output.render_data, output.view.scale).map(|e| e.id),
+				_ => None,
+			};
+			QuickSet::from(single)
+		};
 
-							if let Some(pointer_world_pos) =
-								pointer_world_pos(self.mem.camera_pos, &response, viewport, scale(old_zoom))
-							{
-								// Move camera so that the world position under the cursor remains fixed
-								let delta = pointer_world_pos - self.mem.camera_pos;
-								let new_delta = delta * (scale(self.mem.zoom_level) / scale(old_zoom));
-								self.mem.camera_pos = pointer_world_pos - new_delta;
-							}
-						}
-					}
+		// 3. State machine dispatch
+		let mut render_data = output.render_data;
+		let mut context = map_state::Context {
+			ui_context: ui.ctx(),
+			response: output.response.clone(),
+			map_data: self.map_data,
+			history: self.history,
+			view: &output.view,
+			mem: self.mem,
+			world_delta: output.world_delta,
+			render_data: &mut render_data,
+			hover_elements: &mut hover_elements,
+			messages: self.messages.clone(),
+			update_edit_mode: self.update_edit_mode,
+			debug_text: self.debug_text.as_deref_mut(),
+			key_binds: self.key_binds,
+		};
 
-					let view = View::new(&response, self.mem.camera_pos, self.mem.zoom_level);
+		self.map_state.handle_with_context(&(), &mut context);
+		dbgtxt!(self.debug_text, "MapState: {:?}", self.map_state.state());
+		dbgtxt!(self.debug_text, "Selection Box: {:?}", self.map_state.selection_box);
 
-					let world_delta = {
-						// How much has the pointer moved on the map
-						let mut delta = ui.ctx().input(|i| i.pointer.delta()).to_dvec2();
-						if let Some(from_global) = ui.ctx().layer_transform_from_global(ui.layer_id()) {
-							delta *= f64::from(from_global.scaling);
-						}
-						delta = dvec2(delta.x, -delta.y);
-						delta * view.scale
-					};
+		dbgtxt!(self.debug_text, "Hovered elements: {:?}", &hover_elements.len());
+		let select_threshold = 5.0 * output.view.scale;
+		dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");
 
-					dbgtxt!(self.debug_text, "Camera: {:?}", self.mem.camera_pos);
-					dbgtxt!(self.debug_text, "Zoom: {}", self.mem.zoom_level);
-					dbgtxt!(self.debug_text, "Scale: {}", view.scale);
-					dbgtxt!(self.debug_text, "UI Scale: {}", view.ui_scale);
-					dbgtxt!(self.debug_text, "World View Rect: {:?}", view.world_view_rect);
-					dbgtxt!(
-						self.debug_text,
-						"Pointer Pos: {:?}",
-						view.pointer_world_pos.map(|p| p.round().as_ivec2())
-					);
+		// 4. Element drawing with highlights
+		let mut shapes = DrawList::new();
+		let show_hover = matches!(
+			self.map_state.state(),
+			MapState::Select { .. } | MapState::BoxSelect { .. } | MapState::Draw { .. }
+		);
 
-					let active_imagery_name = self.active_imagery_name().unwrap_or_else(|| "None".to_owned());
+		self.mem.highlighted_elements.extend(
+			self.map_data
+				.reference_index
+				.relation_descendants(self.mem.highlighted_elements.iter().copied()),
+		);
 
-					dbgtxt!(self.debug_text, "Active imagery: {active_imagery_name}");
+		let selected_children = self
+			.map_data
+			.reference_index
+			.relation_descendants(self.mem.selection.elements.iter().copied());
 
-					if let Some(active_imagery_ref) = self.active_imagery_ref {
-						draw_tiles(
-							&painter,
-							active_imagery_ref,
-							&self.imagery_fetcher,
-							&view,
-							&mut self.debug_text,
-						);
-					}
+		ui.ctx().fonts_mut(|fonts| {
+			for element in &render_data {
+				let hovered =
+					hover_elements.contains(&element.id) || self.mem.highlighted_elements.contains(&element.id);
+				let selected =
+					self.mem.selection.elements.contains(&element.id) || selected_children.contains(&element.id);
+				if let Some(hightlighted) = element.maybe_highlighted(hovered && show_hover, selected) {
+					draw_element(&hightlighted, &mut shapes, &output.view, fonts);
+				}
+				draw_element(element, &mut shapes, &output.view, fonts);
+			}
 
-					let mut render_data = Vec::with_capacity(self.map_data.len());
-					let select_threshold = 5.0 * view.scale;
-					let mut style_context = StyleContext {
-						zoom_level: view.zoom_level as f32,
-						zoom_bucket: view.zoom_level.round_ties_even() as u8,
-						updated_styles: 0,
-					};
+			for element in &self.map_state.preview.render_elements(self.map_data) {
+				draw_element(element, &mut shapes, &output.view, fonts);
+			}
+		});
 
-					{
-						puffin::profile_scope!("Calculate Render data");
-						// TODO: Relations
-						for element in self
-							.map_data
-							.iter()
-							.filter(|e| !matches!(e.element, Element::Relation { .. }))
-						{
-							DetailedElement::add_elements(
-								&mut render_data,
-								element,
-								self.map_data,
-								self.styles,
-								&view,
-								&mut style_context,
-							);
-						}
-					}
+		dbgtxt!(self.debug_text, "Drawn Elements: {}", shapes.count());
 
-					if style_context.updated_styles == 0 {
-						dbgtxt!(self.debug_text, "Updated styles: 0 ({})", self.mem.last_updated_styles);
-					} else {
-						dbgtxt!(self.debug_text, "Updated styles: {}", style_context.updated_styles);
-						self.mem.last_updated_styles = style_context.updated_styles;
-					}
+		shapes.draw(&output.painter);
 
-					let mut hover_elements = {
-						puffin::profile_scope!("Get hover elements");
-						let single = match (self.interactive, view.pointer_world_pos) {
-							(true, Some(_)) => closest_element(&render_data, view.scale).map(|e| e.id),
-							_ => None,
-						};
-						QuickSet::from(single)
-					};
+		// 5. Selection box
+		if let Some((start, end)) = self.map_state.selection_box {
+			let rect = Rect::from_two_pos(output.view.render_pos(&start), output.view.render_pos(&end));
+			output.painter.rect(
+				rect,
+				0,
+				Color32::WHITE.gamma_multiply(0.3),
+				(2.0, Color32::DARK_GRAY),
+				StrokeKind::Inside,
+			);
+		}
 
-					let mut context = map_state::Context {
-						ui_context: ui.ctx(),
-						response: response.clone(),
-						interactive: self.interactive,
-						map_data: self.map_data,
-						history: self.history,
-						view: &view,
-						mem: self.mem,
-						world_delta,
-						render_data: &mut render_data,
-						hover_elements: &mut hover_elements,
-						messages: self.messages.clone(),
-						update_edit_mode: self.update_edit_mode,
-						debug_text: self.debug_text.as_deref_mut(),
-						key_binds: self.key_binds,
-					};
-
-					self.map_state.handle_with_context(&(), &mut context);
-					dbgtxt!(self.debug_text, "MapState: {:?}", self.map_state.state());
-					dbgtxt!(self.debug_text, "Selection Box: {:?}", self.map_state.selection_box);
-
-					dbgtxt!(self.debug_text, "Hovered elements: {:?}", &hover_elements.len());
-					dbgtxt!(self.debug_text, "Select threshold: {select_threshold:.3}");
-
-					let mut shapes = DrawList::new();
-					let show_hover = self.interactive
-						&& matches!(
-							self.map_state.state(),
-							MapState::Select { .. } | MapState::BoxSelect { .. } | MapState::Draw { .. }
-						);
-
-					self.mem.highlighted_elements.extend(
-						self.map_data
-							.reference_index
-							.relation_descendants(self.mem.highlighted_elements.iter().copied()),
-					);
-
-					let selected_children = self
-						.map_data
-						.reference_index
-						.relation_descendants(self.mem.selection.elements.iter().copied());
-
-					ui.ctx().fonts_mut(|fonts| {
-						for element in &render_data {
-							let hovered = hover_elements.contains(&element.id)
-								|| self.mem.highlighted_elements.contains(&element.id);
-							let selected = self.mem.selection.elements.contains(&element.id)
-								|| selected_children.contains(&element.id);
-							if let Some(hightlighted) = element.maybe_highlighted(hovered && show_hover, selected) {
-								draw_element(&hightlighted, &mut shapes, &view, fonts);
-							}
-							draw_element(element, &mut shapes, &view, fonts);
-						}
-
-						for element in &self.map_state.preview.render_elements(self.map_data) {
-							draw_element(element, &mut shapes, &view, fonts);
-						}
-					});
-
-					dbgtxt!(self.debug_text, "Drawn Elements: {}", shapes.count());
-
-					shapes.draw(&painter);
-
-					if let Some((start, end)) = self.map_state.selection_box {
-						let rect = Rect::from_two_pos(view.render_pos(&start), view.render_pos(&end));
-						painter.rect(
-							rect,
-							0,
-							Color32::WHITE.gamma_multiply(0.3),
-							(2.0, Color32::DARK_GRAY),
-							StrokeKind::Inside,
-						);
-					}
-					response
-				})
-			})
-			.inner
-			.response;
+		// 6. Info bar
 		TopBottomPanel::bottom("map_info_bar").show(ui.ctx(), |ui| {
 			ui.monospace(format!(
 				"{} nodes, {} ways, {} relations",
@@ -273,20 +183,8 @@ impl Widget for MapWidget<'_> {
 				self.mem.selection.relation_count()
 			))
 		});
-		frame_response
-	}
-}
 
-impl MapWidget<'_> {
-	fn active_imagery_name(&self) -> Option<String> {
-		self.active_imagery_ref.and_then(|reference| {
-			self.imagery_fetcher
-				.lock()
-				.imageries()
-				.write()
-				.get(reference)
-				.map(|imagery| imagery.name().to_string())
-		})
+		output.frame_response
 	}
 }
 
