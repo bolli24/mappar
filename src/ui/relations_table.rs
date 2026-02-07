@@ -151,12 +151,7 @@ impl Widget for RelationsTable<'_> {
 							self.download_tasks.insert(task);
 							async move {
 								map_data_sender
-									.send(
-										osm_client
-											.get_full(id)
-											.await
-											.map(|result| (result, task)),
-									)
+									.send(osm_client.get_full(id).await.map(|result| (result, task)))
 									.expect("Channel must not be closed.");
 							}
 						});
