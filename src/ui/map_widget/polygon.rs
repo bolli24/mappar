@@ -85,8 +85,20 @@ pub enum Orientation {
 
 impl Polygon {
 	pub fn bounding_box(&self) -> Rect {
-		let min_max_x = self.points.iter().map(|n| n.x as f32).minmax().into_option().unwrap();
-		let min_max_y = self.points.iter().map(|n| n.y as f32).minmax().into_option().unwrap();
+		let min_max_x = self
+			.points
+			.iter()
+			.map(|n| n.x as f32)
+			.minmax()
+			.into_option()
+			.expect("polygon has points");
+		let min_max_y = self
+			.points
+			.iter()
+			.map(|n| n.y as f32)
+			.minmax()
+			.into_option()
+			.expect("polygon has points");
 
 		Rect::from_min_max(Pos2::new(min_max_x.0, min_max_y.0), Pos2::new(min_max_x.1, min_max_y.1))
 	}
@@ -316,7 +328,7 @@ impl Polygon {
 				if !vj.is_active.get() || !vj.is_ear.get() {
 					continue;
 				}
-				if ear.is_none() || vj.angle > ear.unwrap().angle {
+				if ear.is_none() || vj.angle > ear.expect("checked is_some via short-circuit").angle {
 					ear = Some(vj);
 				}
 			}
@@ -396,9 +408,9 @@ impl Polygon {
 
 		let polys = in_polys;
 		let mut out_polys = polys.clone();
-		let mut hole_iter = polys.first().unwrap(); // Hole with the largest x
+		let mut hole_iter = polys.first().expect("polys has at least 2 elements"); // Hole with the largest x
 		let mut hole_iter_index = 0;
-		let mut poly_iter = polys.first().unwrap();
+		let mut poly_iter = polys.first().expect("polys has at least 2 elements");
 		let mut poly_iter_index = 0;
 		let mut hole_point_index = 0;
 		let mut poly_point_index = 0;

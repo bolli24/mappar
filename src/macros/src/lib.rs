@@ -74,7 +74,7 @@ pub fn id_derive(input: TokenStream) -> TokenStream {
 			.into();
 	}
 
-	let ty = &fields.unnamed.first().unwrap().ty;
+	let ty = &fields.unnamed.first().expect("checked unnamed fields count above").ty;
 
 	if !is_integer_type(ty) {
 		return syn::Error::new(ast.ident.span(), "Tuple field must be integer type.")

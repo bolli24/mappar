@@ -67,7 +67,7 @@ pub fn parse_str_with_stats(src: &str, file_name: &str) -> (Option<RuleSet>, Par
 				)
 				.finish()
 				.eprint((&file_name, source.clone()))
-				.unwrap();
+				.expect("writing to stderr");
 		}
 		return (None, stats);
 	}
@@ -107,7 +107,7 @@ pub fn parse_str_with_stats(src: &str, file_name: &str) -> (Option<RuleSet>, Par
 			)
 			.finish()
 			.eprint((&file_name, source.clone()))
-			.unwrap();
+			.expect("writing to stderr");
 	}
 	(None, stats)
 }
@@ -296,7 +296,7 @@ where
 	let labelled_color = identifier.or_not().then(color);
 
 	let unit = select! {
-		Token::Unit(unit) => Unit::try_from(unit).unwrap(),
+		Token::Unit(unit) => Unit::try_from(unit).expect("token already matched as Unit"),
 	};
 
 	let size = number.then(unit.or_not()).map(|(number, unit)| Size { number, unit });
@@ -307,7 +307,7 @@ where
 		.collect::<Vec<Size>>()
 		.filter(|sizes| sizes.len() > 1 || sizes[0].unit.is_some()); // A single size without a unit is a number
 
-	let rotation_unit = select! { Token::RotationUnit(unit) => RotationUnit::try_from(unit).unwrap() };
+	let rotation_unit = select! { Token::RotationUnit(unit) => RotationUnit::try_from(unit).expect("token already matched as RotationUnit") };
 
 	let rotation = number.then(rotation_unit).map(|(number, unit)| unit * number);
 
@@ -458,7 +458,7 @@ where
 	// object       ::= "node" | "way" | "relation" | "area" | "canvas" | "*" | ;
 	let object = any()
 		.filter(|t: &Token| t.try_into_object().is_some())
-		.map(|t| t.try_into_object().unwrap())
+		.map(|t| t.try_into_object().expect("filtered by is_some"))
 		.labelled("object (node, way, relation, area, canvas, *, meta)");
 
 	let class_name = just(Token::Dot).ignore_then(identifier).labelled("classname");

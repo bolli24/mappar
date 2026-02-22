@@ -131,7 +131,7 @@ fn init_logger() {
 			let mut builder = tar::Builder::new(&mut e);
 			builder
 				.append_file(
-					new_path.file_name().unwrap(),
+					new_path.file_name().expect("path has a file name"),
 					&mut File::open(&new_path).expect("Failed to open log file"),
 				)
 				.expect("Failed to append file to tar");

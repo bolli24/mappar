@@ -214,7 +214,7 @@ impl Styles {
 			);
 			style
 		} else {
-			cached.unwrap().style.clone()
+			cached.expect("checked Some above").style.clone()
 		}
 	}
 

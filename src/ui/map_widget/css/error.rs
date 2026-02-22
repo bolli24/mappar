@@ -55,7 +55,7 @@ impl Reporting {
 		let mut output = Vec::<u8>::new();
 		report
 			.write_for_stdout((&self.file_name, self.source.clone()), &mut output)
-			.unwrap();
+			.expect("writing to Vec<u8>");
 		let output_string = String::from_utf8_lossy(&output).into_owned();
 		warn!("{output_string}");
 	}

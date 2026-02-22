@@ -64,7 +64,7 @@ pub(crate) fn parse_osm_xml(xml: &str) -> Option<MapData> {
 									}
 								}
 								b"member" => {
-									let (ref_id, role) = parse_member(e);
+									let (ref_id, role) = parse_member(e)?;
 									members.push(Member { ref_id, role });
 								}
 								name => {
@@ -158,19 +158,19 @@ pub(crate) fn parse_osm_xml(xml: &str) -> Option<MapData> {
 	Some(data)
 }
 
-fn parse_member(e: &BytesStart) -> (ElementId, String) {
+fn parse_member(e: &BytesStart) -> Option<(ElementId, String)> {
 	let mut ref_id = ElementId(-1, ElementType::Node);
 	let mut role = String::new();
 	for attr in e.attributes() {
-		let attr = attr.unwrap();
+		let attr = attr.ok()?;
 		match attr.key.as_ref() {
 			b"ref" => {
-				ref_id.0 = from_utf8(attr.value.as_ref()).unwrap().parse().unwrap();
+				ref_id.0 = from_utf8(attr.value.as_ref()).ok()?.parse().ok()?;
 			}
 			b"role" => {
-				role = attr.unescape_value().unwrap().to_string();
+				role = attr.unescape_value().ok()?.to_string();
 			}
-			b"type" => ref_id.1 = ElementType::try_from(from_utf8(attr.value.as_ref()).unwrap()).unwrap(),
+			b"type" => ref_id.1 = ElementType::try_from(from_utf8(attr.value.as_ref()).ok()?).ok()?,
 			_ => {
 				error!(
 					"Unknown attribute on relation member: {:?}=\"{:?}\"",
@@ -179,7 +179,7 @@ fn parse_member(e: &BytesStart) -> (ElementId, String) {
 			}
 		}
 	}
-	(ref_id, role)
+	Some((ref_id, role))
 }
 
 fn parse_tag(tags: &mut IndexMap<String, String>, e: &BytesStart) -> Result<(), quick_xml::Error> {

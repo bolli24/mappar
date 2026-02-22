@@ -59,7 +59,7 @@ impl LocalCache {
 
 			let file_regex = Regex::new(r"^\d+_\d+_\d+\.(png|jpg)$").expect("Failed to create regex");
 
-			for dir in std::fs::read_dir(&file_path).unwrap() {
+			for dir in std::fs::read_dir(&file_path).expect("cache directory was just created") {
 				let dir_path = match dir {
 					Ok(dir) => {
 						let path = dir.path();

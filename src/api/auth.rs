@@ -16,17 +16,17 @@ type OsmClient = BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, Endpoi
 #[cfg(not(target_arch = "wasm32"))]
 fn create_client(port: u16) -> OsmClient {
 	BasicClient::new(ClientId::new(dotenv!("OSM_CLIENT_ID").to_owned()))
-		.set_auth_uri(AuthUrl::new(format!("{OAUTH_URL}/oauth2/authorize")).unwrap())
-		.set_token_uri(TokenUrl::new(format!("{OAUTH_URL}/oauth2/token")).unwrap())
-		.set_redirect_uri(RedirectUrl::new(format!("http://127.0.0.1:{}/callback", port)).unwrap())
+		.set_auth_uri(AuthUrl::new(format!("{OAUTH_URL}/oauth2/authorize")).expect("valid OAuth URL"))
+		.set_token_uri(TokenUrl::new(format!("{OAUTH_URL}/oauth2/token")).expect("valid token URL"))
+		.set_redirect_uri(RedirectUrl::new(format!("http://127.0.0.1:{}/callback", port)).expect("valid redirect URL"))
 }
 
 #[cfg(target_arch = "wasm32")]
 fn create_client(origin: String) -> OsmClient {
 	BasicClient::new(ClientId::new(dotenv!("OSM_CLIENT_ID").to_owned()))
-		.set_auth_uri(AuthUrl::new(format!("{OAUTH_URL}/oauth2/authorize")).unwrap())
-		.set_token_uri(TokenUrl::new(format!("{OAUTH_URL}/oauth2/token")).unwrap())
-		.set_redirect_uri(RedirectUrl::new(format!("{origin}/login.html")).unwrap())
+		.set_auth_uri(AuthUrl::new(format!("{OAUTH_URL}/oauth2/authorize")).expect("valid OAuth URL"))
+		.set_token_uri(TokenUrl::new(format!("{OAUTH_URL}/oauth2/token")).expect("valid token URL"))
+		.set_redirect_uri(RedirectUrl::new(format!("{origin}/login.html")).expect("valid redirect URL"))
 }
 
 #[cfg(not(target_arch = "wasm32"))]

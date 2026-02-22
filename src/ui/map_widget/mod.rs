@@ -268,7 +268,7 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 				puffin::profile_scope!("Tessellate path.");
 				tessellator
 					.tessellate_path(&path, &FillOptions::default(), &mut vertex_builder)
-					.unwrap();
+					.expect("valid path geometry");
 			}
 
 			for triangle in buffers.indices.chunks_exact(3) {

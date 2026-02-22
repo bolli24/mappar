@@ -197,8 +197,18 @@ pub fn point_in_polygon(test: DVec2, verts: &[DVec2]) -> bool {
 }
 
 fn bounding_box_from_points(points: &[DVec2]) -> Rect {
-	let min_max_x = points.iter().map(|n| n.x as f32).minmax().into_option().unwrap();
-	let min_max_y = points.iter().map(|n| n.y as f32).minmax().into_option().unwrap();
+	let min_max_x = points
+		.iter()
+		.map(|n| n.x as f32)
+		.minmax()
+		.into_option()
+		.expect("points is non-empty");
+	let min_max_y = points
+		.iter()
+		.map(|n| n.y as f32)
+		.minmax()
+		.into_option()
+		.expect("points is non-empty");
 
 	Rect::from_min_max(Pos2::new(min_max_x.0, min_max_y.0), Pos2::new(min_max_x.1, min_max_y.1))
 }

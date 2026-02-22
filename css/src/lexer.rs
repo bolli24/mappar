@@ -237,7 +237,7 @@ const fn newline<'a>(lex: &mut Lexer<'a, Token<'a>>) -> Skip {
 }
 
 fn string<'a>(lex: &mut Lexer<'a, Token<'a>>) -> String {
-	let quote = lex.slice().chars().next().unwrap();
+	let quote = lex.slice().chars().next().expect("lexer guarantees non-empty slice");
 	let mut iter = lex.remainder().chars();
 	let mut string = String::new();
 	while let Some(next_char) = iter.next() {
