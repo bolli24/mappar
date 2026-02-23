@@ -128,15 +128,15 @@ impl Widget for RelationsTable<'_> {
 					let task = DownloadTask::Relation(element.id);
 					let already_downloading = self.download_tasks.contains(&task);
 					let can_download = !fully_downloaded && !already_downloading;
-					if ui
+					if already_downloading {
+						ui.spinner().on_hover_text("Already downloading members.");
+					} else if ui
 						.add_enabled(
 							can_download,
 							Button::new(RichText::new(egui_phosphor::bold::CLOUD_ARROW_DOWN)),
 						)
 						.on_hover_text(if *fully_downloaded {
 							"No members to download."
-						} else if already_downloading {
-							"Already downloading members."
 						} else {
 							"Download missing members."
 						})
