@@ -489,7 +489,10 @@ where
 
 	let maybe_layer = just(Token::Colon)
 		.ignore_then(just(Token::Colon))
-		.ignore_then(identifier)
+		.ignore_then(choice((
+			identifier.map(Layer::Named),
+			just(Token::Op("*")).to(Layer::Any),
+		)))
 		.or_not();
 
 	// object       ::= "node" | "way" | "relation" | "area" | "canvas" | "*" | ;
@@ -876,7 +879,11 @@ impl SubSelector {
 	}
 }
 
-type Layer = String;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Layer {
+	Named(String),
+	Any,
+}
 
 type PseudoClass = String;
 
@@ -1147,6 +1154,30 @@ mod tests {
 		} else {
 			unreachable!("expected a style declaration");
 		}
+	}
+
+	#[test]
+	fn parse_named_layer() {
+		let src = "way::bridge { color: #fff; }";
+		let rules = parse_str_silent(src).expect("expected named layer to parse");
+		assert_eq!(rules.0.len(), 1);
+		let layer = rules.0[0].selectors.0[0]
+			.1
+			.clone()
+			.expect("expected layer to be present");
+		assert!(matches!(layer, Layer::Named(name) if name == "bridge"));
+	}
+
+	#[test]
+	fn parse_wildcard_layer() {
+		let src = "way::* { color: #fff; }";
+		let rules = parse_str_silent(src).expect("expected wildcard layer to parse");
+		assert_eq!(rules.0.len(), 1);
+		let layer = rules.0[0].selectors.0[0]
+			.1
+			.clone()
+			.expect("expected layer to be present");
+		assert!(matches!(layer, Layer::Any));
 	}
 
 	#[test]

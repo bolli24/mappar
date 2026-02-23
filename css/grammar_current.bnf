@@ -45,7 +45,7 @@ subselector     ::= object zoom? pseudo_class? tests*
 
 object          ::= "node" | "way" | "relation" | "area" | "canvas" | "*" | "meta";
 zoom            ::= ZOOM;
-layer           ::= "::" identifier | ;
+layer           ::= "::" (identifier | "*") | ;
 
 setting         ::= "setting" "::" identifier;
 setting_group   ::= "settings" "::" identifier;
