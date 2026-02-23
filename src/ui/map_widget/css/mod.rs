@@ -16,6 +16,7 @@ use mappar_css::color::get_named_color;
 use mappar_css::*;
 #[cfg(target_arch = "wasm32")]
 use reqwest::Client;
+use specificity::{Specificity, matched_rule_specificity_for};
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -26,8 +27,13 @@ pub mod context;
 mod error;
 pub mod eval;
 pub mod icon;
+mod specificity;
 
-pub struct AnalyzedStyleset(Styleset, DependencyMask);
+pub struct AnalyzedStyleset {
+	styleset: Styleset,
+	deps: DependencyMask,
+	source_order: usize,
+}
 
 // TODO: maybe use sparse set instead of hashmap
 pub struct Styles {
@@ -128,7 +134,8 @@ fn parse_styles(
 	let rule_set = parse_str(&css_string, PATH)?
 		.0
 		.into_iter()
-		.map(|styleset| {
+		.enumerate()
+		.map(|(source_order, styleset)| {
 			let deps = styleset
 				.selectors
 				.0
@@ -148,7 +155,11 @@ fn parse_styles(
 						acc2
 					})
 				});
-			AnalyzedStyleset(styleset, deps)
+			AnalyzedStyleset {
+				styleset,
+				deps,
+				source_order,
+			}
 		})
 		.collect();
 
@@ -162,7 +173,8 @@ fn parse_styles(
 		cache: StyleCache::new(),
 	};
 
-	for AnalyzedStyleset(styleset, _) in &styles.rule_set {
+	for analyzed in &styles.rule_set {
+		let styleset = &analyzed.styleset;
 		let mut class_names = Vec::new();
 		for rule in &styleset.declarations {
 			match rule {
@@ -222,14 +234,8 @@ impl Styles {
 		let mut style = MapStyle::default();
 
 		let stylesets = matching_rules(&self.rule_set, element, context);
-		// TODO: sort styles by specificity
-		for AnalyzedStyleset(
-			Styleset {
-				declarations: rules, ..
-			},
-			_deps,
-		) in stylesets
-		{
+		for analyzed in stylesets {
+			let rules = &analyzed.styleset.declarations;
 			self.apply_rules(element, &mut style, rules, context);
 		}
 
@@ -444,22 +450,33 @@ fn matching_rules<'a>(
 	rule_set: &'a Vec<AnalyzedStyleset>,
 	element: &'a MapElement,
 	context: &StyleContext,
-) -> impl Iterator<Item = &'a AnalyzedStyleset> {
+) -> Vec<&'a AnalyzedStyleset> {
 	// puffin::profile_function!();
-	rule_set
+	let mut matching = rule_set
 		.iter()
-		.filter(|styleset| matches_rule(&styleset.0, element, context))
+		.filter_map(|styleset| {
+			matches_rule_specificity(&styleset.styleset, element, context).map(|specificity| (styleset, specificity))
+		})
+		.collect::<Vec<_>>();
+
+	// Apply from least specific to most specific so more specific rules override.
+	// Ties keep source order (later rules win due to being applied later).
+	matching.sort_by(|(a_rule, a_spec), (b_rule, b_spec)| {
+		a_spec.cmp(b_spec).then(a_rule.source_order.cmp(&b_rule.source_order))
+	});
+
+	matching.into_iter().map(|(styleset, _)| styleset).collect()
 }
 
-fn matches_rule(styleset: &Styleset, element: &MapElement, context: &StyleContext) -> bool {
-	let result = &styleset.selectors.0.iter().any(|intersection| {
+fn matches_rule_specificity(styleset: &Styleset, element: &MapElement, context: &StyleContext) -> Option<Specificity> {
+	let matched = styleset.selectors.0.iter().filter(|intersection| {
 		intersection
 			.0
 			.iter()
 			.all(|selector| matches_selector(selector, element, context))
 	});
 
-	*result
+	matched_rule_specificity_for(matched)
 }
 
 fn matches_selector(selector: &Selector, element: &MapElement, context: &StyleContext) -> bool {
