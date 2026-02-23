@@ -39,6 +39,7 @@ pub struct MapStateMachine {
 	edit_mode: EditMode,
 	pointer_down_delta: DVec2,
 	pointer_down_pos: Option<DVec2>,
+	pointer_down_element: Option<ElementId>,
 }
 
 pub struct Context<'a> {
@@ -127,25 +128,29 @@ impl MapStateMachine {
 		if ui_context.input(|i| i.pointer.button_down(PointerButton::Primary)) && !alt_held {
 			view.pointer_world_pos
 				.map(|pos| self.pointer_down_pos.get_or_insert(pos));
+			if self.pointer_down_element.is_none() {
+				self.pointer_down_element = hover_elements.single().copied();
+			}
 			self.pointer_down_delta += *world_delta;
 		} else {
 			self.pointer_down_pos = None;
 			self.pointer_down_delta = DVec2::ZERO;
+			self.pointer_down_element = None;
 		}
 
 		if response.drag_started_by(PointerButton::Primary) && !alt_held {
-			if let Some(last) = last_clicked_element {
-				if mem.selection.elements.contains(last) {
-					return Transition(State::MoveElements {
-						total_delta: DVec2::ZERO,
-						initial_delta: self.pointer_down_delta,
-					});
-				}
-			} else {
-				return Transition(State::BoxSelect {
-					pointer_down_pos: self.pointer_down_pos,
+			if let Some(pointer_down_element) = self.pointer_down_element
+				&& mem.selection.elements.contains(&pointer_down_element)
+			{
+				return Transition(State::MoveElements {
+					total_delta: DVec2::ZERO,
+					initial_delta: self.pointer_down_delta,
 				});
 			}
+
+			return Transition(State::BoxSelect {
+				pointer_down_pos: self.pointer_down_pos,
+			});
 		}
 
 		if !response.contains_pointer() {
@@ -436,13 +441,18 @@ impl MapStateMachine {
 						history
 							.edit(map_data, edit)
 							.expect("Adding node to way segments must not error.");
-						mem.selection.elements.clear();
-						mem.selection.elements.insert(new_node_id);
 
-						return Transition(State::MoveNewNode {
-							node_id: new_node_id,
-							total_delta: DVec2::ZERO,
-						});
+						if first_node_or_way.is_none() {
+							mem.selection.elements.clear();
+							mem.selection.elements.insert(new_node_id);
+
+							return Transition(State::MoveNewNode {
+								node_id: new_node_id,
+								total_delta: DVec2::ZERO,
+							});
+						}
+
+						new_node_id
 					}
 					_ => unreachable!("Must never hover over relation."),
 				}
