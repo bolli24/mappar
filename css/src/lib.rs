@@ -16,7 +16,7 @@ pub mod expression;
 pub mod lexer;
 
 pub use chumsky::span::SimpleSpan;
-pub use expression::{Expression, ExpressionType, Type, Value, ValueType};
+pub use expression::{Expression, ExpressionType, Type, Value};
 
 // TODO: better regex
 
@@ -204,7 +204,7 @@ where
 	let atom = choice((
 		function.clone().map(Expression::Function),
 		select! {
-			Token::Identifier(ident) => Expression::Identifier(ident.to_string()),
+			Token::Identifier(ident) => Expression::String(ident.to_string()),
 			Token::Quoted(s) => Expression::String(s),
 			Token::Color(color) => Expression::Color(color),
 		},
@@ -315,10 +315,8 @@ where
 		labelled_color.map(|(label, color)| Specifier::Color(color, label)),
 		sizes.map(Specifier::Sizes),
 		rotation.map(Specifier::Rotation),
-		expression.clone().map(|expression| match expression {
-			Spanned(Expression::Identifier(name), _) => Specifier::Named(name),
-			_ => Specifier::Expression(expression),
-		}),
+		identifier.clone().map(Specifier::Named),
+		expression.clone().map(Specifier::Expression),
 	))
 	.map_with(|specifier, extras| (specifier, extras.span()))
 	.labelled("specifier");
@@ -424,7 +422,7 @@ where
 				.clone() // tag binary expression
 				.map_with(|((tag, op), value), extras| {
 					let span = extras.span();
-					Condition::Binary(Spanned(Expression::Identifier(tag), span), op, value)
+					Condition::Binary(Spanned(Expression::String(tag), span), op, value)
 				}),
 			tag.clone()
 				.then_ignore(just(Token::Question)) // tag?!

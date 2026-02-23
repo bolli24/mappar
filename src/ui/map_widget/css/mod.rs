@@ -355,14 +355,12 @@ impl Styles {
 
 	#[inline]
 	fn try_eval_number(&self, element: &MapElement, specifier: &Spanned<Specifier>, key: &str) -> Option<f64> {
-		self.try_eval_as(element, specifier, key, ValueType::Number)
-			.map(Value::unrwap_number)
+		self.try_eval_as(element, specifier, key)
 	}
 
 	#[inline]
 	fn try_eval_string(&self, element: &MapElement, specifier: &Spanned<Specifier>, key: &str) -> Option<String> {
-		self.try_eval_as(element, specifier, key, ValueType::String)
-			.map(Value::unwrap_string)
+		self.try_eval_as(element, specifier, key)
 	}
 
 	fn try_eval_ident_or_string(
@@ -371,12 +369,7 @@ impl Styles {
 		specifier: &Spanned<Specifier>,
 		key: &str,
 	) -> Option<String> {
-		if let Specifier::Expression(Spanned(Expression::Identifier(string), _)) = &specifier.0 {
-			Some(string.clone())
-		} else {
-			self.try_eval_as(element, specifier, key, ValueType::String)
-				.map(Value::unwrap_string)
-		}
+		self.try_eval_as(element, specifier, key)
 	}
 
 	#[inline]
@@ -394,27 +387,24 @@ impl Styles {
 		}
 	}
 
-	fn try_eval_as(
+	fn try_eval_as<T: TryFrom<Value>>(
 		&self,
 		element: &MapElement,
 		specifier: &Spanned<Specifier>,
 		key: &str,
-		expr_type: ValueType,
-	) -> Option<Value> {
+	) -> Option<T> {
 		if let Specifier::Expression(expr) = &specifier.0 {
 			let ctx = EvalContext { element };
 			match expr.0.eval(&ctx) {
-				Ok(value) => {
-					if value.get_type() == expr_type {
-						Some(value)
-					} else {
+				Ok(value) => value
+					.try_into()
+					.inspect_err(|_| {
 						self.error(
 							Error::InvalidSpecifierType(key.to_string(), specifier.0.clone()),
 							specifier.1,
-						);
-						None
-					}
-				}
+						)
+					})
+					.ok(),
 				Err(err) => {
 					self.reporting.borrow_mut().report(err, expr.1);
 					None
@@ -531,10 +521,18 @@ fn matches_conditions(conditions: &[Condition], element: &MapElement, _context: 
 	let eval_context = EvalContext { element };
 	conditions.iter().all(|condition| match condition {
 		Condition::Binary(Spanned(a, _), BinaryOp::Eq, Spanned(b, _)) => {
-			let Some(tag_key) = a.eval(&eval_context).ok().and_then(Value::ident_or_string) else {
+			let Some(tag_key) = a
+				.eval(&eval_context)
+				.ok()
+				.and_then(|value| String::try_from(value).ok())
+			else {
 				return false;
 			};
-			let Some(tag_value) = b.eval(&eval_context).ok().and_then(Value::ident_or_string) else {
+			let Some(tag_value) = b
+				.eval(&eval_context)
+				.ok()
+				.and_then(|value| String::try_from(value).ok())
+			else {
 				return false;
 			};
 			element.get_tag_with_new(&tag_key) == Some(&tag_value)

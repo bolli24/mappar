@@ -47,7 +47,6 @@ impl ExpressionEval for Expression {
 			Self::String(string) => Value::String(string.clone()),
 			Self::Color(color) => Value::Color(*color),
 			Self::Bool(bool) => Value::Bool(*bool),
-			Self::Identifier(identifier) => Value::Identifier(identifier.clone()),
 			Self::Function(function) => function.eval(ctx)?,
 			Self::Binary(_, _, _) | Self::Unary(_, _) => {
 				return Err(EvalError::NotImplemented("Binary and Unary expressions".to_string()));

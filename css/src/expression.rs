@@ -7,7 +7,6 @@ use std::fmt::{Debug, Display};
 #[derive(Clone)]
 pub enum Expression {
 	Number(f64),
-	Identifier(String),
 	String(String),
 	Color(Color32),
 	Bool(bool),
@@ -20,73 +19,57 @@ pub enum Expression {
 #[derive(Debug, Clone)]
 pub enum Value {
 	Number(f64),
-	Identifier(String),
 	String(String),
 	Color(Color32),
 	Bool(bool),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ValueType {
-	Number,
-	Identifier,
-	String,
-	Color,
-	Bool,
+impl Value {}
+
+impl TryFrom<Value> for f64 {
+	type Error = Value;
+
+	fn try_from(value: Value) -> Result<Self, Self::Error> {
+		if let Value::Number(number) = value {
+			Ok(number)
+		} else {
+			Err(value)
+		}
+	}
 }
 
-impl Value {
-	#[must_use]
-	pub const fn get_type(&self) -> ValueType {
-		match self {
-			Self::Number(_) => ValueType::Number,
-			Self::Identifier(_) => ValueType::Identifier,
-			Self::String(_) => ValueType::String,
-			Self::Color(_) => ValueType::Color,
-			Self::Bool(_) => ValueType::Bool,
-		}
-	}
-	#[must_use]
-	pub fn unrwap_number(self) -> f64 {
-		if let Self::Number(number) = self {
-			number
-		} else {
-			panic!("Expected value to be number: {self:?}");
-		}
-	}
+impl TryFrom<Value> for String {
+	type Error = Value;
 
-	#[must_use]
-	pub fn unwrap_identifier(self) -> String {
-		if let Self::Identifier(identifier) = self {
-			identifier
+	fn try_from(value: Value) -> Result<Self, Self::Error> {
+		if let Value::String(string) = value {
+			Ok(string)
 		} else {
-			panic!("Expected value to be identifier: {self:?}");
+			Err(value)
 		}
 	}
+}
 
-	#[must_use]
-	pub fn unwrap_string(self) -> String {
-		if let Self::String(string) = self {
-			string
+impl TryFrom<Value> for Color32 {
+	type Error = Value;
+
+	fn try_from(value: Value) -> Result<Self, Self::Error> {
+		if let Value::Color(color) = value {
+			Ok(color)
 		} else {
-			panic!("Expected value to be string: {self:?}");
+			Err(value)
 		}
 	}
+}
 
-	#[must_use]
-	pub fn unwrap_bool(self) -> bool {
-		if let Self::Bool(boolean) = self {
-			boolean
+impl TryFrom<Value> for bool {
+	type Error = Value;
+
+	fn try_from(value: Value) -> Result<Self, Self::Error> {
+		if let Value::Bool(boolean) = value {
+			Ok(boolean)
 		} else {
-			panic!("Expected value to be bool: {self:?}");
-		}
-	}
-
-	#[must_use]
-	pub fn ident_or_string(self) -> Option<String> {
-		match self {
-			Self::String(string) | Self::Identifier(string) => Some(string),
-			_ => None,
+			Err(value)
 		}
 	}
 }
@@ -139,7 +122,6 @@ impl Expression {
 	pub fn get_type(&self) -> ExpressionType {
 		match self {
 			Self::Number(_) => ExpressionType::Number,
-			Self::Identifier(_) => ExpressionType::Unknown,
 			Self::String(_) => ExpressionType::String,
 			Self::Color(_) => ExpressionType::Color,
 			Self::Bool(_) => ExpressionType::Bool,
@@ -208,7 +190,6 @@ impl Display for Expression {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Self::Number(n) => write!(f, "{n}"),
-			Self::Identifier(name) => write!(f, "ident:{name}"),
 			Self::String(string) => write!(f, "\"{string}\""),
 			Self::Color(color) => write!(f, "{color:?}"),
 			Self::Bool(bool) => write!(f, "{bool}"),
