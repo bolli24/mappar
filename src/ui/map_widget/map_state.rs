@@ -242,6 +242,32 @@ impl MapStateMachine {
 		}
 	}
 
+	#[state]
+	fn move_new_node(context: &mut Context<'_>, node_id: &ElementId, total_delta: &mut DVec2) -> Outcome<State> {
+		*total_delta += context.world_delta;
+		context.map_data.raw_move_by([node_id], context.world_delta);
+
+		if !context
+			.response
+			.ctx
+			.input(|i| i.pointer.button_down(PointerButton::Primary))
+		{
+			if *total_delta != DVec2::ZERO {
+				let edit = context.map_data.move_by([node_id], *total_delta, true);
+				let result = context.history.edit(context.map_data, edit);
+				if let Err(err) = result {
+					message_error!(context.messages, "Error moving node: {err}");
+				}
+			}
+
+			Transition(State::Draw {
+				first_node_or_way: None,
+			})
+		} else {
+			Handled
+		}
+	}
+
 	#[state(exit_action = "exit_box_select")]
 	fn box_select(&mut self, context: &mut Context<'_>, pointer_down_pos: &Option<DVec2>) -> Outcome<State> {
 		let selection_box = if let Some(pointer) = context.view.pointer_world_pos {
@@ -406,13 +432,16 @@ impl MapStateMachine {
 							.collect();
 
 						let edit = map_data.add_node_on_way_segments(pos, ways);
+						let new_node_id = edit.0[0];
 						history
 							.edit(map_data, edit)
 							.expect("Adding node to way segments must not error.");
+						mem.selection.elements.clear();
+						mem.selection.elements.insert(new_node_id);
 
-						// TODO: transition to moving node
-						return Transition(State::Draw {
-							first_node_or_way: None,
+						return Transition(State::MoveNewNode {
+							node_id: new_node_id,
+							total_delta: DVec2::ZERO,
 						});
 					}
 					_ => unreachable!("Must never hover over relation."),
