@@ -328,11 +328,24 @@ where
 
 	let rotation = number.then(rotation_unit).map(|(number, unit)| unit * number);
 
+	let named_specifier = identifier
+		.clone()
+		.then_ignore(
+			choice((
+				just(Token::Semicolon),
+				just(Token::BraceClose),
+				just(Token::Space),
+				just(Token::Newline),
+			))
+			.rewind(),
+		)
+		.map(Specifier::Named);
+
 	let specifier = choice((
 		labelled_color.map(|(label, color)| Specifier::Color(color, label)),
 		sizes.map(Specifier::Sizes),
 		rotation.map(Specifier::Rotation),
-		identifier.clone().map(Specifier::Named),
+		named_specifier,
 		expression.clone().map(Specifier::Expression),
 	))
 	.map_with(|specifier, extras| (specifier, extras.span()))
