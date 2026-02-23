@@ -2,6 +2,7 @@ pub mod app;
 mod auth_widget;
 mod debug_text;
 mod display_window;
+mod downloader;
 mod edit_bar;
 mod imagery_widget;
 mod input;

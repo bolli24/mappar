@@ -1,16 +1,14 @@
 use super::{debug_text::DebugText, map_widget::map_memory::Selection, messages::Messages};
-use crate::api::client::OsmClient;
 use crate::map::element::Member;
 use crate::map::map_data::{EditHistory, MapData};
-use crate::ui::app::{DownloadTask, MapDataResult};
+use crate::ui::downloader::{DownloadTask, Downloader};
 use crate::ui::key_value_table::table_field;
-use crate::{Element, ElementId, message_info, spawn_task};
+use crate::{Element, ElementId, message_info};
 use derive_new::new;
 use egui::ahash::AHashSet;
 use egui::{Button, Frame, RichText, Sides, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
 use epaint::FontId;
-use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(new)]
 pub struct RelationsTable<'a> {
@@ -20,9 +18,7 @@ pub struct RelationsTable<'a> {
 	messages: &'a mut Messages,
 	debug_text: &'a mut DebugText,
 	highlighted_elements: &'a mut AHashSet<ElementId>,
-	map_data_sender: &'a UnboundedSender<MapDataResult>,
-	download_tasks: &'a mut AHashSet<DownloadTask>,
-	osm_client: OsmClient,
+	downloader: &'a mut Downloader,
 }
 
 impl Widget for RelationsTable<'_> {
@@ -33,9 +29,12 @@ impl Widget for RelationsTable<'_> {
 		let spacing = ui.spacing().item_spacing.x * 2.0; // 2 gaps between 3 columns
 		let column_width = ((available_width - ACTION_COLUMN - spacing) * 0.5).clamp(40.0, 400.0);
 
-		let id = self.selection.elements.iter().next();
-
-		let element = id.and_then(|id| self.map_data.get(id));
+		let element = self
+			.selection
+			.elements
+			.iter()
+			.next()
+			.and_then(|id| self.map_data.get(id));
 		let edit = None;
 		let mut selected = None;
 
@@ -126,7 +125,7 @@ impl Widget for RelationsTable<'_> {
 				},
 				|ui| {
 					let task = DownloadTask::Relation(element.id);
-					let already_downloading = self.download_tasks.contains(&task);
+					let already_downloading = self.downloader.is_downloading(&task);
 					let can_download = !fully_downloaded && !already_downloading;
 					if already_downloading {
 						ui.spinner().on_hover_text("Already downloading members.");
@@ -143,18 +142,7 @@ impl Widget for RelationsTable<'_> {
 						.clicked()
 					{
 						message_info!(self.messages, "Downloading relation members.");
-
-						spawn_task!({
-							let map_data_sender = self.map_data_sender.clone();
-							let osm_client = self.osm_client.clone();
-							let id = element.id;
-							self.download_tasks.insert(task);
-							async move {
-								map_data_sender
-									.send(osm_client.get_full(id).await.map(|result| (result, task)))
-									.expect("Channel must not be closed.");
-							}
-						});
+						self.downloader.download(DownloadTask::Relation(element.id));
 					}
 				},
 			);
