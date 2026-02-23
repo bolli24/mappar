@@ -176,7 +176,8 @@ where
 				.padded_by(opt_spaces.clone())
 				.delimited_by(just(Token::ParenOpen), just(Token::ParenClose)),
 		)
-		.map(|(name, args)| Function(name, args));
+		.map(|(name, args)| Function(name, args))
+		.boxed();
 
 	/*
 	let unary = op('-')
@@ -214,52 +215,68 @@ where
 			just(Token::ParenClose).padded_by(opt_spaces.clone()),
 		),
 	))
-	.map_with(|atom: Expression, extras| Spanned(atom, extras.span()));
+	.map_with(|atom: Expression, extras| Spanned(atom, extras.span()))
+	.boxed();
 
-	let unary_expression = unary.repeated().foldr_with(atom, |op, expr, extras| {
-		Spanned(Expression::Unary(Box::new(expr), op), extras.span())
-	});
+	let unary_expression = unary
+		.repeated()
+		.foldr_with(atom, |op, expr, extras| {
+			Spanned(Expression::Unary(Box::new(expr), op), extras.span())
+		})
+		.boxed();
 
-	let factor = unary_expression.clone().then_ignore(opt_spaces.clone()).foldl_with(
-		binary
-			.filter(|op| matches!(op, BinaryOp::Mul | BinaryOp::Div))
-			.then_ignore(opt_spaces.clone())
-			.then(unary_expression.clone())
-			.repeated(),
-		|a: Spanned<Expression>, (op, b): (BinaryOp, Spanned<Expression>), extras| {
-			Spanned(Expression::Binary(Box::new(a), op, Box::new(b)), extras.span())
-		},
-	);
+	let factor = unary_expression
+		.clone()
+		.then_ignore(opt_spaces.clone())
+		.foldl_with(
+			binary
+				.filter(|op| matches!(op, BinaryOp::Mul | BinaryOp::Div))
+				.then_ignore(opt_spaces.clone())
+				.then(unary_expression.clone())
+				.repeated(),
+			|a: Spanned<Expression>, (op, b): (BinaryOp, Spanned<Expression>), extras| {
+				Spanned(Expression::Binary(Box::new(a), op, Box::new(b)), extras.span())
+			},
+		)
+		.boxed();
 
-	let term = factor.clone().then_ignore(opt_spaces.clone()).foldl_with(
-		binary
-			.filter(|op| matches!(op, BinaryOp::Add | BinaryOp::Sub))
-			.then_ignore(opt_spaces.clone())
-			.then(factor.clone())
-			.repeated(),
-		|a: Spanned<Expression>, (op, b): (BinaryOp, Spanned<Expression>), extras| {
-			Spanned(Expression::Binary(Box::new(a), op, Box::new(b)), extras.span())
-		},
-	);
+	let term = factor
+		.clone()
+		.then_ignore(opt_spaces.clone())
+		.foldl_with(
+			binary
+				.filter(|op| matches!(op, BinaryOp::Add | BinaryOp::Sub))
+				.then_ignore(opt_spaces.clone())
+				.then(factor.clone())
+				.repeated(),
+			|a: Spanned<Expression>, (op, b): (BinaryOp, Spanned<Expression>), extras| {
+				Spanned(Expression::Binary(Box::new(a), op, Box::new(b)), extras.span())
+			},
+		)
+		.boxed();
 
-	let comparison = term.clone().then_ignore(opt_spaces.clone()).foldl_with(
-		binary
-			.filter(|op| {
-				matches!(
-					op,
-					BinaryOp::Eq
-						| BinaryOp::NotEq | BinaryOp::Le
-						| BinaryOp::Ge | BinaryOp::Lt
-						| BinaryOp::Gt | BinaryOp::StartsWith
-				)
-			})
-			.then_ignore(opt_spaces.clone())
-			.then(term.clone())
-			.repeated(),
-		|a: Spanned<Expression>, (op, b): (BinaryOp, Spanned<Expression>), extras| {
-			Spanned(Expression::Binary(Box::new(a), op, Box::new(b)), extras.span())
-		},
-	);
+	let comparison = term
+		.clone()
+		.then_ignore(opt_spaces.clone())
+		.foldl_with(
+			binary
+				.filter(|op| {
+					matches!(
+						op,
+						BinaryOp::Eq
+							| BinaryOp::NotEq | BinaryOp::Le
+							| BinaryOp::Ge | BinaryOp::Lt
+							| BinaryOp::Gt | BinaryOp::StartsWith
+					)
+				})
+				.then_ignore(opt_spaces.clone())
+				.then(term.clone())
+				.repeated(),
+			|a: Spanned<Expression>, (op, b): (BinaryOp, Spanned<Expression>), extras| {
+				Spanned(Expression::Binary(Box::new(a), op, Box::new(b)), extras.span())
+			},
+		)
+		.boxed();
 
 	/*
 	   let atom = int
@@ -268,7 +285,7 @@ where
 	   .or(ident.map(Expr::Var));
 	*/
 
-	expression.define(comparison.labelled("expression"));
+	expression.define(comparison.labelled("expression").boxed());
 
 	let repeated_u8 = number
 		.map(|f: f64| f.round().clamp(0.0, 255.0) as u8)
@@ -319,7 +336,8 @@ where
 		expression.clone().map(Specifier::Expression),
 	))
 	.map_with(|specifier, extras| (specifier, extras.span()))
-	.labelled("specifier");
+	.labelled("specifier")
+	.boxed();
 
 	let key_specifier = key
 		.then_ignore(just(Token::Colon).padded_by(opt_spaces.clone()))
@@ -340,17 +358,20 @@ where
 		.ignore_then(identifier)
 		.map(|name| Declaration::ClassAssign(name));
 
-	let style = choice((key_specifier, class_assign)).recover_with(skip_then_retry_until(
-		any().ignored(),
-		just(Token::BraceClose).ignored(),
-	));
+	let style = choice((key_specifier, class_assign))
+		.recover_with(skip_then_retry_until(
+			any().ignored(),
+			just(Token::BraceClose).ignored(),
+		))
+		.boxed();
 
 	let styleset = style
 		.padded_by(opt_spaces.clone())
 		.clone()
 		.separated_by(just(Token::Semicolon).padded_by(opt_spaces.clone()))
 		.allow_trailing()
-		.collect::<Vec<Declaration>>();
+		.collect::<Vec<Declaration>>()
+		.boxed();
 
 	let declaration = styleset
 		.or(empty().map(|()| Vec::new())) // TODO: do we need this?
@@ -366,7 +387,8 @@ where
 			],
 			|_| Vec::new(),
 		)))
-		.labelled("declaration");
+		.labelled("declaration")
+		.boxed();
 
 	let regex = select!(Token::Regex(regex) => regex);
 
@@ -375,7 +397,8 @@ where
 		.then_ignore(opt_spaces.clone())
 		.then(binary)
 		.then_ignore(opt_spaces.clone())
-		.then(expression.clone());
+		.then(expression.clone())
+		.boxed();
 
 	let regex_condition = tag
 		.clone()
@@ -392,7 +415,8 @@ where
 			} else {
 				Condition::Regex(name, regex)
 			}
-		});
+		})
+		.boxed();
 
 	let expression_condition =
 		term.clone()
@@ -409,7 +433,8 @@ where
 			}))
 			.then_ignore(opt_spaces.clone())
 			.then(term.clone())
-			.map(|((a, op), b)| Condition::Binary(a, op, b));
+			.map(|((a, op), b)| Condition::Binary(a, op, b))
+			.boxed();
 
 	// TODO: at not falsy and not truthy: !building?!  !building?
 	let condition = recursive(|condition| {
@@ -439,7 +464,8 @@ where
 				}),
 		))
 	})
-	.labelled("condition");
+	.labelled("condition")
+	.boxed();
 
 	let test = condition
 		.padded_by(opt_spaces.clone())
@@ -508,16 +534,19 @@ where
 		setting_group,
 		tests_required.map(SubSelector::Tests),
 	))
-	.labelled("subselector");
+	.labelled("subselector")
+	.boxed();
 
-	let link_property = identifier.try_map(|name, span| match name.as_str() {
-		"index" => Ok(LinkProperty::Index),
-		"role" => Ok(LinkProperty::Role),
-		_ => Err(Rich::custom(
-			span,
-			format!("Invalid property {name} in link condition. Must be either 'index' or 'role'."),
-		)),
-	});
+	let link_property = identifier
+		.try_map(|name, span| match name.as_str() {
+			"index" => Ok(LinkProperty::Index),
+			"role" => Ok(LinkProperty::Role),
+			_ => Err(Rich::custom(
+				span,
+				format!("Invalid property {name} in link condition. Must be either 'index' or 'role'."),
+			)),
+		})
+		.boxed();
 
 	let link = link_property
 		.then_ignore(opt_spaces.clone())
@@ -542,7 +571,8 @@ where
 		.then(link.clone())
 		.then_ignore(opt_spaces.clone())
 		.then(sub_selector.clone())
-		.map(|((a, link), b)| ChildRelation(Box::new(a), Box::new(b), link));
+		.map(|((a, link), b)| ChildRelation(Box::new(a), Box::new(b), link))
+		.boxed();
 
 	let overlap_relation = sub_selector
 		.clone()
@@ -550,7 +580,8 @@ where
 		.then_ignore(just(Token::Overlap))
 		.then_ignore(opt_spaces.clone())
 		.then(sub_selector.clone())
-		.map(|(a, b)| OverlapRelation(Box::new(a), Box::new(b)));
+		.map(|(a, b)| OverlapRelation(Box::new(a), Box::new(b)))
+		.boxed();
 
 	let parent_relation = sub_selector
 		.clone()
@@ -559,7 +590,8 @@ where
 		.then(link)
 		.then_ignore(opt_spaces.clone())
 		.then(sub_selector.clone())
-		.map(|((a, link), b)| ParentRelation(Box::new(a), Box::new(b), link));
+		.map(|((a, link), b)| ParentRelation(Box::new(a), Box::new(b), link))
+		.boxed();
 
 	let set_operator = select! {
 		Token::ElementOf => SetOperator::ElementOf,
@@ -575,7 +607,8 @@ where
 		.then(set_operator)
 		.then_ignore(opt_spaces.clone())
 		.then(sub_selector.clone())
-		.map(|((a, op), b)| SetRelation(Box::new(a), Box::new(b), op));
+		.map(|((a, op), b)| SetRelation(Box::new(a), Box::new(b), op))
+		.boxed();
 
 	//	selector     ::= subselector | child;
 	let selector = choice((
@@ -590,7 +623,8 @@ where
 	.collect::<Vec<_>>()
 	.then(maybe_layer)
 	.map(|(selectors, maybe_layer)| Intersection(selectors, maybe_layer))
-	.labelled("selector");
+	.labelled("selector")
+	.boxed();
 
 	// uSelectors   ::= selector | uSelectors "," selector;
 	let union_selector = selector // .class1, .class2 OR .class1,.class2
@@ -599,19 +633,24 @@ where
 		.allow_trailing()
 		.collect::<Vec<_>>()
 		.recover_with(via_parser(none_of(Token::BraceOpen).repeated().map(|()| Vec::new())))
-		.map(Union);
+		.map(Union)
+		.boxed();
 
-	let selectors = union_selector.labelled("selectors");
+	let selectors = union_selector.labelled("selectors").boxed();
 
-	let rule = selectors.then(declaration).map(|(selectors, styles)| Styleset {
-		selectors,
-		declarations: styles,
-	});
+	let rule = selectors
+		.then(declaration)
+		.map(|(selectors, styles)| Styleset {
+			selectors,
+			declarations: styles,
+		})
+		.boxed();
 
 	let rule_set = rule
 		.separated_by(opt_spaces.clone())
 		.collect()
-		.padded_by(opt_spaces.clone());
+		.padded_by(opt_spaces.clone())
+		.boxed();
 
 	rule_set.map(RuleSet)
 }
