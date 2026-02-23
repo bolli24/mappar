@@ -126,17 +126,13 @@ tokio = { version = "1.49", default-features = false, features = [
 js-sys = "0.3"
 web-sys = { version = "0.3", features = [
     "Navigator",
-    "StorageManager",
-    "IdbFactory",
-    "IdbOpenDbRequest",
-    "Location",
-    "Storage",
     "BroadcastChannel",
     "MessageEvent",
 ] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 gloo-worker = "0.5"
+indexed_db_futures = { version = "0.6", features = ["serde", "typed-arrays"] }
 
 [build-dependencies]
 vergen-gitcl = "9"

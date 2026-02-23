@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+extern crate alloc;
 
 pub use map::element::Element;
 pub use map::element::ElementId;

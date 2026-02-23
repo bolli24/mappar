@@ -122,7 +122,7 @@ impl ImageryFetcher {
 		texture_manager: Arc<RwLock<TextureManager>>,
 		#[cfg(not(target_arch = "wasm32"))] cache_base_directory: PathBuf,
 		#[cfg(not(target_arch = "wasm32"))] messages: Messages,
-		#[cfg(target_arch = "wasm32")] _messages: Messages,
+		#[cfg(target_arch = "wasm32")] messages: Messages,
 		no_cache: bool,
 	) -> Self {
 		let memory_cache = Arc::new(Mutex::new(LruCache::new(MAX_MEMORY_CACHE_CAPACITY)));
@@ -139,7 +139,7 @@ impl ImageryFetcher {
 			#[cfg(not(target_arch = "wasm32"))]
 			persistent_cache: local_cache::LocalCache::new(cache_base_directory, messages, imageries.clone(), no_cache),
 			#[cfg(target_arch = "wasm32")]
-			persistent_cache: web_cache::WebCache::new(),
+			persistent_cache: web_cache::WebCache::new(messages, imageries.clone()),
 			imageries,
 			pending: Arc::new(AtomicU32::new(0)),
 			memory_cache,
@@ -385,11 +385,11 @@ impl ImageryFetcher {
 			Err(err) => Err(Error::Reqwest(err)),
 			Ok(response) => {
 				let bytes = response.bytes().await?;
-				// TODO:
-				// persistent_cache
-				// 	.save_image(tile, &bytes, file_format)
-				// 	.await;
-				//
+				// Ensure non-image payloads are rejected before they can poison persistent cache entries.
+				let _image_format = image::guess_format(&bytes)?;
+				if !no_cache && let Err(e) = persistent_cache.save_image(tile, &bytes).await {
+					error!("Failed to cache tile {tile:?}: {e}");
+				}
 				worker_bridge.lock().send(Input(tile, bytes.to_vec()));
 				Ok(())
 			}
