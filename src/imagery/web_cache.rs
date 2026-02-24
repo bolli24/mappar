@@ -10,7 +10,7 @@ use indexed_db_futures::database::Database;
 use indexed_db_futures::error::OpenDbError;
 use indexed_db_futures::query_source::QuerySource;
 use js_sys::Uint8Array;
-use log::{error, warn};
+use log::{error, info, warn};
 use std::collections::HashSet;
 use tokio::sync::{Mutex, OnceCell};
 use wasm_bindgen::JsCast;
@@ -56,29 +56,31 @@ const DB_VERSION: u8 = 1;
 impl WebCache {
 	pub fn new(mut messages: Messages, imageries: Arc<RwLock<Imageries>>) -> Self {
 		let database = Arc::new(OnceCell::new());
-		let database_clone = database.clone();
 		let cached_images = Arc::new(Mutex::new(HashSet::new()));
-		let cached_images_clone = cached_images.clone();
-		wasm_bindgen_futures::spawn_local(async move {
-			match database_clone.get_or_try_init(Self::init_database).await {
-				Ok(db) => {
-					let t0 = web_time::Instant::now();
-					let tiles = Self::load_cached_keys(db).await.unwrap_or_default();
-					let count = tiles.len();
-					let elapsed = t0.elapsed();
-					let mut cache = cached_images_clone.lock().await;
-					for tile in tiles {
-						cache.insert(tile);
+
+		wasm_bindgen_futures::spawn_local({
+			let database = database.clone();
+			let cached_images = cached_images.clone();
+			async move {
+				match database.get_or_try_init(Self::init_database).await {
+					Ok(db) => {
+						let start = web_time::Instant::now();
+						let tiles = Self::load_cached_keys(db).await.unwrap_or_default();
+						let count = tiles.len();
+						let elapsed = start.elapsed();
+						let mut cache = cached_images.lock().await;
+						for tile in tiles {
+							cache.insert(tile);
+						}
+						crate::message_info!(
+							messages,
+							"Found {count} cached images. Took: {:.1}ms",
+							elapsed.as_millis()
+						);
 					}
-					drop(cache);
-					crate::message_info!(
-						messages,
-						"Found {count} cached images. Took: {:.1}ms",
-						elapsed.as_millis()
-					);
-				}
-				Err(e) => {
-					error!("Failed to initialize IndexedDB: {e}");
+					Err(e) => {
+						error!("Failed to initialize IndexedDB: {e}");
+					}
 				}
 			}
 		});
@@ -96,14 +98,11 @@ impl WebCache {
 	}
 
 	async fn database_or_init(&self) -> Result<Database, Error> {
-		log::info!("database_or_init");
 		if let Some(db) = self.database.get() {
-			log::info!("got it");
 			return Ok(db.clone());
 		}
 
 		let db = self.database.get_or_try_init(Self::init_database).await?;
-		log::info!("init done");
 		Ok(db.clone())
 	}
 
@@ -126,11 +125,8 @@ impl WebCache {
 	}
 
 	async fn init_database() -> Result<Database, Error> {
-		log::info!("initializing");
-
 		let db = Self::open_database().await?;
 		if Self::has_object_store(&db, IMAGERY_STORE) {
-			log::info!("initialized");
 			return Ok(db);
 		}
 
@@ -140,8 +136,7 @@ impl WebCache {
 
 		let recreated = Self::open_database().await?;
 		if Self::has_object_store(&recreated, IMAGERY_STORE) {
-			warn!("IndexedDB `{}` recreated successfully", DB_NAME);
-			log::info!("initialized");
+			info!("IndexedDB `{DB_NAME}` recreated successfully");
 			return Ok(recreated);
 		}
 
@@ -179,7 +174,6 @@ impl WebCache {
 
 	pub async fn save_image(&self, tile: Tile, image_data: &Bytes) -> Result<(), Error> {
 		let db = self.database_or_init().await?;
-		log::info!("Store tile {tile:?}");
 
 		let transaction = db
 			.transaction(IMAGERY_STORE)
