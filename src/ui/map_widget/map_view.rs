@@ -58,7 +58,7 @@ impl MapView<'_> {
 
 		let frame_response = ScrollArea::neither()
 			.show(ui, |ui| {
-				Frame::canvas(ui.style()).show(ui, |ui| {
+				Frame::NONE.show(ui, |ui| {
 					puffin::profile_function!("Draw MapView");
 					let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 					ui.ctx().request_repaint();

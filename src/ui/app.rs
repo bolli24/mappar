@@ -150,7 +150,10 @@ impl MyApp {
 			last_update: Instant::now(),
 			recent_frame_times: egui::util::History::new(10..MAX_RECENT_FRAME_COUNT, 1.0),
 			inspection: false,
-			debug_panel: true,
+			debug_panel: cc
+				.storage
+				.and_then(|s| eframe::get_value(s, "debug_panel"))
+				.unwrap_or(false),
 			map_memory,
 			messages,
 			imagery_settings: false,
@@ -205,6 +208,10 @@ impl MyApp {
 }
 
 impl eframe::App for MyApp {
+	fn save(&mut self, storage: &mut dyn eframe::Storage) {
+		eframe::set_value(storage, "debug_panel", &self.debug_panel);
+	}
+
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
 		self.map_memory.highlighted_elements.clear();
 		self.key_binds.update_pressed_commands(ctx);
@@ -215,7 +222,7 @@ impl eframe::App for MyApp {
 			self.styles = Some(new_styles);
 		}
 
-		let mut reload_styles = false;
+		let mut reload_styles = self.key_binds.pressed_once(Command::ReloadStyles);
 		#[cfg(not(target_arch = "wasm32"))]
 		if self.key_binds.pressed_once(Command::ToggleDebugPanel) {
 			self.debug_panel = !self.debug_panel;
@@ -390,13 +397,13 @@ impl eframe::App for MyApp {
 		}
 		self.debug_text.clear();
 
-		egui::CentralPanel::default().show(ctx, |ui| {
+		egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx, |ui| {
 			let active_imagery_ref = self
 				.layers
 				.get_active_imagery()
 				.and_then(|id| self.imageries.write().get_ref(id));
 
-			let mut rect = ui
+			let rect = ui
 				.add(MapWidget::new(
 					&mut self.map_data,
 					&mut self.history,
@@ -412,7 +419,6 @@ impl eframe::App for MyApp {
 					&self.key_binds,
 				))
 				.rect;
-			rect.min += egui::Vec2::new(5.0, 5.0);
 			ui.put(rect, self.messages.clone());
 		});
 
