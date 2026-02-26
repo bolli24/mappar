@@ -28,7 +28,7 @@ use egui::{
 	pos2, vec2,
 };
 use epaint::mutex::Mutex;
-use epaint::{CornerRadius, FontsView, PathShape, PathStroke, Shape, TextShape};
+use epaint::{CornerRadius, FontsView, PathShape, PathStroke, Shape, TextShape, Vertex};
 use glam::{DVec2, UVec2, dvec2, uvec2};
 use itertools::Itertools;
 use lyon_tessellation::path::Path;
@@ -271,21 +271,22 @@ fn draw_element(element: &DetailedElement, shapes: &mut DrawList, view: &View, f
 					.expect("valid path geometry");
 			}
 
-			for triangle in buffers.indices.chunks_exact(3) {
-				let points = triangle
-					.iter()
-					.map(|i| buffers.vertices[*i as usize])
-					.collect::<Vec<_>>();
+			let mesh = Mesh {
+				vertices: buffers
+					.vertices
+					.into_iter()
+					.map(|pos| Vertex {
+						pos,
+						uv: epaint::WHITE_UV,
+						color: element.style.fill_color,
+					})
+					.collect(),
+				indices: buffers.indices.iter().map(|&i| u32::from(i)).collect(),
+				texture_id: TextureId::default(),
+			};
 
-				if triangle_area(&points) < MINIMUM_TRIANGLE_SIZE {
-					continue;
-				}
-
-				shapes.areas.push(Shape::convex_polygon(
-					points,
-					element.style.fill_color,
-					(0.0, Color32::TRANSPARENT),
-				));
+			if !mesh.is_empty() {
+				shapes.areas.push(Shape::mesh(mesh));
 			}
 
 			let path_element = DetailedElement {
