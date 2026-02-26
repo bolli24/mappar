@@ -32,6 +32,7 @@ use crate::map::latlon::{LatLon, latlon};
 use crate::ui::auth_widget::AuthWidget;
 use crate::ui::downloader::{DownloadTask, Downloader};
 use crate::ui::key_value_table::KeyValueTable;
+use crate::ui::relation_editor::RelationEditor;
 use crate::ui::relations_table::RelationsTable;
 use epaint::mutex::{Mutex, RwLock};
 
@@ -373,6 +374,16 @@ impl eframe::App for MyApp {
 				.ui(ui);
 				ui.separator();
 				RelationsTable::new(
+					&mut self.map_data,
+					&mut self.history,
+					&mut self.map_memory.selection,
+					&mut self.messages,
+					&mut self.debug_text,
+					&mut self.map_memory.highlighted_elements,
+				)
+				.ui(ui);
+				ui.separator();
+				RelationEditor::new(
 					&mut self.map_data,
 					&mut self.history,
 					&mut self.map_memory.selection,

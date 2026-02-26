@@ -29,6 +29,7 @@ impl Default for MapMemory {
 pub struct Selection {
 	pub elements: HashSet<ElementId>,
 	pub tags: HashSet<usize>,
+	pub relation: Option<ElementId>,
 }
 
 impl Selection {

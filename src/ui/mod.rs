@@ -11,4 +11,5 @@ mod layer_list;
 pub mod map_widget;
 pub mod memory;
 pub mod messages;
+mod relation_editor;
 mod relations_table;
