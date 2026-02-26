@@ -24,6 +24,7 @@ mod local_cache;
 #[cfg(target_arch = "wasm32")]
 mod web_cache;
 
+pub mod bing;
 mod schema;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -136,17 +137,16 @@ fn imageries_from_str(
 		}
 	};
 
-	let mut to_remove = Vec::new();
+	let mut bing_ids = Vec::new();
 
-	for (id, imagery) in &parsed.entries {
-		if imagery.imagery_type != ImageryType::Tms || imagery.tile_url(0, 0, 0).is_none() {
-			to_remove.push(id.clone());
+	parsed.entries.retain(|id, imagery| {
+		if imagery.imagery_type == ImageryType::Bing {
+			bing_ids.push(id.clone());
+			true
+		} else {
+			imagery.imagery_type == ImageryType::Tms && imagery.tile_url(0, 0, 0).is_some()
 		}
-	}
-
-	for id in to_remove {
-		parsed.entries.shift_remove(&id);
-	}
+	});
 
 	message_info!(
 		messages,
@@ -155,6 +155,47 @@ fn imageries_from_str(
 		start.elapsed()
 	);
 	*imageries.write() = parsed;
+
+	if !bing_ids.is_empty() {
+		let imageries = imageries.clone();
+		let mut messages = messages.clone();
+		crate::spawn_task!(async move {
+			let client = Client::new();
+			match bing::bing_metadata(&client).await {
+				Ok(metadata) => {
+					let tile_url = match ImageryUrl::try_from(metadata.tile_url.as_str()) {
+						Ok(url) => url,
+						Err(err) => {
+							message_error!(
+								messages,
+								"Failed to parse Bing tile URL '{}': {err:?}",
+								metadata.tile_url
+							);
+							return;
+						}
+					};
+					let mut imageries = imageries.write();
+					for id in bing_ids {
+						if let Some(imagery) = imageries.entries.get_mut(&id) {
+							imagery.url = tile_url.clone();
+							imagery.min_zoom = metadata.zoom_min;
+							imagery.max_zoom = metadata.zoom_max;
+							imagery.tile_size = Some(metadata.tile_size);
+						}
+					}
+					message_info!(messages, "Bing imagery metadata loaded successfully.");
+				}
+				Err(err) => {
+					message_error!(messages, "Failed to fetch Bing metadata: {err}");
+					let mut imageries = imageries.write();
+					for id in bing_ids {
+						imageries.entries.shift_remove(&id);
+					}
+				}
+			}
+		});
+	}
+
 	Ok(())
 }
 
@@ -184,6 +225,14 @@ pub struct Imagery {
 	pub min_zoom: u32,
 	pub tile_size: Option<u32>,
 	pub bounds: Option<ImageryBounds>,
+}
+
+impl Imagery {
+	/// Whether this imagery source is ready to serve tiles.
+	/// Bing imagery requires metadata to be fetched first.
+	pub fn is_ready(&self) -> bool {
+		self.imagery_type != ImageryType::Bing || self.tile_size.is_some()
+	}
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -364,6 +413,7 @@ impl Imagery {
 					// This is safe since zoom will always be smaller than 256
 					#[allow(clippy::cast_possible_truncation)]
 					Placeholder::Zoom(offset) => url.push_str(&(zoom as i8 + offset).to_string()),
+					Placeholder::QuadKey => url.push_str(&bing::tile_to_quadkey(x, y, zoom)),
 					_ => return None, // TODO: Support all url placeholders
 				},
 			}
@@ -395,6 +445,7 @@ enum Placeholder {
 	N,
 	E,*/
 	WkId,
+	QuadKey,
 }
 
 #[derive(Debug, Clone)]
@@ -450,6 +501,7 @@ fn imagery_url_parser<'a>() -> impl Parser<'a, &'a str, ImageryUrl, chumsky::ext
 				"apikey" => Placeholder::ApiKey,
 				"wkid" => Placeholder::WkId,
 				"time" => Placeholder::Time,
+				"quadkey" => Placeholder::QuadKey,
 				_ => return Err(Rich::custom(span, format!("Invalid placeholder: {placeholder}"))),
 			};
 			Ok(UrlSegment::Placeholder(p))
@@ -521,6 +573,7 @@ impl Display for ImageryUrl {
 						Placeholder::ApiKey => "apikey",
 						Placeholder::WkId => "wkid",
 						Placeholder::Time => "time",
+						Placeholder::QuadKey => "quadkey",
 					};
 					write!(f, "{{{p_str}}}")?;
 				}

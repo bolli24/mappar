@@ -171,6 +171,7 @@ impl MyApp {
 		app.key_binds = KeyBinds::new(&mut app.messages);
 
 		app.layers.0.push_back(Layer("EsriWorldImagery".into(), true));
+		app.layers.0.push_back(Layer("Bing".into(), true));
 		app.layers.0.push_back(Layer("standard".into(), true));
 
 		#[cfg(not(target_arch = "wasm32"))]

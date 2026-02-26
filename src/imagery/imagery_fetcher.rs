@@ -433,6 +433,18 @@ impl ImageryFetcher {
 		if let Some(texture) = self.memory_cache.lock().get(&tile) {
 			return *texture;
 		}
+
+		{
+			let imageries = self.imageries.read();
+			let imagery = imageries
+				.get(tile.imagery_ref)
+				.expect("Imagery reference must be valid.");
+
+			if !imagery.is_ready() {
+				return None;
+			}
+		}
+
 		if fetch {
 			match self.request_tx.try_send(tile) {
 				Err(err) if err.is_disconnected() => {
