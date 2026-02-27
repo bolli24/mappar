@@ -5,12 +5,83 @@ use mappar_macros::Id;
 use std::cell::Cell;
 use std::fmt::Display;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct ElementId(pub i64, pub ElementType);
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub struct ElementId(u64);
+
+impl ElementId {
+	const TYPE_SHIFT: u32 = 62;
+	const ID_MASK: u64 = (1u64 << Self::TYPE_SHIFT) - 1;
+	pub const MIN_ID_62: i64 = -(1_i64 << 61);
+	pub const MAX_ID_62: i64 = (1_i64 << 61) - 1;
+	pub const PREVIEW_SENTINEL_ID: i64 = 0;
+
+	#[inline]
+	#[must_use]
+	pub const fn new(id: i64, ty: ElementType) -> Self {
+		assert!(
+			id >= Self::MIN_ID_62 && id <= Self::MAX_ID_62,
+			"ElementId id out of signed 62-bit range",
+		);
+		let tag = match ty {
+			ElementType::Node => 0u64,
+			ElementType::Way => 1u64,
+			ElementType::Relation => 2u64,
+		};
+		Self(tag << Self::TYPE_SHIFT | (id as u64 & Self::ID_MASK))
+	}
+
+	#[inline]
+	#[must_use]
+	pub const fn preview(ty: ElementType) -> Self {
+		Self::new(Self::PREVIEW_SENTINEL_ID, ty)
+	}
+
+	#[inline]
+	#[must_use]
+	pub const fn id(self) -> i64 {
+		// Sign-extend from 62 bits
+		(self.0 << 2) as i64 >> 2
+	}
+
+	#[inline]
+	#[must_use]
+	pub const fn element_type(self) -> ElementType {
+		match self.0 >> Self::TYPE_SHIFT {
+			0 => ElementType::Node,
+			1 => ElementType::Way,
+			2 => ElementType::Relation,
+			_ => unreachable!(),
+		}
+	}
+
+	#[inline]
+	#[must_use]
+	pub const fn is_node(self) -> bool {
+		self.0 >> Self::TYPE_SHIFT == 0
+	}
+
+	#[inline]
+	#[must_use]
+	pub const fn is_way(self) -> bool {
+		self.0 >> Self::TYPE_SHIFT == 1
+	}
+
+	#[inline]
+	#[must_use]
+	pub const fn is_relation(self) -> bool {
+		self.0 >> Self::TYPE_SHIFT == 2
+	}
+}
+
+impl std::fmt::Debug for ElementId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "ElementId({}, {:?})", self.id(), self.element_type())
+	}
+}
 
 impl Display for ElementId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}:{}", self.0, self.1)
+		write!(f, "{}:{}", self.id(), self.element_type())
 	}
 }
 
@@ -195,4 +266,60 @@ pub enum Element {
 		members: Vec<Member>,
 		fully_downloaded: bool,
 	},
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{ElementId, ElementType};
+
+	#[test]
+	fn roundtrip_boundaries_62bit() {
+		let ids = [
+			ElementId::MIN_ID_62,
+			-1,
+			ElementId::PREVIEW_SENTINEL_ID,
+			1,
+			ElementId::MAX_ID_62,
+		];
+		let types = [ElementType::Node, ElementType::Way, ElementType::Relation];
+
+		for id in ids {
+			for ty in types {
+				let element_id = ElementId::new(id, ty);
+				assert_eq!(element_id.id(), id);
+				assert_eq!(element_id.element_type(), ty);
+			}
+		}
+	}
+
+	#[test]
+	#[should_panic]
+	fn below_62bit_range_panics() {
+		let _ = ElementId::new(ElementId::MIN_ID_62 - 1, ElementType::Node);
+	}
+
+	#[test]
+	#[should_panic]
+	fn above_62bit_range_panics() {
+		let _ = ElementId::new(ElementId::MAX_ID_62 + 1, ElementType::Node);
+	}
+
+	#[test]
+	fn preview_constructor_uses_zero() {
+		let node_preview = ElementId::preview(ElementType::Node);
+		assert_eq!(node_preview.id(), ElementId::PREVIEW_SENTINEL_ID);
+		assert!(node_preview.is_node());
+
+		let way_preview = ElementId::preview(ElementType::Way);
+		assert_eq!(way_preview.id(), ElementId::PREVIEW_SENTINEL_ID);
+		assert!(way_preview.is_way());
+	}
+
+	#[test]
+	fn packed_type_bits_preserved() {
+		let id = 42;
+		assert!(ElementId::new(id, ElementType::Node).is_node());
+		assert!(ElementId::new(id, ElementType::Way).is_way());
+		assert!(ElementId::new(id, ElementType::Relation).is_relation());
+	}
 }

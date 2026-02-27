@@ -184,7 +184,7 @@ mod tests {
 
 	fn create_element(id: i64, tags: IndexMap<String, String>) -> MapElement {
 		MapElement {
-			id: ElementId(id, ElementType::Node),
+			id: ElementId::new(id, ElementType::Node),
 			info: ElementInfo::default(),
 			element: Element::Node {
 				pos: Cell::new(LatLon { lat: 0.0, lon: 0.0 }),

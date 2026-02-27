@@ -83,8 +83,11 @@ impl Downloader {
 					self.tasks.remove(&task);
 				}
 				Ok(DownloadEvent::Error { task, error }) => {
-					message_error!(self.messages, "Error fetching data:");
-					message_error!(self.messages, "{error}");
+					#[cfg(not(test))]
+					{
+						message_error!(self.messages, "Error fetching data:");
+						message_error!(self.messages, "{error}");
+					}
 					self.tasks.remove(&task);
 				}
 				Err(TryRecvError::Disconnected) => {
@@ -104,7 +107,7 @@ mod tests {
 
 	fn relation_element(id: i64, fully_downloaded: bool) -> MapElement {
 		MapElement {
-			id: ElementId(id, ElementType::Relation),
+			id: ElementId::new(id, ElementType::Relation),
 			info: ElementInfo::default(),
 			element: Element::Relation {
 				members: vec![],
@@ -117,7 +120,7 @@ mod tests {
 	}
 
 	fn relation_task(id: i64) -> DownloadTask {
-		DownloadTask::Relation(ElementId(id, ElementType::Relation))
+		DownloadTask::Relation(ElementId::new(id, ElementType::Relation))
 	}
 
 	#[test]
@@ -179,7 +182,7 @@ mod tests {
 		assert!(!downloader.tasks.contains(&relation_task));
 		assert!(!downloader.tasks.contains(&bbox_task));
 
-		let relation_id = ElementId(10, ElementType::Relation);
+		let relation_id = ElementId::new(10, ElementType::Relation);
 		let relation = map_data.get(&relation_id).expect("Relation must exist.");
 		let Element::Relation { fully_downloaded, .. } = &relation.element else {
 			panic!("Element must be relation.");

@@ -61,7 +61,7 @@ impl ExpressionEval for Function {
 		let Function(name, _args) = self;
 
 		match name.as_str() {
-			"osm_id" => Ok(Value::String(ctx.element.id.0.to_string())),
+			"osm_id" => Ok(Value::String(ctx.element.id.id().to_string())),
 			_ => Err(EvalError::UnknownFunction(name.clone())),
 		}
 	}

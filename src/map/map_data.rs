@@ -216,8 +216,8 @@ impl MapData {
 	}
 	#[must_use]
 	pub fn add_node_to_way_end(&self, way: ElementId, node: ElementId) -> Edit {
-		debug_assert_eq!(ElementType::Way, way.1);
-		debug_assert_eq!(ElementType::Node, node.1);
+		debug_assert_eq!(ElementType::Way, way.element_type());
+		debug_assert_eq!(ElementType::Node, node.element_type());
 		Edit(smallvec![way], Action::AddNodeToWayEnd { node })
 	}
 	#[must_use]
@@ -328,7 +328,7 @@ impl MapData {
 				self.last_new_ids.2
 			}
 		};
-		ElementId(id, e_type)
+		ElementId::new(id, e_type)
 	}
 
 	/// # Safety:

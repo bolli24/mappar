@@ -42,7 +42,7 @@ impl Preview {
 
 	fn node(pos: DVec2) -> DetailedElement {
 		DetailedElement {
-			id: ElementId(i64::MAX, ElementType::Node),
+			id: ElementId::preview(ElementType::Node),
 			pointer_distance: None,
 			pointer_threshold: 0.0,
 			element: RenderElement::Node(pos),
@@ -53,7 +53,7 @@ impl Preview {
 
 	fn two_path(pos_a: DVec2, pos_b: DVec2) -> DetailedElement {
 		DetailedElement {
-			id: ElementId(i64::MAX, ElementType::Way),
+			id: ElementId::preview(ElementType::Way),
 			pointer_distance: None,
 			pointer_threshold: 0.0,
 			element: RenderElement::Path(vec![pos_a, pos_b], false),

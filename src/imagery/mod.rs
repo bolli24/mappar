@@ -613,6 +613,7 @@ mod tests {
 			Err(err) => {
 				let path = err.path().to_string();
 				error!("Unable to parse JOSM imagery data: <{path}> - {err}");
+				assert!(false);
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-use crate::{Element, ElementId, ElementType, MapElement};
+use crate::{Element, ElementId, MapElement};
 use egui::ahash::{AHashMap, AHashSet};
 
 /// Bidirectional reference index for tracking element relationships
@@ -87,7 +87,7 @@ impl ReferenceIndex {
 			.get(element)
 			.into_iter()
 			.flatten()
-			.filter(|parent| parent.1 == ElementType::Relation)
+			.filter(|parent| parent.is_relation())
 	}
 
 	pub fn parent_count(&self, element: &ElementId) -> usize {
@@ -105,13 +105,10 @@ impl ReferenceIndex {
 	/// Returns all descendants of relations in the given elements, recursing through nested relations.
 	pub fn relation_descendants(&self, elements: impl IntoIterator<Item = ElementId>) -> AHashSet<ElementId> {
 		let mut result = AHashSet::new();
-		let mut pending: Vec<ElementId> = elements
-			.into_iter()
-			.filter(|id| id.1 == ElementType::Relation)
-			.collect();
+		let mut pending: Vec<ElementId> = elements.into_iter().filter(|id| id.is_relation()).collect();
 		while let Some(id) = pending.pop() {
 			for &child in self.children(&id) {
-				if result.insert(child) && child.1 == ElementType::Relation {
+				if result.insert(child) && child.is_relation() {
 					pending.push(child);
 				}
 			}

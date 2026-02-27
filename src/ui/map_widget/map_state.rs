@@ -4,7 +4,7 @@ use itertools::Itertools;
 use statig::prelude::*;
 
 use super::{map_memory::MapMemory, render::DetailedElement, view::View};
-use crate::map::element::{Element, ElementId, ElementType, is_closed};
+use crate::map::element::{Element, ElementId, is_closed};
 use crate::map::map_data::EditHistory;
 use crate::ui::input::{Command, KeyBinds};
 use crate::{
@@ -114,7 +114,7 @@ impl MapStateMachine {
 		} = context;
 
 		if let Some(element_id) = last_clicked_element
-			&& element_id.1 == ElementType::Way
+			&& element_id.is_way()
 		{
 			let element = &map_data.get(element_id).expect("Element must exist.");
 			if let Element::Way { nodes } = &element.element {
@@ -345,11 +345,11 @@ impl MapStateMachine {
 			if let Some(hover_element) = hover_elements.single() {
 				// Snap to hovered element
 				pos = match &hover_element {
-					id if id.1 == ElementType::Node => map_data
+					id if id.is_node() => map_data
 						.get_node_pos(**id)
 						.expect("Hovered node must exist.")
 						.to_web_mercator(),
-					id if id.1 == ElementType::Way => {
+					id if id.is_way() => {
 						let way = map_data.get(id).expect("New element must exist");
 						let Element::Way { nodes } = &way.element else {
 							unreachable!("New element must be way")
@@ -373,8 +373,8 @@ impl MapStateMachine {
 			}
 
 			match *first_node_or_way {
-				Some(id) if id.1 == ElementType::Node => self.preview = Preview::NewNodeToPath(id, pos),
-				Some(id) if id.1 == ElementType::Way => {
+				Some(id) if id.is_node() => self.preview = Preview::NewNodeToPath(id, pos),
+				Some(id) if id.is_way() => {
 					let way = map_data.get(&id).expect("New element must exist");
 					let Element::Way { nodes } = &way.element else {
 						unreachable!("New element must be way")
@@ -398,7 +398,7 @@ impl MapStateMachine {
 		{
 			let node_id = if let Some(hover_element) = hover_elements.single() {
 				match &hover_element {
-					ElementId(_, ElementType::Node) => {
+					id if id.is_node() => {
 						if Some(*hover_element) == *first_node_or_way {
 							return Transition(State::Draw {
 								first_node_or_way: None,
@@ -407,7 +407,7 @@ impl MapStateMachine {
 
 						*hover_element
 					}
-					id if id.1 == ElementType::Way => {
+					id if id.is_way() => {
 						// We could actually be hovering over multiple ways. So we find all that
 						// contain the same two nodes of the hoverd segment.
 						let way = map_data.get(id).expect("New element must exist");
@@ -419,7 +419,7 @@ impl MapStateMachine {
 
 						let ways = render_data
 							.iter()
-							.filter(|e| e.id.1 == ElementType::Way)
+							.filter(|e| e.id.is_way())
 							.filter_map(|e| {
 								let Element::Way { nodes } = &map_data.get(&e.id).expect("Element must exist").element
 								else {
@@ -465,7 +465,7 @@ impl MapStateMachine {
 			};
 
 			match *first_node_or_way {
-				Some(first_id) if first_id.1 == ElementType::Node => {
+				Some(first_id) if first_id.is_node() => {
 					let edit = map_data.new_way(vec![first_id, node_id]);
 					let new_way_id = edit.0[0];
 					*first_node_or_way = Some(new_way_id);
@@ -473,10 +473,10 @@ impl MapStateMachine {
 					mem.selection.elements.clear();
 					mem.selection.elements.insert(new_way_id);
 				}
-				Some(first_id) if first_id.1 == ElementType::Way => {
+				Some(first_id) if first_id.is_way() => {
 					let edit = map_data.add_node_to_way_end(first_id, node_id);
 					let way_id = edit.0[0];
-					debug_assert_eq!(first_id.0, way_id.0);
+					debug_assert_eq!(first_id.id(), way_id.id());
 					*first_node_or_way = Some(way_id);
 
 					let mut child_node = false;

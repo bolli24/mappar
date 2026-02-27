@@ -1,4 +1,4 @@
-use crate::map::element::{ElementId, ElementType};
+use crate::map::element::ElementId;
 use crate::map::map_data::MapData;
 use egui::ahash::AHashSet;
 use glam::DVec2;
@@ -43,23 +43,17 @@ impl Selection {
 	}
 	#[must_use]
 	pub fn node_count(&self) -> usize {
-		self.elements
-			.iter()
-			.filter(|element_id| element_id.1 == ElementType::Node)
-			.count()
+		self.elements.iter().filter(|element_id| element_id.is_node()).count()
 	}
 	#[must_use]
 	pub fn way_count(&self) -> usize {
-		self.elements
-			.iter()
-			.filter(|element_id| element_id.1 == ElementType::Way)
-			.count()
+		self.elements.iter().filter(|element_id| element_id.is_way()).count()
 	}
 	#[must_use]
 	pub fn relation_count(&self) -> usize {
 		self.elements
 			.iter()
-			.filter(|element_id| element_id.1 == ElementType::Relation)
+			.filter(|element_id| element_id.is_relation())
 			.count()
 	}
 }

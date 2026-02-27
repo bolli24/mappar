@@ -1,20 +1,24 @@
+use crate::ElementId;
 use crate::api::client::{ApiResult, Error, OsmClient};
 use crate::api::map::parse_osm_xml;
 use crate::map::map_data::MapData;
-use crate::{ElementId, ElementType};
 use log::info;
 use web_time::Instant;
 
 impl OsmClient {
 	pub async fn get_full(&self, element_id: ElementId) -> ApiResult<MapData> {
-		if element_id.1 == ElementType::Node {
+		if element_id.is_node() {
 			return Err(Error::GetFullNode);
 		}
 
 		let start = Instant::now();
 		info!("Getting full element data for {}", element_id);
 		let xml = self
-			.get(&format!("/api/0.6/{}/{}/full", element_id.1, element_id.0))
+			.get(&format!(
+				"/api/0.6/{}/{}/full",
+				element_id.element_type(),
+				element_id.id()
+			))
 			.await?
 			.text()
 			.await?;

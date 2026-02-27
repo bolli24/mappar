@@ -103,7 +103,7 @@ impl Widget for RelationEditor<'_> {
 							});
 							row.col(|ui| {
 								// TODO: Generate element name.
-								let name = ref_id.0.to_string();
+								let name = ref_id.id().to_string();
 								if self.map_data.get(ref_id).is_some() {
 									let label = ui.link(name);
 									if label.clicked() {

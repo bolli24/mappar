@@ -1,7 +1,7 @@
 use super::{debug_text::DebugText, map_widget::map_memory::Selection, messages::Messages};
 use crate::map::map_data::{EditHistory, MapData};
 use crate::ui::key_value_table::table_field;
-use crate::{Element, ElementId, ElementType};
+use crate::{Element, ElementId};
 use derive_new::new;
 use egui::ahash::AHashSet;
 use egui::{Frame, RichText, Ui, Widget};
@@ -78,7 +78,7 @@ impl Widget for RelationsTable<'_> {
 								let mut role = role.clone();
 								row.col(|ui| {
 									ui.horizontal(|ui| {
-										let label = ui.link(parent.id.0.to_string());
+										let label = ui.link(parent.id.id().to_string());
 										if label.clicked() {
 											selected = Some(parent.id);
 										}
@@ -101,11 +101,7 @@ impl Widget for RelationsTable<'_> {
 					});
 			});
 		} else {
-			let relations = self
-				.map_data
-				.iter()
-				.filter(|e| e.id.1 == ElementType::Relation)
-				.collect::<Vec<_>>();
+			let relations = self.map_data.iter().filter(|e| e.id.is_relation()).collect::<Vec<_>>();
 
 			Frame::NONE.show(ui, |ui| {
 				TableBuilder::new(ui)
@@ -123,7 +119,8 @@ impl Widget for RelationsTable<'_> {
 							body.row(16.0, |mut row| {
 								row.col(|ui| {
 									ui.horizontal(|ui| {
-										let label = ui.link(relation.id.0.to_string());
+										let label = ui.link(relation.id.id().to_string());
+
 										if label.clicked() {
 											selected = Some(relation.id);
 										}

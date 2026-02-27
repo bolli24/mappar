@@ -92,7 +92,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 								b"nd" => {
 									let node_ref = e.attributes().next()?.ok()?;
 									if node_ref.key.as_ref() == b"ref" {
-										nodes.push(ElementId(
+										nodes.push(ElementId::new(
 											from_utf8(&node_ref.value).ok()?.parse().ok()?,
 											ElementType::Node,
 										));
@@ -125,7 +125,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 						}
 					};
 					data.add(MapElement {
-						id: ElementId(id, element_type),
+						id: ElementId::new(id, element_type),
 						info,
 						element,
 						tags,
@@ -140,7 +140,7 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					let (id, lat_lon, info) = parse_attributes(e.attributes())?;
 
 					data.add(MapElement {
-						id: ElementId(id, ElementType::Node),
+						id: ElementId::new(id, ElementType::Node),
 						info,
 						element: Element::Node { pos: lat_lon?.into() },
 						tags: IndexMap::new(),
@@ -162,18 +162,19 @@ fn parse_osm_xml(xml: &str) -> Option<MapData> {
 }
 
 fn parse_member(e: &BytesStart) -> (ElementId, String) {
-	let mut ref_id = ElementId(-1, ElementType::Node);
+	let mut ref_id: i64 = -1;
+	let mut ref_type = ElementType::Node;
 	let mut role = String::new();
 	for attr in e.attributes() {
 		let attr = attr.unwrap();
 		match attr.key.as_ref() {
 			b"ref" => {
-				ref_id.0 = from_utf8(attr.value.as_ref()).unwrap().parse().unwrap();
+				ref_id = from_utf8(attr.value.as_ref()).unwrap().parse().unwrap();
 			}
 			b"role" => {
 				role = attr.unescape_value().unwrap().to_string();
 			}
-			b"type" => ref_id.1 = ElementType::try_from(from_utf8(attr.value.as_ref()).unwrap()).unwrap(),
+			b"type" => ref_type = ElementType::try_from(from_utf8(attr.value.as_ref()).unwrap()).unwrap(),
 			_ => {
 				error!(
 					"Unknown attribute on relation member: {:?}=\"{:?}\"",
@@ -182,7 +183,7 @@ fn parse_member(e: &BytesStart) -> (ElementId, String) {
 			}
 		}
 	}
-	(ref_id, role)
+	(ElementId::new(ref_id, ref_type), role)
 }
 
 fn parse_tag(tags: &mut IndexMap<String, String>, e: &BytesStart) -> Result<(), quick_xml::Error> {
