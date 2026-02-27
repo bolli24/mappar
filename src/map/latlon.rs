@@ -1,5 +1,5 @@
 use glam::DVec2;
-use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
+use std::f64::consts::{FRAC_PI_2, PI};
 use std::hash::{Hash, Hasher};
 use std::ops::Add;
 
@@ -35,7 +35,10 @@ impl LatLon {
 	pub fn to_web_mercator(self) -> DVec2 {
 		DVec2 {
 			x: RADIUS_EARTH * self.lon.to_radians(),
-			y: f64::ln(f64::tan(self.lat.to_radians().mul_add(0.5, FRAC_PI_4))) * RADIUS_EARTH,
+			y: {
+				let s = f64::sin(self.lat.to_radians());
+				0.5 * f64::ln((1.0 + s) / (1.0 - s)) * RADIUS_EARTH
+			},
 		}
 	}
 
