@@ -13,9 +13,9 @@ members = ["src/macros", "css"]
 mappar-macros = { path = "src/macros" }
 mappar-css = { path = "css" }
 
-egui = "0.33"
-epaint = "0.33"
-egui_extras = "0.33"
+egui = "0.34"
+epaint = "0.34"
+egui_extras = "0.34"
 image = { version = "0.25", default-features = false, features = [
     "jpeg",
     "png",
@@ -23,7 +23,7 @@ image = { version = "0.25", default-features = false, features = [
 resvg = { version = "0.47", default-features = false }
 glam = { version = "0.32", features = ["serde"] }
 lyon_tessellation = "1.0"
-egui-phosphor = { version = "0.11", default-features = false, features = [
+egui-phosphor = { version = "0.12", default-features = false, features = [
     "bold",
 ] }
 
@@ -78,13 +78,13 @@ chumsky = "0.12"
 
 fxhash = "0.2"
 
-puffin = "0.19"
-puffin_http = "0.16"
+puffin = "0.20"
+puffin_http = "0.17"
 
 celes = "2.6"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-eframe = { version = "0.33", default-features = false, features = [
+eframe = { version = "0.34", default-features = false, features = [
     # "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts",
     "wgpu",
@@ -92,7 +92,7 @@ eframe = { version = "0.33", default-features = false, features = [
     "wayland",
     "persistence",
 ] }
-wgpu = { version = "27", features = ["vulkan", "dx12", "metal", "gles"] }
+wgpu = { version = "29", features = ["vulkan", "dx12", "metal", "gles"] }
 tokio = { version = "1.49", features = [
     "macros",
     "sync",
@@ -112,12 +112,12 @@ keyring = { version = "3.6", features = [
 
 # web:
 [target.'cfg(target_family = "wasm")'.dependencies]
-eframe = { version = "0.33", default-features = false, features = [
+eframe = { version = "0.34", default-features = false, features = [
     "default_fonts",
     "wgpu",
     "persistence",
 ] }
-wgpu = { version = "27", features = ["webgpu", "webgl"] }
+wgpu = { version = "29", features = ["webgpu", "webgl"] }
 tokio = { version = "1.49", default-features = false, features = [
     "macros",
     "sync",
@@ -131,7 +131,7 @@ web-sys = { version = "0.3", features = [
 ] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-gloo-worker = "0.5"
+gloo-worker = "0.6"
 indexed_db_futures = { version = "0.6", features = ["serde", "typed-arrays"] }
 
 [build-dependencies]

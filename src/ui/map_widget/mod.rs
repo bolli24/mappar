@@ -24,7 +24,7 @@ use derive_new::new;
 use draw_list::DrawList;
 use egui::emath::Rot2;
 use egui::{
-	Color32, Galley, Id, Mesh, Painter, Pos2, Rect, Response, StrokeKind, TextureId, TopBottomPanel, Vec2, Widget,
+	Color32, Galley, Id, Mesh, Painter, Panel, Pos2, Rect, Response, StrokeKind, TextureId, Vec2, Widget,
 	pos2, vec2,
 };
 use epaint::mutex::Mutex;
@@ -100,7 +100,6 @@ impl Widget for MapWidget<'_> {
 		// 3. State machine dispatch
 		let mut render_data = output.render_data;
 		let mut context = map_state::Context {
-			ui_context: ui.ctx(),
 			response: output.response.clone(),
 			map_data: self.map_data,
 			history: self.history,
@@ -141,7 +140,7 @@ impl Widget for MapWidget<'_> {
 			.reference_index
 			.relation_descendants(self.mem.selection.elements.iter().copied());
 
-		ui.ctx().fonts_mut(|fonts| {
+		ui.fonts_mut(|fonts| {
 			for element in &render_data {
 				let hovered =
 					hover_elements.contains(&element.id) || self.mem.highlighted_elements.contains(&element.id);
@@ -175,7 +174,7 @@ impl Widget for MapWidget<'_> {
 		}
 
 		// 6. Info bar
-		TopBottomPanel::bottom("map_info_bar").show(ui.ctx(), |ui| {
+		Panel::bottom("map_info_bar").show_inside(ui, |ui| {
 			ui.monospace(format!(
 				"{} nodes, {} ways, {} relations",
 				self.mem.selection.node_count(),

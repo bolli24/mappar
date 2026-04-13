@@ -84,7 +84,7 @@ impl Widget for KeyValueTable<'_> {
 								for field in [&mut key, &mut value] {
 									row.col(|ui| {
 										if table_field(field, ui).response.lost_focus()
-											&& ui.ctx().input(|i| i.key_down(Key::Enter))
+											&& ui.input(|i| i.key_down(Key::Enter))
 										{
 											confirm = true;
 										}

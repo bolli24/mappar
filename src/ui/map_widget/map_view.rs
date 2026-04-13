@@ -41,9 +41,9 @@ pub struct MapViewOutput {
 
 impl MapViewOutput {
 	/// Draw all base elements without highlighting. For simple read-only views.
-	pub fn draw_elements(&self, ctx: &egui::Context) {
+	pub fn draw_elements(&self, ui: &egui::Ui) {
 		let mut shapes = DrawList::new();
-		ctx.fonts_mut(|fonts| {
+		ui.fonts_mut(|fonts| {
 			for element in &self.render_data {
 				draw_element(element, &mut shapes, &self.view, fonts);
 			}
@@ -61,7 +61,7 @@ impl MapView<'_> {
 				Frame::NONE.show(ui, |ui| {
 					puffin::profile_function!("Draw MapView");
 					let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
-					ui.ctx().request_repaint();
+					ui.request_repaint();
 					let clip_rect = ui.clip_rect();
 					dbgtxt!(self.debug_text, "Clip Rect: {clip_rect:?}");
 					let viewport = response.interact_rect;
@@ -89,8 +89,8 @@ impl MapView<'_> {
 					let view = View::new(&response, self.mem.camera_pos, self.mem.zoom_level);
 
 					let world_delta = {
-						let mut delta = ui.ctx().input(|i| i.pointer.delta()).to_dvec2();
-						if let Some(from_global) = ui.ctx().layer_transform_from_global(ui.layer_id()) {
+						let mut delta = ui.input(|i| i.pointer.delta()).to_dvec2();
+						if let Some(from_global) = ui.layer_transform_from_global(ui.layer_id()) {
 							delta *= f64::from(from_global.scaling);
 						}
 						delta = dvec2(delta.x, -delta.y);
@@ -199,9 +199,8 @@ impl MapView<'_> {
 
 impl Widget for MapView<'_> {
 	fn ui(self, ui: &mut egui::Ui) -> Response {
-		let ctx = ui.ctx().clone();
 		let output = self.show(ui);
-		output.draw_elements(&ctx);
+		output.draw_elements(ui);
 		output.frame_response
 	}
 }

@@ -43,7 +43,6 @@ pub struct MapStateMachine {
 }
 
 pub struct Context<'a> {
-	pub ui_context: &'a egui::Context,
 	pub response: egui::Response,
 	pub map_data: &'a mut MapData,
 	pub history: &'a mut EditHistory,
@@ -100,7 +99,6 @@ impl MapStateMachine {
 	#[state(superstate = "default")]
 	fn select(&mut self, context: &mut Context<'_>, last_clicked_element: &mut Option<ElementId>) -> Outcome<State> {
 		let Context {
-			ui_context,
 			response,
 			view,
 			mem,
@@ -123,9 +121,9 @@ impl MapStateMachine {
 			}
 		}
 
-		let alt_held = ui_context.input(|i| i.modifiers == Modifiers::ALT);
+		let alt_held = response.ctx.input(|i| i.modifiers == Modifiers::ALT);
 
-		if ui_context.input(|i| i.pointer.button_down(PointerButton::Primary)) && !alt_held {
+		if response.ctx.input(|i| i.pointer.button_down(PointerButton::Primary)) && !alt_held {
 			view.pointer_world_pos
 				.map(|pos| self.pointer_down_pos.get_or_insert(pos));
 			if self.pointer_down_element.is_none() {
@@ -163,7 +161,7 @@ impl MapStateMachine {
 			} else if response.ctx.input(|i| i.modifiers.command_only()) {
 				mem.selection.elements.remove(&element);
 			} else {
-				if !ui_context.input(|i| i.modifiers.shift) && !mem.selection.elements.contains(&element) {
+				if !response.ctx.input(|i| i.modifiers.shift) && !mem.selection.elements.contains(&element) {
 					mem.selection.elements.clear();
 				}
 				mem.selection.elements.insert(element);
@@ -200,7 +198,7 @@ impl MapStateMachine {
 		}
 
 		if let Some(hover_element) = hover_elements.single()
-			&& ui_context.input(|i| i.pointer.button_down(PointerButton::Primary))
+			&& response.ctx.input(|i| i.pointer.button_down(PointerButton::Primary))
 			&& !alt_held
 		{
 			add_element(*hover_element);

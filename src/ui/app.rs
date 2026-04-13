@@ -214,9 +214,9 @@ impl eframe::App for MyApp {
 		eframe::set_value(storage, "debug_panel", &self.debug_panel);
 	}
 
-	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+	fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
 		self.map_memory.highlighted_elements.clear();
-		self.key_binds.update_pressed_commands(ctx);
+		self.key_binds.update_pressed_commands(ui);
 		self.downloader.apply_changes(&mut self.map_data);
 
 		#[cfg(target_arch = "wasm32")]
@@ -242,7 +242,7 @@ impl eframe::App for MyApp {
 
 		let mut update_edit_mode = None;
 
-		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+		egui::Panel::top("top_panel").show_inside(ui, |ui| {
 			Sides::new().show(
 				ui,
 				|ui| {
@@ -277,7 +277,7 @@ impl eframe::App for MyApp {
 										.unwrap_or_else(|e| error!("Couldn't open logs directory: {e}"));
 								}
 								if ui.button("Quit").clicked() {
-									ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+									ui.send_viewport_cmd(egui::ViewportCommand::Close);
 								}
 							}
 						});
@@ -306,7 +306,7 @@ impl eframe::App for MyApp {
 			);
 		});
 
-		egui::TopBottomPanel::top("edit_bar_panel").show(ctx, |ui| {
+		egui::Panel::top("edit_bar_panel").show_inside(ui, |ui| {
 			ui.add(EditBar::new(
 				self.map_state.edit_mode(),
 				&mut update_edit_mode,
@@ -320,18 +320,18 @@ impl eframe::App for MyApp {
 			info!("Reloading MapCSS styles.");
 			#[cfg(not(target_arch = "wasm32"))]
 			{
-				self.styles = get_default_styles(ctx.tex_manager(), &mut self.messages);
+				self.styles = get_default_styles(ui.tex_manager(), &mut self.messages);
 			}
 			#[cfg(target_arch = "wasm32")]
 			{
 				let pending_styles = self.pending_styles.clone();
-				self.styles = get_default_styles(ctx.tex_manager(), &mut self.messages, move |styles| {
+				self.styles = get_default_styles(ui.tex_manager(), &mut self.messages, move |styles| {
 					*pending_styles.lock() = styles;
 				});
 			}
 		}
 
-		egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+		egui::Panel::bottom("status_bar").show_inside(ui, |ui| {
 			Sides::new().show(
 				ui,
 				|ui| ui.hyperlink("https://gitlab.com/bolli24/mappar"),
@@ -353,10 +353,10 @@ impl eframe::App for MyApp {
 				},
 			);
 		});
-		egui::SidePanel::right("edit_panel")
-			.width_range(80.0..=800.0)
-			.default_width(200.0)
-			.show(ctx, |ui| {
+		egui::Panel::right("edit_panel")
+			.size_range(80.0..=800.0)
+			.default_size(200.0)
+			.show_inside(ui, |ui| {
 				LayerList::new(
 					&mut self.layers,
 					&self.imageries.read(),
@@ -397,9 +397,9 @@ impl eframe::App for MyApp {
 			});
 
 		if self.debug_panel {
-			egui::SidePanel::right("debug_panel")
-				.width_range(80.0..=400.0)
-				.show(ctx, |ui| {
+			egui::Panel::right("debug_panel")
+				.size_range(80.0..=400.0)
+				.show_inside(ui, |ui| {
 					ui.heading("Debug Panel");
 					ui.separator();
 					ScrollArea::vertical().show(ui, |ui| {
@@ -409,7 +409,7 @@ impl eframe::App for MyApp {
 		}
 		self.debug_text.clear();
 
-		egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx, |ui| {
+		egui::CentralPanel::default().frame(egui::Frame::NONE).show_inside(ui, |ui| {
 			let active_imagery_ref = self
 				.layers
 				.get_active_imagery()
@@ -435,10 +435,13 @@ impl eframe::App for MyApp {
 		});
 
 		// TODO: Use native window
-		Window::new("Egui Inpector")
-			.open(&mut self.inspection)
-			.vscroll(true)
-			.show(ctx, |ui| ctx.inspection_ui(ui));
+		{
+			let ctx = ui.ctx().clone();
+			Window::new("Egui Inpector")
+				.open(&mut self.inspection)
+				.vscroll(true)
+				.show(&ctx, |ui| ctx.inspection_ui(ui));
+		}
 
 		// TODO use native window with proper positioning.
 		/* show_as_window(ctx, "Imagery Settings", &mut self.imagery_settings, |ui| {
@@ -448,7 +451,7 @@ impl eframe::App for MyApp {
 		Window::new("Imagery Settings")
 			.open(&mut self.imagery_settings)
 			.resizable(true)
-			.show(ctx, |ui| {
+			.show(ui, |ui| {
 				ui.add(ImageriesWidget::new(
 					self.imageries.clone(),
 					&self.messages,
