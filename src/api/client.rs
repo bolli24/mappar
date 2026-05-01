@@ -1,4 +1,4 @@
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(target_os = "windows")]
 use crate::api::OAUTH_URL;
 use crate::api::auth::OsmAuthToken;
 use crate::api::user::UserDetails;
@@ -20,8 +20,8 @@ pub struct OsmClient {
 	client: Client,
 	auth_state: Arc<RwLock<AuthState>>,
 	base_url: String,
-	#[cfg(not(target_arch = "wasm32"))]
-	pub credential_entry: Arc<keyring::Entry>,
+	#[cfg(any(target_os = "windows", target_os = "linux"))]
+	pub credential_entry: Arc<keyring_core::Entry>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -49,10 +49,8 @@ impl OsmClient {
 			client: Client::new(),
 			auth_state: Arc::new(RwLock::new(AuthState { auth, user })),
 			base_url: API_URL.to_owned(),
-			#[cfg(not(target_arch = "wasm32"))]
-			credential_entry: Arc::new(
-				keyring::Entry::new_with_target(OAUTH_URL, "mappar", "user").expect("Error creating keyring entry."),
-			),
+			#[cfg(any(target_os = "windows", target_os = "linux"))]
+			credential_entry: Arc::new(credential_entry().expect("Error creating keyring entry.")),
 		}
 	}
 
@@ -147,6 +145,33 @@ impl OsmClient {
 		let osm: Osm = quick_xml::de::from_str(&response)?;
 		Ok(Versions(osm.api.version))
 	}
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn credential_entry() -> keyring_core::Result<keyring_core::Entry> {
+	init_credential_store()?;
+
+	#[cfg(target_os = "windows")]
+	{
+		let modifiers = std::collections::HashMap::from([("target", OAUTH_URL)]);
+		keyring_core::Entry::new_with_modifiers("mappar", "user", &modifiers)
+	}
+
+	#[cfg(target_os = "linux")]
+	{
+		keyring_core::Entry::new("mappar", "user")
+	}
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn init_credential_store() -> keyring_core::Result<()> {
+	#[cfg(target_os = "windows")]
+	keyring_core::set_default_store(windows_native_keyring_store::Store::new()?);
+
+	#[cfg(target_os = "linux")]
+	keyring_core::set_default_store(dbus_secret_service_keyring_store::Store::new()?);
+
+	Ok(())
 }
 
 #[cfg(test)]

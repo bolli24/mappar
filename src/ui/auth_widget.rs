@@ -127,23 +127,28 @@ fn token_item() -> String {
 	format!("token_{}", crate::api::OAUTH_URL)
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn get_token(client: &OsmClient, messages: &mut Messages) -> Option<OsmAuthToken> {
 	match client.credential_entry.get_password() {
-		Err(keyring::Error::NoEntry) => None,
+		Err(keyring_core::Error::NoEntry) => None,
 		Err(err) => {
 			message_error!(messages, "Error retrieving token from keyring: {err}");
 			let _ = client
 				.credential_entry
 				.delete_credential()
 				.inspect_err(|err| match err {
-					keyring::Error::NoEntry => (),
+					keyring_core::Error::NoEntry => (),
 					err => message_error!(messages, "Error deleting token from keyring: {err}"),
 				});
 			None
 		}
 		Ok(token) => Some(OsmAuthToken(token)),
 	}
+}
+
+#[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "windows", target_os = "linux"))))]
+fn get_token(_client: &OsmClient, _messages: &mut Messages) -> Option<OsmAuthToken> {
+	None
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -160,12 +165,15 @@ fn get_token(_client: &OsmClient, _messages: &mut Messages) -> Option<OsmAuthTok
 }
 
 // TODO: message error
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn store_token(client: &OsmClient, token: &str, messages: &mut Messages) {
 	let _ = client.credential_entry.set_password(token).inspect_err(|err| {
 		message_error!(messages, "Error storing token: {:?}", err);
 	});
 }
+
+#[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "windows", target_os = "linux"))))]
+fn store_token(_client: &OsmClient, _token: &str, _messages: &mut Messages) {}
 
 #[cfg(target_arch = "wasm32")]
 fn store_token(_client: &OsmClient, token: &str, messages: &mut Messages) {
@@ -179,14 +187,17 @@ fn store_token(_client: &OsmClient, token: &str, messages: &mut Messages) {
 	});
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn delete_stored_token(client: &OsmClient, messages: &mut Messages) {
 	match client.credential_entry.delete_credential() {
-		Err(keyring::Error::NoEntry) => (),
+		Err(keyring_core::Error::NoEntry) => (),
 		Err(err) => message_error!(messages, "Error deleting token: {:?}", err),
 		_ => (),
 	}
 }
+
+#[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "windows", target_os = "linux"))))]
+fn delete_stored_token(_client: &OsmClient, _messages: &mut Messages) {}
 
 #[cfg(target_arch = "wasm32")]
 fn delete_stored_token(_client: &OsmClient, _messages: &mut Messages) {

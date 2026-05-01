@@ -24,8 +24,7 @@ use derive_new::new;
 use draw_list::DrawList;
 use egui::emath::Rot2;
 use egui::{
-	Color32, Galley, Id, Mesh, Painter, Panel, Pos2, Rect, Response, StrokeKind, TextureId, Vec2, Widget,
-	pos2, vec2,
+	Color32, Galley, Id, Mesh, Painter, Panel, Pos2, Rect, Response, StrokeKind, TextureId, Vec2, Widget, pos2, vec2,
 };
 use epaint::mutex::Mutex;
 use epaint::{CornerRadius, FontsView, PathShape, PathStroke, Shape, TextShape, Vertex};

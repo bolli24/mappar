@@ -409,30 +409,32 @@ impl eframe::App for MyApp {
 		}
 		self.debug_text.clear();
 
-		egui::CentralPanel::default().frame(egui::Frame::NONE).show_inside(ui, |ui| {
-			let active_imagery_ref = self
-				.layers
-				.get_active_imagery()
-				.and_then(|id| self.imageries.write().get_ref(id));
+		egui::CentralPanel::default()
+			.frame(egui::Frame::NONE)
+			.show_inside(ui, |ui| {
+				let active_imagery_ref = self
+					.layers
+					.get_active_imagery()
+					.and_then(|id| self.imageries.write().get_ref(id));
 
-			let rect = ui
-				.add(MapWidget::new(
-					&mut self.map_data,
-					&mut self.history,
-					&mut self.styles,
-					self.imagery_fetcher.clone(),
-					self.map_widget_id,
-					Some(&mut self.debug_text),
-					&mut self.map_memory,
-					active_imagery_ref,
-					self.messages.clone(),
-					&mut self.map_state,
-					update_edit_mode,
-					&self.key_binds,
-				))
-				.rect;
-			ui.put(rect, self.messages.clone());
-		});
+				let rect = ui
+					.add(MapWidget::new(
+						&mut self.map_data,
+						&mut self.history,
+						&mut self.styles,
+						self.imagery_fetcher.clone(),
+						self.map_widget_id,
+						Some(&mut self.debug_text),
+						&mut self.map_memory,
+						active_imagery_ref,
+						self.messages.clone(),
+						&mut self.map_state,
+						update_edit_mode,
+						&self.key_binds,
+					))
+					.rect;
+				ui.put(rect, self.messages.clone());
+			});
 
 		// TODO: Use native window
 		{
