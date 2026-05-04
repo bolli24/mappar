@@ -9,6 +9,7 @@
 in
   pkgs.mkShell {
     buildInputs = with pkgs.buildPackages; [
+      dbus
       openssl
       pkg-config
     ];
