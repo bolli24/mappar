@@ -4,6 +4,7 @@ use crate::map::map_data::MapData;
 use crate::ui::messages::Messages;
 use crate::{Element, ElementId, message_error};
 use egui::ahash::AHashSet;
+use egui::{Button, IntoAtoms, Response, Ui};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
@@ -15,7 +16,8 @@ enum DownloadEvent {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum DownloadTask {
 	BBox(Bounds),
-	Relation(ElementId),
+	RelationFull(ElementId),
+	Element(ElementId),
 }
 
 pub struct Downloader {
@@ -35,6 +37,25 @@ impl Downloader {
 		}
 	}
 
+	pub fn button<'a>(
+		&mut self,
+		ui: &mut Ui,
+		task: DownloadTask,
+		enabled: bool,
+		label: impl IntoAtoms<'a>,
+	) -> Response {
+		let already_downloading = self.is_downloading(&task);
+		return if already_downloading {
+			ui.spinner().on_hover_text("Already downloading")
+		} else {
+			let response = ui.add_enabled(enabled, Button::new(label));
+			if response.clicked() {
+				self.download(task);
+			}
+			response
+		};
+	}
+
 	pub fn is_downloading(&self, task: &DownloadTask) -> bool {
 		self.tasks.contains(task)
 	}
@@ -50,7 +71,9 @@ impl Downloader {
 			async move {
 				let result = match task {
 					DownloadTask::BBox(bbox) => osm_client.get_data_from_bounds(bbox).await,
-					DownloadTask::Relation(id) => osm_client.get_full(id).await,
+					DownloadTask::RelationFull(id) => osm_client.get_full(id).await,
+					DownloadTask::Element(id) if id.is_way() => osm_client.get_full(id).await,
+					DownloadTask::Element(id) => osm_client.get_element(id).await,
 				};
 
 				let event = match result {
@@ -71,7 +94,7 @@ impl Downloader {
 					map_data: new_map_data,
 				}) => {
 					map_data.join(new_map_data);
-					if let DownloadTask::Relation(id) = &task {
+					if let DownloadTask::RelationFull(id) = &task {
 						if let Element::Relation { fully_downloaded, .. } =
 							&mut map_data.get_mut(id).expect("Relation must exist.").element
 						{
@@ -120,7 +143,7 @@ mod tests {
 	}
 
 	fn relation_task(id: i64) -> DownloadTask {
-		DownloadTask::Relation(ElementId::new(id, ElementType::Relation))
+		DownloadTask::RelationFull(ElementId::new(id, ElementType::Relation))
 	}
 
 	#[test]

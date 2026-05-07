@@ -6,7 +6,7 @@ use crate::ui::key_value_table::table_field;
 use crate::{Element, ElementId, MapElement, message_info};
 use derive_new::new;
 use egui::ahash::AHashSet;
-use egui::{Button, Frame, RichText, Sides, Ui, Widget};
+use egui::{Frame, RichText, Sides, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
 use epaint::FontId;
 
@@ -46,15 +46,13 @@ impl Widget for RelationEditor<'_> {
 				ui.label(RichText::new("Members").font(FontId::proportional(20.0)));
 			},
 			|ui| {
-				let task = DownloadTask::Relation(*id);
-				let already_downloading = self.downloader.is_downloading(&task);
-				let can_download = !fully_downloaded && !already_downloading;
-				if already_downloading {
-					ui.spinner().on_hover_text("Already downloading members.");
-				} else if ui
-					.add_enabled(
-						can_download,
-						Button::new(RichText::new(egui_phosphor::bold::CLOUD_ARROW_DOWN)),
+				if self
+					.downloader
+					.button(
+						ui,
+						DownloadTask::RelationFull(*id),
+						!fully_downloaded,
+						RichText::new(egui_phosphor::bold::CLOUD_ARROW_DOWN),
 					)
 					.on_hover_text(if *fully_downloaded {
 						"No members to download."
@@ -64,7 +62,6 @@ impl Widget for RelationEditor<'_> {
 					.clicked()
 				{
 					message_info!(self.messages, "Downloading relation members.");
-					self.downloader.download(task);
 				}
 			},
 		);
@@ -113,7 +110,24 @@ impl Widget for RelationEditor<'_> {
 										self.highlighted_elements.insert(*ref_id);
 									}
 								} else {
-									ui.label(name).on_hover_text("Member not downloaded.");
+									let cell_hovered = ui.rect_contains_pointer(ui.max_rect());
+									ui.horizontal(|ui| {
+										ui.label(name).on_hover_text("Member not downloaded.");
+										if cell_hovered
+											&& self
+												.downloader
+												.button(
+													ui,
+													DownloadTask::Element(*ref_id),
+													true,
+													RichText::new(egui_phosphor::bold::CLOUD_ARROW_DOWN),
+												)
+												.on_hover_text("Download element")
+												.clicked()
+										{
+											message_info!(self.messages, "Downloading element {ref_id}");
+										}
+									});
 								}
 							});
 							row.col(|ui| {

@@ -1,0 +1,29 @@
+use crate::ElementId;
+use crate::api::client::{ApiResult, Error, OsmClient};
+use crate::api::map::parse_osm_xml;
+use crate::map::map_data::MapData;
+use log::info;
+use web_time::Instant;
+
+impl OsmClient {
+	pub async fn get_element(&self, element_id: ElementId) -> ApiResult<MapData> {
+		let start = Instant::now();
+		info!("Getting element {element_id}");
+		let xml = self
+			.get(&format!("/api/0.6/{}/{}", element_id.element_type(), element_id.id()))
+			.await?
+			.text()
+			.await?;
+		info!("Time taken: {:?}", start.elapsed());
+		let start = Instant::now();
+
+		let data = parse_osm_xml(&xml).ok_or(Error::Xml)?;
+
+		#[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
+		std::fs::write("../api_data_full.xml", xml).expect("Error writing debug xml file");
+
+		info!("Parsed data successfully. Took: {:?}", start.elapsed());
+
+		Ok(data)
+	}
+}
