@@ -45,7 +45,7 @@ impl Widget for ImageriesWidget<'_> {
 		let mut mem = ImageriesMemory::load_or_default(ui.ctx(), id);
 		let imageries = self.imageries.read();
 
-		Panel::top("top_panel").show_inside(ui, |ui| {
+		Panel::top("imagery_settings_top").show_inside(ui, |ui| {
 			MenuBar::new().ui(ui, |ui| {
 				if ui.button("Update JOSM imagery").clicked() {
 					crate::imagery::update_josm_imagery(
