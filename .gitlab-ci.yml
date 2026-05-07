@@ -2,6 +2,8 @@
 image: rust:latest
 # Functions that should be executed before the build script is run
 before_script:
+  - apt update
+  - apt install -y libdbus-1-dev pkg-config
   - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
   - cargo binstall -y trunk
   - trunk --version
