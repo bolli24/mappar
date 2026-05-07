@@ -52,7 +52,7 @@ quick-xml = { version = "0.39", features = [
     "overlapped-lists",
 ], default-features = false }
 bytes = "1.11"
-bytemuck = "1.24"
+bytemuck = "1.25"
 oauth2 = { version = "5" }
 httparse = "1.10"
 
@@ -62,8 +62,8 @@ chrono = { version = "0.4", features = ["wasmbind"] }
 web-time = "1.1"
 
 undo = { version = "0.52", default-features = false, features = ["alloc"] }
-lru = "0.16"
-indexmap = "2.13"
+lru = "0.18"
+indexmap = "2.14"
 itertools = "0.14"
 regex = "1.12"
 lasso = { version = "0.7", features = ["serialize"] }
@@ -74,14 +74,14 @@ bitflags = "2.11"
 
 statig = "0.4"
 
-chumsky = "0.12"
+chumsky = "0.13"
 
 fxhash = "0.2"
 
 puffin = "0.20"
 puffin_http = "0.17"
 
-celes = "2.6"
+celes = "2.8"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 eframe = { version = "0.34", default-features = false, features = [
@@ -93,7 +93,7 @@ eframe = { version = "0.34", default-features = false, features = [
     "persistence",
 ] }
 wgpu = { version = "29", features = ["vulkan", "dx12", "metal", "gles"] }
-tokio = { version = "1.49", features = [
+tokio = { version = "1.52", features = [
     "macros",
     "sync",
     "rt-multi-thread",
@@ -120,7 +120,7 @@ eframe = { version = "0.34", default-features = false, features = [
     "persistence",
 ] }
 wgpu = { version = "29", features = ["webgpu", "webgl"] }
-tokio = { version = "1.49", default-features = false, features = [
+tokio = { version = "1.52", default-features = false, features = [
     "macros",
     "sync",
     "rt",

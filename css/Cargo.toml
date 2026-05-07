@@ -10,7 +10,7 @@ name = "mapcss-validate"
 path = "src/bin/validate.rs"
 
 [dependencies]
-chumsky = { version = "0.12" }
+chumsky = { version = "0.13" }
 logos = "0.16"
 ecolor = "0.34"
 ariadne = "0.6"
