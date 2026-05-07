@@ -70,7 +70,7 @@ impl Widget for AuthWidget {
 			.response
 		} else {
 			if !mem.tried_getting_token {
-				if let Some(token) = get_token(&self.osm_client, &mut self.messages) {
+				if let Some(token) = get_token(&mut self.messages) {
 					log::info!("Got login token: {}...", &token.0[0..5]);
 					self.osm_client.set_auth(Some(token));
 					let osm_client = self.osm_client.clone();
@@ -96,7 +96,7 @@ impl Widget for AuthWidget {
 						_ = cancellation.cancelled() => Err(anyhow::anyhow!("Login flow canceled by user."))
 					} {
 						Ok(token) => {
-							store_token(&osm_client, &token, &mut messages);
+							store_token(&token, &mut messages);
 							osm_client.set_auth(Some(OsmAuthToken(token)));
 							message_info!(messages, "Logged in successfully.");
 							fetch_user_info(osm_client, &mut messages).await;
@@ -113,7 +113,7 @@ impl Widget for AuthWidget {
 
 		if logout {
 			self.osm_client.logout();
-			delete_stored_token(&self.osm_client, &mut self.messages);
+			delete_stored_token(&mut self.messages);
 		}
 
 		mem.store(ui.ctx(), id);
@@ -128,18 +128,51 @@ fn token_item() -> String {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-fn get_token(client: &OsmClient, messages: &mut Messages) -> Option<OsmAuthToken> {
-	match client.credential_entry.get_password() {
+fn credential_entry(messages: &mut Messages) -> Option<keyring_core::Entry> {
+	if let Err(err) = init_credential_store() {
+		message_error!(messages, "Error creating keyring store: {err}");
+		return None;
+	}
+
+	#[cfg(target_os = "windows")]
+	{
+		let modifiers = std::collections::HashMap::from([("target", crate::api::OAUTH_URL)]);
+		keyring_core::Entry::new_with_modifiers("mappar", "user", &modifiers)
+			.inspect_err(|err| message_error!(messages, "Error creating keyring entry: {err}"))
+			.ok()
+	}
+
+	#[cfg(target_os = "linux")]
+	{
+		keyring_core::Entry::new("mappar", "user")
+			.inspect_err(|err| message_error!(messages, "Error creating keyring entry: {err}"))
+			.ok()
+	}
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn init_credential_store() -> keyring_core::Result<()> {
+	#[cfg(target_os = "windows")]
+	keyring_core::set_default_store(windows_native_keyring_store::Store::new()?);
+
+	#[cfg(target_os = "linux")]
+	keyring_core::set_default_store(dbus_secret_service_keyring_store::Store::new()?);
+
+	Ok(())
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn get_token(messages: &mut Messages) -> Option<OsmAuthToken> {
+	let entry = credential_entry(messages)?;
+
+	match entry.get_password() {
 		Err(keyring_core::Error::NoEntry) => None,
 		Err(err) => {
 			message_error!(messages, "Error retrieving token from keyring: {err}");
-			let _ = client
-				.credential_entry
-				.delete_credential()
-				.inspect_err(|err| match err {
-					keyring_core::Error::NoEntry => (),
-					err => message_error!(messages, "Error deleting token from keyring: {err}"),
-				});
+			let _ = entry.delete_credential().inspect_err(|err| match err {
+				keyring_core::Error::NoEntry => (),
+				err => message_error!(messages, "Error deleting token from keyring: {err}"),
+			});
 			None
 		}
 		Ok(token) => Some(OsmAuthToken(token)),
@@ -147,12 +180,12 @@ fn get_token(client: &OsmClient, messages: &mut Messages) -> Option<OsmAuthToken
 }
 
 #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "windows", target_os = "linux"))))]
-fn get_token(_client: &OsmClient, _messages: &mut Messages) -> Option<OsmAuthToken> {
+fn get_token(_messages: &mut Messages) -> Option<OsmAuthToken> {
 	None
 }
 
 #[cfg(target_arch = "wasm32")]
-fn get_token(_client: &OsmClient, _messages: &mut Messages) -> Option<OsmAuthToken> {
+fn get_token(_messages: &mut Messages) -> Option<OsmAuthToken> {
 	let window = web_sys::window().expect("Window must be available.");
 	let storage = window
 		.local_storage()
@@ -166,17 +199,21 @@ fn get_token(_client: &OsmClient, _messages: &mut Messages) -> Option<OsmAuthTok
 
 // TODO: message error
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-fn store_token(client: &OsmClient, token: &str, messages: &mut Messages) {
-	let _ = client.credential_entry.set_password(token).inspect_err(|err| {
-		message_error!(messages, "Error storing token: {:?}", err);
-	});
+fn store_token(token: &str, messages: &mut Messages) {
+	let Some(entry) = credential_entry(messages) else {
+		return;
+	};
+
+	let _ = entry
+		.set_password(token)
+		.inspect_err(|err| message_error!(messages, "Error storing token: {:?}", err));
 }
 
 #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "windows", target_os = "linux"))))]
-fn store_token(_client: &OsmClient, _token: &str, _messages: &mut Messages) {}
+fn store_token(_token: &str, _messages: &mut Messages) {}
 
 #[cfg(target_arch = "wasm32")]
-fn store_token(_client: &OsmClient, token: &str, messages: &mut Messages) {
+fn store_token(token: &str, messages: &mut Messages) {
 	let window = web_sys::window().expect("Window must be available.");
 	let storage = window
 		.local_storage()
@@ -188,8 +225,12 @@ fn store_token(_client: &OsmClient, token: &str, messages: &mut Messages) {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-fn delete_stored_token(client: &OsmClient, messages: &mut Messages) {
-	match client.credential_entry.delete_credential() {
+fn delete_stored_token(messages: &mut Messages) {
+	let Some(entry) = credential_entry(messages) else {
+		return;
+	};
+
+	match entry.delete_credential() {
 		Err(keyring_core::Error::NoEntry) => (),
 		Err(err) => message_error!(messages, "Error deleting token: {:?}", err),
 		_ => (),
@@ -197,10 +238,10 @@ fn delete_stored_token(client: &OsmClient, messages: &mut Messages) {
 }
 
 #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "windows", target_os = "linux"))))]
-fn delete_stored_token(_client: &OsmClient, _messages: &mut Messages) {}
+fn delete_stored_token(_messages: &mut Messages) {}
 
 #[cfg(target_arch = "wasm32")]
-fn delete_stored_token(_client: &OsmClient, _messages: &mut Messages) {
+fn delete_stored_token(_messages: &mut Messages) {
 	let window = web_sys::window().expect("Window must be available.");
 	let storage = window
 		.local_storage()
