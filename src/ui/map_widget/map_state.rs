@@ -113,8 +113,8 @@ impl MapStateMachine {
 
 		if let Some(element_id) = last_clicked_element
 			&& element_id.is_way()
+			&& let Some(element) = map_data.get(element_id)
 		{
-			let element = &map_data.get(element_id).expect("Element must exist.");
 			if let Element::Way { nodes } = &element.element {
 				let closed = is_closed(&nodes);
 				dbgtxt!(debug_text, "Closed: {closed}");
@@ -212,6 +212,7 @@ impl MapStateMachine {
 			let edit = map_data.delete(&mem.selection.elements);
 			history.edit(map_data, edit).expect("Deleting must not error.");
 			mem.selection.clear(map_data);
+			*last_clicked_element = None;
 		}
 
 		Super

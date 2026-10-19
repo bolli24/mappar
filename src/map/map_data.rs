@@ -268,6 +268,11 @@ impl MapData {
 			}
 		}
 
+		// Parents that are deleted themselves don't need their node/member lists fixed up.
+		// Their full state is already stored in `elements` for undo.
+		let deleted: HashSet<ElementId> = ids.iter().copied().collect();
+		references.retain(|parent, _| !deleted.contains(parent));
+
 		for ref_set in references.values_mut() {
 			ref_set.sort_by_key(|r| r.1.get_index());
 		}
@@ -341,5 +346,87 @@ impl MapData {
 			unreachable!("Element {id} must have key '{key}' to be overwritten.");
 		};
 		previous_value.clone()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn delete_way_together_with_one_of_its_nodes() {
+		let mut map_data = MapData::new();
+		let mut history = EditHistory::new();
+
+		let nodes: Vec<ElementId> = (0..5)
+			.map(|i| {
+				let edit = map_data.new_node(DVec2::new(f64::from(i), 0.0));
+				history.edit(&mut map_data, edit).unwrap()[0]
+			})
+			.collect();
+		let edit = map_data.new_way(nodes.clone());
+		let way = history.edit(&mut map_data, edit).unwrap()[0];
+
+		let edit = map_data.delete(&HashSet::from([way, nodes[1]]));
+		history.edit(&mut map_data, edit).unwrap();
+
+		assert!(map_data.get(&way).is_none());
+		assert!(map_data.get(&nodes[1]).is_none());
+		assert_eq!(map_data.len(), 4);
+
+		history.undo(&mut map_data).unwrap().unwrap();
+
+		let Element::Way { nodes: restored } = &map_data.get(&way).expect("Way must be restored").element else {
+			panic!("Element must be way");
+		};
+		assert_eq!(*restored, nodes);
+		assert!(map_data.get(&nodes[1]).is_some());
+	}
+
+	fn build_way(map_data: &mut MapData, history: &mut EditHistory, len: i32) -> (ElementId, Vec<ElementId>) {
+		let nodes: Vec<ElementId> = (0..len)
+			.map(|i| {
+				let edit = map_data.new_node(DVec2::new(f64::from(i), 0.0));
+				history.edit(map_data, edit).unwrap()[0]
+			})
+			.collect();
+		let edit = map_data.new_way(nodes.clone());
+		(history.edit(map_data, edit).unwrap()[0], nodes)
+	}
+
+	#[test]
+	fn delete_way_undo_redo() {
+		let mut map_data = MapData::new();
+		let mut history = EditHistory::new();
+		let (way, _) = build_way(&mut map_data, &mut history, 5);
+		let edit = map_data.delete(&HashSet::from([way]));
+		history.edit(&mut map_data, edit).unwrap();
+		history.undo(&mut map_data).unwrap().unwrap();
+		history.redo(&mut map_data).unwrap().unwrap();
+	}
+
+	#[test]
+	fn delete_way_in_relation_undo_redo() {
+		let mut map_data = MapData::new();
+		let mut history = EditHistory::new();
+		let (way, _) = build_way(&mut map_data, &mut history, 5);
+		map_data.add(MapElement {
+			id: ElementId::new(-1, ElementType::Relation),
+			info: element::ElementInfo::default(),
+			element: Element::Relation {
+				members: vec![Member {
+					ref_id: way,
+					role: String::new(),
+				}],
+				fully_downloaded: true,
+			},
+			tags: Default::default(),
+			new_tag: None,
+			generation: 0,
+		});
+		let edit = map_data.delete(&HashSet::from([way]));
+		history.edit(&mut map_data, edit).unwrap();
+		history.undo(&mut map_data).unwrap().unwrap();
+		history.redo(&mut map_data).unwrap().unwrap();
 	}
 }
