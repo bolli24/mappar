@@ -231,6 +231,11 @@ impl undo::Edit for Edit {
 			}
 		}
 
+		// Only the first application of a drag-move was already done live; every later one (redo) must move.
+		if let Action::Move(_, already_moved) = &mut self.1 {
+			*already_moved = false;
+		}
+
 		Ok(self.0.clone())
 	}
 
