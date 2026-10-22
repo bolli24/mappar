@@ -22,11 +22,11 @@ fn create_client(port: u16) -> OsmClient {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn create_client(origin: String) -> OsmClient {
+fn create_client(redirect_url: String) -> OsmClient {
 	BasicClient::new(ClientId::new(dotenv!("OSM_CLIENT_ID").to_owned()))
 		.set_auth_uri(AuthUrl::new(format!("{OAUTH_URL}/oauth2/authorize")).expect("valid OAuth URL"))
 		.set_token_uri(TokenUrl::new(format!("{OAUTH_URL}/oauth2/token")).expect("valid token URL"))
-		.set_redirect_uri(RedirectUrl::new(format!("{origin}/login.html")).expect("valid redirect URL"))
+		.set_redirect_uri(RedirectUrl::new(redirect_url).expect("valid redirect URL"))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -126,7 +126,7 @@ pub async fn login() -> anyhow::Result<String> {
 		state: String,
 	}
 
-	let client = create_client(crate::util::get_current_url_origin());
+	let client = create_client(crate::util::resolve_page_url("login.html"));
 
 	let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 

@@ -109,10 +109,14 @@ macro_rules! message_trace {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn get_current_url_origin() -> String {
+/// Resolves `path` relative to the current page, so it also works when the app is served from a sub-path.
+pub fn resolve_page_url(path: &str) -> String {
 	use web_sys::window;
 
 	let window = window().expect("Window must exist");
-	let location = window.location();
-	location.origin().expect("Origin must exist.")
+	let href = window.location().href().expect("Location href must exist.");
+	url::Url::parse(&href)
+		.and_then(|base| base.join(path))
+		.expect("Page URL must be valid.")
+		.to_string()
 }

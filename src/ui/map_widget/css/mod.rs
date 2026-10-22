@@ -61,7 +61,7 @@ impl Drop for Styles {
 
 const PATH: &str = "./assets/styles/default.mapcss";
 #[cfg(target_arch = "wasm32")]
-const WASM_PATH: &str = "/assets/styles/default.mapcss";
+const WASM_PATH: &str = "assets/styles/default.mapcss";
 
 pub fn get_default_styles(
 	texture_manager: Arc<RwLock<TextureManager>>,
@@ -92,8 +92,7 @@ async fn fetch_styles_from_server(
 	mut messages: Messages,
 	on_loaded: impl FnOnce(Option<Styles>) + Send + 'static,
 ) {
-	let origin = crate::util::get_current_url_origin();
-	let url = format!("{}{}", origin, WASM_PATH);
+	let url = crate::util::resolve_page_url(WASM_PATH);
 
 	info!("Fetching MapCSS styles from: {url}");
 
