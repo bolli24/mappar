@@ -18,7 +18,16 @@ jobs:
       # Picks up rust-toolchain.toml
       - run: rustup show
       - uses: Swatinem/rust-cache@v2
-      - run: touch .env
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.18
+        with:
+          method: universal
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: https://eu.infisical.com
+          project-id: 38226802-b8f0-4b2e-8213-656455cfcf74
+          env-slug: prod
+          export-type: file
       - run: cargo test
 
   pages-build:
@@ -32,7 +41,16 @@ jobs:
       - uses: cargo-bins/cargo-binstall@main
       - run: cargo binstall -y trunk
       - run: trunk --version
-      - run: touch .env
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.18
+        with:
+          method: universal
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: https://eu.infisical.com
+          project-id: 38226802-b8f0-4b2e-8213-656455cfcf74
+          env-slug: prod
+          export-type: file
       # GitHub Pages serves project sites under /<repo>/
       - run: trunk build --release --dist=public --public-url "/${{ github.event.repository.name }}/"
       - uses: actions/upload-pages-artifact@v3
