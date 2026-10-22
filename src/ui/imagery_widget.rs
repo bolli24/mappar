@@ -55,6 +55,9 @@ impl Widget for ImageriesWidget<'_> {
 						self.imageries.clone(),
 					);
 				}
+				if ui.button("Retry Bing metadata").clicked() {
+					crate::imagery::update_bing_metadata(self.messages.clone(), self.imageries.clone());
+				}
 			});
 		});
 

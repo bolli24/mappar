@@ -295,6 +295,10 @@ impl eframe::App for MyApp {
 									self.imageries.clone(),
 								);
 							}
+							if ui.button("Retry Bing metadata").clicked() {
+								ui.close();
+								crate::imagery::update_bing_metadata(self.messages.clone(), self.imageries.clone());
+							}
 						});
 						ui.add_space(16.0);
 						egui::widgets::global_theme_preference_buttons(ui);

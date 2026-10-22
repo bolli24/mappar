@@ -137,11 +137,11 @@ fn imageries_from_str(
 		}
 	};
 
-	let mut bing_ids = Vec::new();
+	let mut has_bing = false;
 
-	parsed.entries.retain(|id, imagery| {
+	parsed.entries.retain(|_, imagery| {
 		if imagery.imagery_type == ImageryType::Bing {
-			bing_ids.push(id.clone());
+			has_bing = true;
 			true
 		} else {
 			imagery.imagery_type == ImageryType::Tms && imagery.tile_url(0, 0, 0).is_some()
@@ -156,47 +156,55 @@ fn imageries_from_str(
 	);
 	*imageries.write() = parsed;
 
-	if !bing_ids.is_empty() {
-		let imageries = imageries.clone();
-		let mut messages = messages.clone();
-		crate::spawn_task!(async move {
-			let client = Client::new();
-			match bing::bing_metadata(&client).await {
-				Ok(metadata) => {
-					let tile_url = match ImageryUrl::try_from(metadata.tile_url.as_str()) {
-						Ok(url) => url,
-						Err(err) => {
-							message_error!(
-								messages,
-								"Failed to parse Bing tile URL '{}': {err:?}",
-								metadata.tile_url
-							);
-							return;
-						}
-					};
-					let mut imageries = imageries.write();
-					for id in bing_ids {
-						if let Some(imagery) = imageries.entries.get_mut(&id) {
-							imagery.url = tile_url.clone();
-							imagery.min_zoom = metadata.zoom_min;
-							imagery.max_zoom = metadata.zoom_max;
-							imagery.tile_size = Some(metadata.tile_size);
-						}
-					}
-					message_info!(messages, "Bing imagery metadata loaded successfully.");
-				}
-				Err(err) => {
-					message_error!(messages, "Failed to fetch Bing metadata: {err}");
-					let mut imageries = imageries.write();
-					for id in bing_ids {
-						imageries.entries.shift_remove(&id);
-					}
-				}
-			}
-		});
+	if has_bing {
+		update_bing_metadata(messages, imageries.clone());
 	}
 
 	Ok(())
+}
+
+/// Fetches the Bing imagery metadata and applies it to all Bing imagery sources.
+/// On failure the sources are kept but stay not ready, so the fetch can be retried.
+pub fn update_bing_metadata(mut messages: Messages, imageries: Arc<epaint::mutex::RwLock<Imageries>>) {
+	crate::spawn_task!(async move {
+		let client = Client::new();
+		let metadata = match bing::bing_metadata(&client).await {
+			Ok(metadata) => metadata,
+			Err(err) => {
+				message_error!(
+					messages,
+					"Failed to fetch Bing metadata: {err}. Retry via Imagery > Retry Bing metadata."
+				);
+				return;
+			}
+		};
+
+		let tile_url = match ImageryUrl::try_from(metadata.tile_url.as_str()) {
+			Ok(url) => url,
+			Err(err) => {
+				message_error!(
+					messages,
+					"Failed to parse Bing tile URL '{}': {err:?}",
+					metadata.tile_url
+				);
+				return;
+			}
+		};
+
+		// Look up the Bing sources after the request, since the imagery list may have been replaced meanwhile.
+		let mut imageries = imageries.write();
+		for imagery in imageries
+			.entries
+			.values_mut()
+			.filter(|imagery| imagery.imagery_type == ImageryType::Bing)
+		{
+			imagery.url = tile_url.clone();
+			imagery.min_zoom = metadata.zoom_min;
+			imagery.max_zoom = metadata.zoom_max;
+			imagery.tile_size = Some(metadata.tile_size);
+		}
+		message_info!(messages, "Bing imagery metadata loaded successfully.");
+	});
 }
 
 impl From<&str> for Name {
