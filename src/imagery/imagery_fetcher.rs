@@ -189,6 +189,8 @@ impl ImageryFetcher {
 				let texture = Self::create_texture_from_decoded(&texture_manager, output.0.to_string(), image);
 				Self::store_texture(&texture_manager, &memory_cache, tile, texture);
 			})
+			// Trunk builds workers with wasm-bindgen's `no-modules` target, so load it as a classic script.
+			.as_module(false)
 			.spawn("./dummy_worker.js")
 	}
 
