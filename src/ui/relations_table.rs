@@ -2,8 +2,8 @@ use super::{debug_text::DebugText, map_widget::map_memory::Selection, messages::
 use crate::map::map_data::{EditHistory, MapData};
 use crate::ui::key_value_table::table_field;
 use crate::{Element, ElementId};
+use ahash::AHashSet;
 use derive_new::new;
-use egui::ahash::AHashSet;
 use egui::{Frame, RichText, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
 

@@ -22,7 +22,7 @@ pub fn show_as_window<R>(
 					*open = false;
 				}
 				(
-					Area::new(Id::from(title.clone())).show(ctx, add_contents.clone()),
+					Area::new(Id::unique(title.clone())).show(ctx, add_contents.clone()),
 					ctx.input(|i| i.viewport().minimized.unwrap_or(false)),
 				)
 			},

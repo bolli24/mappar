@@ -5,10 +5,9 @@ use crate::map::latlon::{LatLon, latlon};
 use crate::map::map_data::MapData;
 use indexmap::IndexMap;
 use log::{error, info, warn};
-use quick_xml::Reader;
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesStart, Event};
-use std::str::from_utf8;
+use quick_xml::{Reader, XmlVersion};
 use web_time::Instant;
 
 impl OsmClient {
@@ -39,7 +38,7 @@ pub(crate) fn parse_osm_xml(xml: &str) -> Option<MapData> {
 		match reader.read_event() {
 			Ok(event) => match event {
 				Event::Start(ref e) => {
-					if !matches!(e.name().as_ref(), b"node" | b"way" | b"relation") {
+					if !matches!(e.name().as_ref(), "node" | "way" | "relation") {
 						warn!("Unknown element: {e:?}");
 						continue;
 					}
@@ -51,24 +50,21 @@ pub(crate) fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					loop {
 						match reader.read_event() {
 							Ok(Event::Empty(ref e)) => match e.name().as_ref() {
-								b"tag" => {
+								"tag" => {
 									parse_tag(&mut tags, e).ok()?;
 								}
-								b"nd" => {
+								"nd" => {
 									let node_ref = e.attributes().next()?.ok()?;
-									if node_ref.key.as_ref() == b"ref" {
-										nodes.push(ElementId::new(
-											from_utf8(&node_ref.value).ok()?.parse().ok()?,
-											ElementType::Node,
-										));
+									if node_ref.key.as_ref() == "ref" {
+										nodes.push(ElementId::new(node_ref.value.parse().ok()?, ElementType::Node));
 									}
 								}
-								b"member" => {
+								"member" => {
 									let (ref_id, role) = parse_member(e)?;
 									members.push(Member { ref_id, role });
 								}
 								name => {
-									warn!("Unknown tag: {:?}", from_utf8(name).ok()?);
+									warn!("Unknown tag: {:?}", name);
 								}
 							},
 							Ok(Event::End(_)) => {
@@ -81,9 +77,9 @@ pub(crate) fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					let (id, lat_lon, info) = parse_attributes(attributes)?;
 
 					let (element, element_type) = match e.name().as_ref() {
-						b"node" => (Element::Node { pos: lat_lon?.into() }, ElementType::Node),
-						b"way" => (Element::Way { nodes }, ElementType::Way),
-						b"relation" => (
+						"node" => (Element::Node { pos: lat_lon?.into() }, ElementType::Node),
+						"way" => (Element::Way { nodes }, ElementType::Way),
+						"relation" => (
 							Element::Relation {
 								members,
 								fully_downloaded: false,
@@ -105,7 +101,7 @@ pub(crate) fn parse_osm_xml(xml: &str) -> Option<MapData> {
 					});
 				}
 				Event::Empty(ref e) => {
-					if e.name().as_ref() != b"node" {
+					if e.name().as_ref() != "node" {
 						warn!("Unknown element type: {e:?}");
 						continue;
 					}
@@ -165,13 +161,13 @@ fn parse_member(e: &BytesStart) -> Option<(ElementId, String)> {
 	for attr in e.attributes() {
 		let attr = attr.ok()?;
 		match attr.key.as_ref() {
-			b"ref" => {
-				ref_id = from_utf8(attr.value.as_ref()).ok()?.parse().ok()?;
+			"ref" => {
+				ref_id = attr.value.parse().ok()?;
 			}
-			b"role" => {
-				role = attr.unescape_value().ok()?.to_string();
+			"role" => {
+				role = attr.normalized_value(XmlVersion::Implicit1_0).ok()?.to_string();
 			}
-			b"type" => ref_type = ElementType::try_from(from_utf8(attr.value.as_ref()).ok()?).ok()?,
+			"type" => ref_type = ElementType::try_from(attr.value.as_ref()).ok()?,
 			_ => {
 				error!(
 					"Unknown attribute on relation member: {:?}=\"{:?}\"",
@@ -190,8 +186,8 @@ fn parse_tag(tags: &mut IndexMap<String, String>, e: &BytesStart) -> Result<(), 
 	for a in e.attributes() {
 		let a = a?;
 		match a.key.as_ref() {
-			b"k" => key = a.unescape_value()?.to_string(),
-			b"v" => value = a.unescape_value()?.to_string(),
+			"k" => key = a.normalized_value(XmlVersion::Implicit1_0)?.to_string(),
+			"v" => value = a.normalized_value(XmlVersion::Implicit1_0)?.to_string(),
 			_ => {}
 		}
 	}
@@ -211,32 +207,32 @@ fn parse_attributes(attributes: Attributes) -> Option<(i64, Option<LatLon>, Elem
 	for attr in attributes {
 		let attr = attr.ok()?;
 		match attr.key.as_ref() {
-			b"lat" => {
-				lat = from_utf8(&attr.value).ok()?.parse().ok()?;
+			"lat" => {
+				lat = attr.value.parse().ok()?;
 			}
-			b"lon" => {
-				lon = from_utf8(&attr.value).ok()?.parse().ok()?;
+			"lon" => {
+				lon = attr.value.parse().ok()?;
 			}
-			b"id" => {
-				id = from_utf8(&attr.value).ok()?.parse().ok()?;
+			"id" => {
+				id = attr.value.parse().ok()?;
 			}
-			b"version" => {
-				info.version = from_utf8(&attr.value).ok()?.parse().ok()?;
+			"version" => {
+				info.version = attr.value.parse().ok()?;
 			}
-			b"changeset" => {
-				info.changeset = from_utf8(&attr.value).ok()?.parse().ok()?;
+			"changeset" => {
+				info.changeset = attr.value.parse().ok()?;
 			}
-			b"uid" => {
-				info.uid = from_utf8(&attr.value).ok()?.parse().ok();
+			"uid" => {
+				info.uid = attr.value.parse().ok();
 			}
-			b"user" => {
-				info.user = Some(from_utf8(&attr.value).ok()?.to_string());
+			"user" => {
+				info.user = Some(attr.value.to_string());
 			}
-			b"visible" => {
-				info.visible = from_utf8(&attr.value).ok()? == "true";
+			"visible" => {
+				info.visible = attr.value == "true";
 			}
-			b"timestamp" => {
-				info.timestamp = from_utf8(&attr.value).ok()?.parse().ok()?;
+			"timestamp" => {
+				info.timestamp = attr.value.parse().ok()?;
 			}
 			_ => {
 				warn!("Unknown attribute: {attr:?}");

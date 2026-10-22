@@ -41,11 +41,11 @@ pub struct ImageriesWidget<'a> {
 
 impl Widget for ImageriesWidget<'_> {
 	fn ui(self, ui: &mut Ui) -> Response {
-		let id = Id::from("imagery_settings");
+		let id = Id::unique("imagery_settings");
 		let mut mem = ImageriesMemory::load_or_default(ui.ctx(), id);
 		let imageries = self.imageries.read();
 
-		Panel::top("imagery_settings_top").show_inside(ui, |ui| {
+		Panel::top("imagery_settings_top").show(ui, |ui| {
 			MenuBar::new().ui(ui, |ui| {
 				if ui.button("Update JOSM imagery").clicked() {
 					crate::imagery::update_josm_imagery(
@@ -63,7 +63,7 @@ impl Widget for ImageriesWidget<'_> {
 			.clone()
 			.and_then(|selected| imageries.entries.get_index_of(&selected));
 
-		Panel::left("imagery_list").show_inside(ui, |ui| {
+		Panel::left("imagery_list").show(ui, |ui| {
 			TableBuilder::new(ui)
 				.striped(true)
 				.column(Column::auto())
@@ -99,7 +99,7 @@ impl Widget for ImageriesWidget<'_> {
 		});
 
 		let response = CentralPanel::default()
-			.show_inside(ui, |ui| match &mem.selected {
+			.show(ui, |ui| match &mem.selected {
 				Some(selected) => {
 					ui.heading(
 						imageries

@@ -1,5 +1,5 @@
 use crate::{Element, ElementId, MapElement};
-use egui::ahash::{AHashMap, AHashSet};
+use ahash::{AHashMap, AHashSet};
 
 /// Bidirectional reference index for tracking element relationships
 pub struct ReferenceIndex {

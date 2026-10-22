@@ -45,7 +45,7 @@ impl Default for AuthMemory {
 
 impl Widget for AuthWidget {
 	fn ui(mut self, ui: &mut Ui) -> Response {
-		let id = Id::from("auth_widget");
+		let id = Id::unique("auth_widget");
 		let mut mem: AuthMemory = TempMemory::load_or_default(ui.ctx(), id);
 		let mut logout = false;
 

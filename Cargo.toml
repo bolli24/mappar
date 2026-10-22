@@ -13,17 +13,17 @@ members = ["src/macros", "css"]
 mappar-macros = { path = "src/macros" }
 mappar-css = { path = "css" }
 
-egui = "0.34"
-epaint = "0.34"
-egui_extras = "0.34"
+egui = { version = "0.37", features = ["monochrome_emoji_fonts"] }
+epaint = "0.37"
+egui_extras = "0.37"
 image = { version = "0.25", default-features = false, features = [
     "jpeg",
     "png",
 ] }
-resvg = { version = "0.47", default-features = false }
-glam = { version = "0.32", features = ["serde"] }
+resvg = { version = "0.48", default-features = false }
+glam = { version = "0.34", features = ["serde"] }
 lyon_tessellation = "1.0"
-egui-phosphor = { version = "0.12", default-features = false, features = [
+egui-phosphor = { version = "0.14", default-features = false, features = [
     "bold",
 ] }
 
@@ -47,11 +47,11 @@ tokio-util = "0.7"
 
 reqwest = "0.13"
 url = "2.5"
-quick-xml = { version = "0.39", features = [
+quick-xml = { version = "0.42", features = [
     "serialize",
     "overlapped-lists",
 ], default-features = false }
-bytes = "1.11"
+bytes = "1.12"
 bytemuck = "1.25"
 oauth2 = { version = "5" }
 httparse = "1.10"
@@ -62,29 +62,30 @@ chrono = { version = "0.4", features = ["wasmbind"] }
 web-time = "1.1"
 
 undo = { version = "0.52", default-features = false, features = ["alloc"] }
-lru = "0.18"
+lru = "0.19"
 indexmap = "2.14"
-itertools = "0.14"
-regex = "1.12"
+itertools = "0.15"
+regex = "1.13"
 lasso = { version = "0.7", features = ["serialize"] }
-smallvec = { version = "1.15", features = ["serde"] }
-either = "1.15"
+smallvec = { version = "1.16", features = ["serde"] }
+either = "1.19"
 nonzero_ext = "0.3"
-bitflags = "2.11"
+bitflags = "2.13"
 
 statig = "0.4"
 
 chumsky = "0.13"
 
 fxhash = "0.2"
+ahash = { version = "0.8", default-features = false, features = ["std"] }
 
 puffin = "0.20"
 puffin_http = "0.17"
 
-celes = "2.8"
+celes = "3.0"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-eframe = { version = "0.34", default-features = false, features = [
+eframe = { version = "0.37", default-features = false, features = [
     # "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts",
     "wgpu",
@@ -92,8 +93,8 @@ eframe = { version = "0.34", default-features = false, features = [
     "wayland",
     "persistence",
 ] }
-wgpu = { version = "29", features = ["vulkan", "dx12", "metal", "gles"] }
-tokio = { version = "1.52", features = [
+wgpu = { version = "30", features = ["vulkan", "dx12", "metal", "gles"] }
+tokio = { version = "1.54", features = [
     "macros",
     "sync",
     "rt-multi-thread",
@@ -101,26 +102,26 @@ tokio = { version = "1.52", features = [
 ] }
 flate2 = "1.1"
 tar = "0.4"
-open = "5.3"
+open = "5.4"
 directories = "6.0"
 pico-args = "0.5"
 keyring-core = "1.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows-native-keyring-store = "1.0"
+windows-native-keyring-store = "1.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dbus-secret-service-keyring-store = { version = "1.0", features = ["crypto-openssl"] }
 
 # web:
 [target.'cfg(target_family = "wasm")'.dependencies]
-eframe = { version = "0.34", default-features = false, features = [
+eframe = { version = "0.37", default-features = false, features = [
     "default_fonts",
     "wgpu",
     "persistence",
 ] }
-wgpu = { version = "29", features = ["webgpu", "webgl"] }
-tokio = { version = "1.52", default-features = false, features = [
+wgpu = { version = "30", features = ["webgpu", "webgl"] }
+tokio = { version = "1.54", default-features = false, features = [
     "macros",
     "sync",
     "rt",
@@ -137,7 +138,11 @@ gloo-worker = "0.6"
 indexed_db_futures = { version = "0.6", features = ["serde", "typed-arrays"] }
 
 [build-dependencies]
-vergen-gitcl = "9"
+vergen-gitcl = "10"
+
+# TODO: remove once egui-phosphor releases a version for egui 0.37
+[patch.crates-io]
+egui-phosphor = { git = "https://github.com/bolli24/egui-phosphor", rev = "01e8c1144cac3f551ceb834b6d26ddf36ba502cd" }
 
 [[bin]] # This is used for gloo-worker
 name = "dummy_worker"

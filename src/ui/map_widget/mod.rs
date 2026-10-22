@@ -173,7 +173,7 @@ impl Widget for MapWidget<'_> {
 		}
 
 		// 6. Info bar
-		Panel::bottom("map_info_bar").show_inside(ui, |ui| {
+		Panel::bottom("map_info_bar").show(ui, |ui| {
 			ui.monospace(format!(
 				"{} nodes, {} ways, {} relations",
 				self.mem.selection.node_count(),

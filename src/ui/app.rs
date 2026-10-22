@@ -89,7 +89,7 @@ impl MyApp {
 		info!("Camera: {camera_pos:?}");
 		info!("Camera: {:?}", LatLon::from_web_mercator(camera_pos));
 
-		let map_widget_id = Id::new("map_widget");
+		let map_widget_id = Id::unique("map_widget");
 		let map_memory = MapMemory {
 			camera_pos: glam::dvec2(camera_pos.x, camera_pos.y),
 			zoom_level: 15.0,
@@ -242,7 +242,7 @@ impl eframe::App for MyApp {
 
 		let mut update_edit_mode = None;
 
-		egui::Panel::top("top_panel").show_inside(ui, |ui| {
+		egui::Panel::top("top_panel").show(ui, |ui| {
 			Sides::new().show(
 				ui,
 				|ui| {
@@ -297,7 +297,7 @@ impl eframe::App for MyApp {
 							}
 						});
 						ui.add_space(16.0);
-						egui::widgets::global_theme_preference_switch(ui);
+						egui::widgets::global_theme_preference_buttons(ui);
 					});
 				},
 				|ui| {
@@ -306,7 +306,7 @@ impl eframe::App for MyApp {
 			);
 		});
 
-		egui::Panel::top("edit_bar_panel").show_inside(ui, |ui| {
+		egui::Panel::top("edit_bar_panel").show(ui, |ui| {
 			ui.add(EditBar::new(
 				self.map_state.edit_mode(),
 				&mut update_edit_mode,
@@ -331,7 +331,7 @@ impl eframe::App for MyApp {
 			}
 		}
 
-		egui::Panel::bottom("status_bar").show_inside(ui, |ui| {
+		egui::Panel::bottom("status_bar").show(ui, |ui| {
 			Sides::new().show(
 				ui,
 				|ui| ui.hyperlink("https://gitlab.com/bolli24/mappar"),
@@ -356,7 +356,7 @@ impl eframe::App for MyApp {
 		egui::Panel::right("edit_panel")
 			.size_range(80.0..=800.0)
 			.default_size(200.0)
-			.show_inside(ui, |ui| {
+			.show(ui, |ui| {
 				LayerList::new(
 					&mut self.layers,
 					&self.imageries.read(),
@@ -399,7 +399,7 @@ impl eframe::App for MyApp {
 		if self.debug_panel {
 			egui::Panel::right("debug_panel")
 				.size_range(80.0..=400.0)
-				.show_inside(ui, |ui| {
+				.show(ui, |ui| {
 					ui.heading("Debug Panel");
 					ui.separator();
 					ScrollArea::vertical().show(ui, |ui| {
@@ -409,32 +409,30 @@ impl eframe::App for MyApp {
 		}
 		self.debug_text.clear();
 
-		egui::CentralPanel::default()
-			.frame(egui::Frame::NONE)
-			.show_inside(ui, |ui| {
-				let active_imagery_ref = self
-					.layers
-					.get_active_imagery()
-					.and_then(|id| self.imageries.write().get_ref(id));
+		egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
+			let active_imagery_ref = self
+				.layers
+				.get_active_imagery()
+				.and_then(|id| self.imageries.write().get_ref(id));
 
-				let rect = ui
-					.add(MapWidget::new(
-						&mut self.map_data,
-						&mut self.history,
-						&mut self.styles,
-						self.imagery_fetcher.clone(),
-						self.map_widget_id,
-						Some(&mut self.debug_text),
-						&mut self.map_memory,
-						active_imagery_ref,
-						self.messages.clone(),
-						&mut self.map_state,
-						update_edit_mode,
-						&self.key_binds,
-					))
-					.rect;
-				ui.put(rect, self.messages.clone());
-			});
+			let rect = ui
+				.add(MapWidget::new(
+					&mut self.map_data,
+					&mut self.history,
+					&mut self.styles,
+					self.imagery_fetcher.clone(),
+					self.map_widget_id,
+					Some(&mut self.debug_text),
+					&mut self.map_memory,
+					active_imagery_ref,
+					self.messages.clone(),
+					&mut self.map_state,
+					update_edit_mode,
+					&self.key_binds,
+				))
+				.rect;
+			ui.put(rect, self.messages.clone());
+		});
 
 		// TODO: Use native window
 		{

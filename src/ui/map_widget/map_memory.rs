@@ -1,6 +1,6 @@
 use crate::map::element::ElementId;
 use crate::map::map_data::MapData;
-use egui::ahash::AHashSet;
+use ahash::AHashSet;
 use glam::DVec2;
 use std::collections::HashSet;
 

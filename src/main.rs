@@ -41,8 +41,11 @@ async fn main() -> eframe::Result<()> {
 			.with_app_id(MyApp::APP_NAME)
 			.with_maximized(true),
 		wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
-			// desired_maximum_frame_latency: Some(1),
-			present_mode: eframe::wgpu::PresentMode::AutoNoVsync,
+			surface: eframe::egui_wgpu::SurfaceConfig {
+				// desired_maximum_frame_latency: Some(1),
+				present_mode: eframe::wgpu::PresentMode::AutoNoVsync,
+				..eframe::egui_wgpu::SurfaceConfig::HIGH_THROUGHPUT
+			},
 			..Default::default()
 		},
 		persist_window: true,
@@ -63,7 +66,10 @@ fn main() {
 	info!("Logger initialized");
 	let web_options = eframe::WebOptions {
 		wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
-			present_mode: eframe::wgpu::PresentMode::AutoVsync,
+			surface: eframe::egui_wgpu::SurfaceConfig {
+				present_mode: eframe::wgpu::PresentMode::AutoVsync,
+				..eframe::egui_wgpu::SurfaceConfig::HIGH_THROUGHPUT
+			},
 			..Default::default()
 		},
 		..Default::default()

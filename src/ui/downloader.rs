@@ -3,7 +3,7 @@ use crate::map::bounds::Bounds;
 use crate::map::map_data::MapData;
 use crate::ui::messages::Messages;
 use crate::{Element, ElementId, message_error};
-use egui::ahash::AHashSet;
+use ahash::AHashSet;
 use egui::{Button, IntoAtoms, Response, Ui};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
