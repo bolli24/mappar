@@ -1,5 +1,4 @@
 use crate::api::{OAUTH_URL, USER_AGENT};
-use dotenvy_macro::dotenv;
 use oauth2::basic::BasicClient;
 use oauth2::reqwest;
 use oauth2::{
@@ -15,7 +14,7 @@ type OsmClient = BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, Endpoi
 
 #[cfg(not(target_arch = "wasm32"))]
 fn create_client(port: u16) -> OsmClient {
-	BasicClient::new(ClientId::new(dotenv!("OSM_CLIENT_ID").to_owned()))
+	BasicClient::new(ClientId::new(env!("OSM_CLIENT_ID").to_owned()))
 		.set_auth_uri(AuthUrl::new(format!("{OAUTH_URL}/oauth2/authorize")).expect("valid OAuth URL"))
 		.set_token_uri(TokenUrl::new(format!("{OAUTH_URL}/oauth2/token")).expect("valid token URL"))
 		.set_redirect_uri(RedirectUrl::new(format!("http://127.0.0.1:{}/callback", port)).expect("valid redirect URL"))
@@ -23,7 +22,7 @@ fn create_client(port: u16) -> OsmClient {
 
 #[cfg(target_arch = "wasm32")]
 fn create_client(redirect_url: String) -> OsmClient {
-	BasicClient::new(ClientId::new(dotenv!("OSM_CLIENT_ID").to_owned()))
+	BasicClient::new(ClientId::new(env!("OSM_CLIENT_ID").to_owned()))
 		.set_auth_uri(AuthUrl::new(format!("{OAUTH_URL}/oauth2/authorize")).expect("valid OAuth URL"))
 		.set_token_uri(TokenUrl::new(format!("{OAUTH_URL}/oauth2/token")).expect("valid token URL"))
 		.set_redirect_uri(RedirectUrl::new(redirect_url).expect("valid redirect URL"))

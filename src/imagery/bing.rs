@@ -1,9 +1,8 @@
-use dotenvy_macro::dotenv;
 use reqwest::Client;
 use serde::Deserialize;
 use thiserror::Error;
 
-const API_KEY: &str = dotenv!("BING_API_KEY");
+const API_KEY: &str = env!("BING_API_KEY");
 
 const METADATA_URL: &str =
 	"https://dev.virtualearth.net/REST/v1/Imagery/Metadata/AerialOSM?include=ImageryProviders&uriScheme=https&key=";

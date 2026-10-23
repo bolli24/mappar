@@ -40,11 +40,10 @@ struct ContributorTerms {
 mod tests {
 	use super::*;
 	use crate::api::auth::OsmAuthToken;
-	use dotenvy_macro::dotenv;
 
 	#[tokio::test]
 	async fn get_user_details() {
-		let client = OsmClient::new(Some(OsmAuthToken(dotenv!("TEST_ACCOUNT_TOKEN").to_owned())), None);
+		let client = OsmClient::new(Some(OsmAuthToken(env!("TEST_ACCOUNT_TOKEN").to_owned())), None);
 		let user_details = client.get_user_details().await.unwrap();
 
 		println!("{:?}", user_details);

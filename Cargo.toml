@@ -56,8 +56,6 @@ bytemuck = "1.25"
 oauth2 = { version = "5" }
 httparse = "1.10"
 
-dotenvy_macro = "0.15"
-
 chrono = { version = "0.4", features = ["wasmbind"] }
 web-time = "1.1"
 
@@ -138,9 +136,6 @@ wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 gloo-worker = "0.6"
 indexed_db_futures = { version = "0.6", features = ["serde", "typed-arrays"] }
-
-[build-dependencies]
-vergen-gitcl = "10"
 
 # TODO: remove once egui-phosphor releases a version for egui 0.37
 [patch.crates-io]
