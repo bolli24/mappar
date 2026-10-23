@@ -338,7 +338,7 @@ impl eframe::App for MyApp {
 		egui::Panel::bottom("status_bar").show(ui, |ui| {
 			Sides::new().show(
 				ui,
-				|ui| ui.hyperlink("https://gitlab.com/bolli24/mappar"),
+				|ui| ui.hyperlink("https://github.com/bolli24/mappar"),
 				|ui| {
 					if env!("VERGEN_GIT_DIRTY") == "true" {
 						ui.spacing_mut().item_spacing.x = 0.0;
@@ -351,7 +351,7 @@ impl eframe::App for MyApp {
 					let commit_hash = env!("VERGEN_GIT_SHA");
 					ui.hyperlink_to(
 						&commit_hash[0..7],
-						format!("https://gitlab.com/bolli24/mappar/tree/{commit_hash}"),
+						format!("https://github.com/bolli24/mappar/tree/{commit_hash}"),
 					);
 					ui.label(format!("{}/", env!("CARGO_PKG_VERSION")));
 				},
